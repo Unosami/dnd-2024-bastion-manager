@@ -1,9 +1,9 @@
 import { BastionManager } from "./bastion-app.js";
 
-const MODULE_ID = "dnd-2025-bastion-manager";
+const MODULE_ID = "dnd-2024-bastion-manager";
 
 Hooks.once("init", () => {
-    console.log(`${MODULE_ID} | Initializing DnD 5.5 Bastion Manager`);
+    console.log(`${MODULE_ID} | Initializing DnD 2024 Bastion Manager`);
     
     // Register the Inheritance Setting in the Game Settings menu
     game.settings.register(MODULE_ID, "groupInheritsFacilities", {
@@ -27,10 +27,10 @@ Hooks.once("init", () => {
             if (isChecked) {
                 // Loop through every actor in the world
                 for (const actor of game.actors) {
-                    const data = actor.getFlag("dnd-2025-bastion-manager", "data");
+                    const data = actor.getFlag("dnd-2024-bastion-manager", "data");
                     // If they have turns, reset it to 0
                     if (data && data.turnCount > 0) {
-                        await actor.setFlag("dnd-2025-bastion-manager", "data.turnCount", 0);
+                        await actor.setFlag("dnd-2024-bastion-manager", "data.turnCount", 0);
                     }
                 }
                 
@@ -69,7 +69,17 @@ Hooks.once("init", () => {
 });
 
 Hooks.once("ready", () => {
-    console.log(`${MODULE_ID} | Bastion Manager is ready!`);
+    // Listen for cross-client events from our module
+    game.socket.on("module.dnd-2024-bastion-manager", (data) => {
+        if (data.action === "gmBastionReport" && game.user.isGM) {
+            const { DialogV2 } = foundry.applications.api;
+            DialogV2.prompt({
+                window: { title: "Bastion Report", width: 450 },
+                content: data.html,
+                ok: { label: "Close" }
+            });
+        }
+    });
 });
 
 // Hook into the modern V13 ApplicationV2 Header Controls (The 3-dot menu)
