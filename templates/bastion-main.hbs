@@ -4,17 +4,23 @@
         <h2>{{actor.name}}'s Bastion</h2>
         <div style="font-size: 1.1em; display: flex; align-items: center; justify-content: center; gap: 15px; flex-wrap: wrap;">
             <span><b>Total Turns:</b> {{turnCount}}</span>
-            
             <span><b>Total Defenders:</b> {{totalDefenders}}</span>
 
-            <div style="display: flex; gap: 5px;">
-                <button type="button" data-action="maintainAll" style="width: auto; padding: 2px 8px; font-size: 0.75em;" title="Set all facilities to Maintain">
-                    <i class="fa-solid fa-broom"></i> Maintain All
-                </button>
-                <button type="button" data-action="resetTurns" style="width: auto; padding: 2px 8px; font-size: 0.75em;" title="Reset turns to 0">
-                    <i class="fa-solid fa-rotate-left"></i>
-                </button>
-            </div>
+            {{#if canAdvanceTurn}}
+                <div style="display: flex; gap: 5px; align-items: center;">
+                    <button type="button" data-action="maintainAll" style="width: auto; padding: 2px 8px; font-size: 0.75em;" title="Set all facilities to Maintain">
+                        <i class="fa-solid fa-broom"></i>
+                    </button>
+                    <button type="button" data-action="resetTurns" style="width: auto; padding: 2px 8px; font-size: 0.75em;" title="Reset turns to 0">
+                        <i class="fa-solid fa-rotate-left"></i>
+                    </button>
+                    
+                    <input type="number" name="turns" value="1" min="1" style="width: 40px; text-align: center; height: 24px; font-size: 0.8em;" title="Turns to advance">
+                    <button type="button" data-action="advanceTurn" style="width: auto; padding: 2px 8px; font-size: 0.75em;">
+                        Advance
+                    </button>
+                </div>
+            {{/if}}
         </div>
         
         {{#if defenderNames}}

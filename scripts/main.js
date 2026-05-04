@@ -4,6 +4,21 @@ const MODULE_ID = "dnd-2024-bastion-manager";
 
 Hooks.once("init", () => {
     console.log(`${MODULE_ID} | Initializing DnD 2024 Bastion Manager`);
+
+    game.settings.register("dnd-2024-bastion-manager", "advancePermission", {
+        name: "Advance Turn Permission",
+        hint: "Minimum permission level required to see and use the Advance Turn controls.",
+        scope: "world",
+        config: true,
+        type: Number,
+        choices: {
+            1: "Player",
+            2: "Trusted Player",
+            3: "Assistant GM",
+            4: "Game Master"
+        },
+        default: 4 // Defaults to GM only
+    });
     
     // Register the Inheritance Setting in the Game Settings menu
     game.settings.register(MODULE_ID, "groupInheritsFacilities", {
