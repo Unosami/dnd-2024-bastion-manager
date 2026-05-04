@@ -1,0 +1,120 @@
+<div class="bastion-content" style="padding: 10px;">
+    
+    <div class="bastion-header" style="text-align: center; margin-bottom: 10px;">
+        <h2>{{actor.name}}'s Bastion</h2>
+        <div style="font-size: 1.1em; display: flex; align-items: center; justify-content: center; gap: 15px; flex-wrap: wrap;">
+            <span><b>Total Turns:</b> {{turnCount}}</span>
+            
+            <span><b>Total Defenders:</b> {{totalDefenders}}</span>
+
+            <div style="display: flex; gap: 5px;">
+                <button type="button" data-action="maintainAll" style="width: auto; padding: 2px 8px; font-size: 0.75em;" title="Set all facilities to Maintain">
+                    <i class="fa-solid fa-broom"></i> Maintain All
+                </button>
+                <button type="button" data-action="resetTurns" style="width: auto; padding: 2px 8px; font-size: 0.75em;" title="Reset turns to 0">
+                    <i class="fa-solid fa-rotate-left"></i>
+                </button>
+            </div>
+        </div>
+        
+        {{#if defenderNames}}
+            <div style="font-size: 0.85em; color: #444; margin-top: 5px; font-style: italic;">
+                Known Defenders: {{defenderNames}}
+            </div>
+        {{/if}}
+    </div>
+
+    <hr>
+
+    <div class="bastion-build" style="margin-bottom: 15px; background: rgba(0,0,0,0.05); padding: 10px; border-radius: 5px;">
+        <h3>Build a Facility</h3>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <select name="compendium-facility" style="flex-grow: 1;">
+                <option value="">-- Select a Facility --</option>
+                {{#each compendiumFacilities}}
+                    <option value="{{this._id}}">{{this.name}}</option>
+                {{/each}}
+            </select>
+            <button type="button" data-action="buildFromDropdown" style="width: auto;">
+                <i class="fa-solid fa-hammer"></i> Build
+            </button>
+        </div>
+    </div>
+
+    <hr>
+
+    <div class="bastion-facilities">
+        <h3>Built Facilities</h3>
+        {{#if facilities.length}}
+            <ul style="list-style: none; padding: 0;">
+            {{#each facilities}}
+                <li style="margin-bottom: 6px; padding: 4px; background: rgba(0,0,0,0.03); border-radius: 3px;">
+                    <img src="{{this.img}}" width="32" height="32" style="border: none; border-radius: 4px; vertical-align: middle;">
+                    
+                    <div style="display: inline-block; vertical-align: middle; width: calc(100% - 80px);">
+                        <b style="font-size: 1.1em;">{{this.name}}</b> 
+                        
+                        <span style="font-size: 0.75em; background: #ddd; color: #333; padding: 2px 6px; border-radius: 4px; margin-left: 5px; vertical-align: middle;">{{this.size}}</span>
+                        {{#if this.subType}}
+                            <span style="font-size: 0.8em; color: darkgreen; margin-left: 5px; font-weight: bold;">[{{this.subType}}]</span>
+                        {{/if}}
+
+                        {{#if this.defenderCount}}
+                            <span style="background: #a32a22; color: white; padding: 2px 6px; border-radius: 12px; font-size: 0.75em; margin-left: 5px;" title="Defenders housed here">
+                                <i class="fa-solid fa-shield"></i> {{this.defenderCount}}
+                            </span>
+                        {{/if}}
+
+                        {{#if this.hirelings}}
+                            <span style="font-size: 0.85em; color: #555; font-style: italic; display: block;">(Hirelings: {{this.hirelings}})</span>
+                        {{/if}}
+
+                        {{#if this.hasOrders}}
+                            <div style="font-size: 0.9em; margin-top: 4px;">
+                                <label>Order: </label>
+                                <select class="facility-order-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}">
+                                    {{#each this.orderOptions}}
+                                        <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                                    {{/each}}
+                                </select>
+                            </div>
+                        {{else}}
+                            <div style="font-size: 0.85em; margin-top: 4px; color: #777; font-style: italic;">
+                                Basic Facility (No Orders)
+                            </div>
+                        {{/if}}
+                    </div>
+                    
+                    <div style="float: right; display: flex; gap: 4px; align-items: center;">
+                        {{#if this.isInherited}}
+                            <button type="button" disabled style="width: auto; padding: 4px 8px; color: gray;" title="Belongs to member">
+                                <i class="fa-solid fa-lock"></i>
+                            </button>
+                        {{else}}
+                            <button type="button" data-action="upgradeFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 4px 8px; color: darkgoldenrod;" title="Enlarge Facility">
+                                <i class="fa-solid fa-arrow-up-right-dots"></i>
+                            </button>
+                            <button type="button" data-action="deleteFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 4px 8px; color: darkred;" title="Demolish">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        {{/if}}
+                    </div>
+                </li>
+            {{/each}}
+            </ul>
+        {{else}}
+            <p style="color: #666; font-style: italic;">No facilities built yet.</p>
+        {{/if}}
+    </div>
+
+    <hr>
+
+    <div class="bastion-controls" style="display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: 15px;">
+        <label>Turns to Advance:</label>
+        <input type="number" name="turns" value="1" min="1" style="width: 50px; text-align: center;">
+        <button type="button" data-action="advanceTurn" style="width: auto;">
+            <i class="fa-solid fa-forward-step"></i> Advance Turn
+        </button>
+    </div>
+
+</div>

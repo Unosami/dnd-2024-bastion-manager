@@ -1,0 +1,42 @@
+{
+  "id": "dnd-2025-bastion-manager",
+  "title": "DnD 5.5 Bastion Manager",
+  "version": "0.0.1",
+  "compatibility": {
+    "minimum": "13",
+    "verified": "13"
+  },
+  "authors": [
+    {
+      "name": "Willy D",
+      "flags": {}
+    }
+  ],
+  "esmodules": [
+    "scripts/main.js"
+  ],
+  "packs": [
+    {
+      "name": "bastion-facilities",
+      "label": "Bastion Facilities",
+      "path": "packs/bastion-facilities",
+      "type": "Item",
+      "system": "dnd5e",
+      "ownership": {
+        "PLAYER": "OBSERVER",
+        "ASSISTANT": "OWNER"
+      }
+    },
+    {
+      "name": "bastion-output-items",
+      "label": "Bastion Output Items",
+      "path": "packs/bastion-output-items",
+      "type": "Item",
+      "system": "dnd5e"
+    }
+  ],
+  "flags": {
+    "canUpload": true
+  },
+  "description": "Manages the D&D 5.5e Bastion system, tracking facilities, orders, and turn advancement."
+}

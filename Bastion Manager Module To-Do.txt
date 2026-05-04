@@ -1,0 +1,7 @@
+Bastion Module notes:
+- Next I want to start fleshing out the other facility outputs.
+    - Specify what the garden/workshop/etc. should be producing.
+- Bastion Events when the Maintain order is issued.
+- UI Improvements
+    - Show all input options in the same dialog rather than clicking through all of the options when creating a facility or advacing a turn.
+    - the ability to layout your bastion on a grid.
