@@ -1,13 +1,7 @@
-2026/05/04-17:13:23.470462 73236636d6c0 Recovering log #10
-2026/05/04-17:13:23.569141 73236636d6c0 Delete type=0 #10
-2026/05/04-17:13:23.569209 73236636d6c0 Delete type=3 #9
-2026/05/04-17:56:49.645092 7323581f86c0 Level-0 table #14: started
-2026/05/04-17:56:49.645156 7323581f86c0 Level-0 table #14: 0 bytes OK
-2026/05/04-17:56:49.688994 7323581f86c0 Delete type=0 #12
-2026/05/04-17:56:49.742899 7323581f86c0 Manual compaction at level-0 from '!folders!HYjssa08njsoKbTO' @ 72057594037927935 : 1 .. '!items.effects!zc5fQAMrei4S63MT.antitoxinxxxxxxx' @ 0 : 0; will stop at '!items.effects!zc5fQAMrei4S63MT.antitoxinxxxxxxx' @ 2 : 1
-2026/05/04-17:56:49.742929 7323581f86c0 Compacting 1@0 + 0@1 files
-2026/05/04-17:56:49.823899 7323581f86c0 Generated table #15@0: 10 keys, 7657 bytes
-2026/05/04-17:56:49.823937 7323581f86c0 Compacted 1@0 + 0@1 files => 7657 bytes
-2026/05/04-17:56:49.851688 7323581f86c0 compacted to: files[ 0 1 0 0 0 0 0 ]
-2026/05/04-17:56:49.851855 7323581f86c0 Delete type=2 #7
-2026/05/04-17:56:49.856606 7323581f86c0 Manual compaction at level-0 from '!items.effects!zc5fQAMrei4S63MT.antitoxinxxxxxxx' @ 2 : 1 .. '!items.effects!zc5fQAMrei4S63MT.antitoxinxxxxxxx' @ 0 : 0; will stop at (end)
+2026/05/04-19:11:34.314753 73236736f6c0 Recovering log #22
+2026/05/04-19:11:34.444672 73236736f6c0 Delete type=0 #22
+2026/05/04-19:11:34.444741 73236736f6c0 Delete type=3 #20
+2026/05/04-23:32:34.032198 7323581f86c0 Level-0 table #27: started
+2026/05/04-23:32:34.032287 7323581f86c0 Level-0 table #27: 0 bytes OK
+2026/05/04-23:32:34.090515 7323581f86c0 Delete type=0 #25
+2026/05/04-23:32:34.141108 7323581f86c0 Manual compaction at level-0 from '!folders!HYjssa08njsoKbTO' @ 72057594037927935 : 1 .. '!items.effects!zc5fQAMrei4S63MT.antitoxinxxxxxxx' @ 0 : 0; will stop at (end)

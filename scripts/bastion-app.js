@@ -8,12 +8,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         window: { title: "Bastion Management", icon: "fa-solid fa-chess-rook", resizable: true },
         position: { width: 450, height: "auto" },
         actions: { 
-            advanceTurn: BastionManager.onAdvanceTurn, 
             buildFromDropdown: BastionManager.onBuildFromDropdown, 
             deleteFacility: BastionManager.onDeleteFacility, 
-            resetTurns: BastionManager.onResetTurns,
             upgradeFacility: BastionManager.onUpgradeFacility,
-            maintainAll: BastionManager.onMaintainAll
+            maintainAll: BastionManager.onMaintainAll,
+            advanceGlobalTurn: BastionManager.onAdvanceGlobalTurn
         }
     };
     static PARTS = { main: { template: "modules/dnd-2024-bastion-manager/templates/bastion-main.hbs" } };
@@ -38,7 +37,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     async _prepareContext(options) {
-        const bastionData = this.actor.getFlag("dnd-2024-bastion-manager", "data") || { turnCount: 0 };
+        const globalTurnCount = game.settings.get("dnd-2024-bastion-manager", "globalTurnCount") || 0;
         const rawFacilities = this._getUnifiedFacilities();
         
         let totalDefenders = 0;
@@ -76,7 +75,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 if (order !== "Maintain" && safeProps.some(p => p.includes(lowerOrder)) && !availableOrders.includes(order)) availableOrders.push(order);
             });
 
-            if (fac.name.includes("Garden")) availableOrders.push("Change Type");
+            if (fac.name.includes("Garden") || fac.name.includes("Workshop")) availableOrders.push("Change Type");
 
             const safeOrder = availableOrders.includes(currentOrder) ? currentOrder : "Maintain";
             const hasOrders = availableOrders.length > 1;
@@ -86,26 +85,90 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 hirelings: hirelingsDisplay, defenderCount: facDefenders.count > 0 ? facDefenders.count : null,
                 size: facSize, subType: facSubType,
                 img: fac.sourceDoc.img, isInherited: fac.isInherited, isFlag: fac.isFlag, memberId: fac.memberActor?.id || null,
+                itemName: fac.name,
                 hasOrders: hasOrders,
                 orderOptions: availableOrders.map(order => ({ value: order, label: order, selected: order === safeOrder }))
             };
         });
 
-        let compendiumFacilities = [];
+        let specialFacilities = [];
+        let basicFacilities = [];
         const pack = game.packs.get("dnd-2024-bastion-manager.bastion-facilities");
         if (pack) {
-            const index = await pack.getIndex();
-            compendiumFacilities = index.contents.sort((a, b) => a.name.localeCompare(b.name));
+            // Fetch full documents to ensure we have access to all system data
+            const allDocs = await pack.getDocuments();
+            const ignorePrereqs = game.settings.get("dnd-2024-bastion-manager", "ignoreFacilityPrereqs");
+            
+            let excludedSources = [];
+            let excludedFacilities = [];
+            try {
+                excludedSources = game.settings.get("dnd-2024-bastion-manager", "excludedSourcesData") || [];
+                excludedFacilities = game.settings.get("dnd-2024-bastion-manager", "excludedFacilitiesData") || [];
+            } catch(e) {}
+            
+            const actorLevel = (this.actor.type === "character" || this.actor.type === "npc") ? (this.actor.system.details?.level || 1) : 1;
+
+            for (const item of allDocs) {
+                // Check exclusions
+                if (excludedFacilities.includes(item.id)) continue;
+                
+                let source = "Unknown Source";
+                if (typeof item.system?.source === "string") source = item.system.source;
+                else if (item.system?.source?.custom) source = item.system.source.custom;
+                else if (item.system?.source?.book) source = item.system.source.book;
+                else if (item.system?.source?.label) source = item.system.source.label;
+                
+                if (excludedSources.includes(source.trim())) continue;
+
+                // Try multiple places a level might be stored depending on the exact 5e system schema version
+                let reqLevel = item.system?.prerequisites?.level || item.system?.requirements?.level;
+                
+                // If not found in a clean integer field, try parsing the description for "Level X"
+                if (reqLevel === undefined || reqLevel === null || reqLevel === 0) {
+                    const desc = item.system?.description?.value || "";
+                    const levelMatch = desc.match(/Level\s+(\d+)/i);
+                    if (levelMatch) {
+                        reqLevel = parseInt(levelMatch[1]);
+                    } else {
+                        // Default to 5 if absolutely no level info can be found
+                        reqLevel = 5; 
+                    }
+                }
+
+                // If the actor doesn't meet the level requirement and we aren't ignoring them, skip it entirely
+                if (!ignorePrereqs && actorLevel < reqLevel) {
+                    continue;
+                }
+
+                const facData = {
+                    _id: item._id,
+                    name: item.name,
+                    reqLevel: reqLevel
+                };
+
+                // Sort into Basic vs Special facilities. 
+                // We'll define Basic as explicitly named "Basic Facility" or having "Basic" in the name/type
+                const isBasic = item.name.toLowerCase().includes("basic") || 
+                                (item.system?.type?.value && item.system.type.value.toLowerCase().includes("basic"));
+
+                if (isBasic) {
+                    basicFacilities.push(facData);
+                } else {
+                    specialFacilities.push(facData);
+                }
+            }
+
+            specialFacilities.sort((a, b) => a.name.localeCompare(b.name));
+            basicFacilities.sort((a, b) => a.name.localeCompare(b.name));
         }
 
-        // Force the setting to resolve as an integer so the math works
         const requiredRole = parseInt(game.settings.get("dnd-2024-bastion-manager", "advancePermission")) || 4;
         const canAdvanceTurn = game.user.role >= requiredRole;
 
         return { 
-            actor: this.actor, turnCount: bastionData.turnCount || 0, 
+            actor: this.actor, turnCount: globalTurnCount, 
             totalDefenders, defenderNames: allDefenderNames.join(", "), 
-            facilities, compendiumFacilities,
+            facilities, specialFacilities, basicFacilities,
             canAdvanceTurn 
         };
     }
@@ -120,16 +183,33 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 let pendingSubType = null;
 
                 if (newOrder === "Change Type") {
-                    const chosenType = await DialogV2.prompt({
-                        window: { title: "Select Target Garden Type" },
-                        content: `<p>What type of Garden are you changing to?</p>
-                                  <select name="gardenType" style="width: 100%;">
+                    let promptContent = "";
+                    if (ds.itemName && ds.itemName.includes("Garden")) {
+                        promptContent = `<p>What type of Garden are you changing to?</p>
+                                  <select name="subType" style="width: 100%;">
                                       <option value="Decorative">Decorative</option>
                                       <option value="Food">Food</option>
                                       <option value="Herb">Herb</option>
                                       <option value="Poison">Poison</option>
-                                  </select>`,
-                        ok: { callback: (event, button) => button.form.elements.gardenType.value }
+                                  </select>`;
+                    } else if (ds.itemName && ds.itemName.includes("Workshop")) {
+                        promptContent = `<p>What type of Workshop are you changing to?</p>
+                                  <select name="subType" style="width: 100%;">
+                                      <option value="Wood">Wood/Carpentry</option>
+                                      <option value="Stone">Stone/Masonry</option>
+                                      <option value="Cloth">Cloth/Tailoring</option>
+                                      <option value="Leather">Leatherworking</option>
+                                      <option value="Metal">Metalworking</option>
+                                  </select>`;
+                    } else {
+                        // Fallback generic prompt if we don't know the specific subtypes
+                        promptContent = `<p>Enter new type:</p><input type="text" name="subType" style="width: 100%;">`;
+                    }
+
+                    const chosenType = await DialogV2.prompt({
+                        window: { title: "Select Target Type" },
+                        content: promptContent,
+                        ok: { callback: (event, button) => button.form.elements.subType.value }
                     });
                     
                     if (!chosenType) {
@@ -208,8 +288,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     static async onResetTurns(event, target) {
-        const confirm = await DialogV2.confirm({ window: { title: "Reset Bastion Turns" }, content: `<p>Reset turns to 0 for <b>${this.actor.name}</b>?</p>`, rejectClose: false, modal: true });
-        if (confirm) { await this.actor.setFlag("dnd-2024-bastion-manager", "data.turnCount", 0); this.render(); }
+        // Obsolete, removed from UI 
     }
 
     static async onDeleteFacility(event, target) {
@@ -237,21 +316,6 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
         foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.size", "Roomy");
 
-        if (itemDoc.name === "Garden") {
-            const chosenType = await DialogV2.prompt({
-                window: { title: "Select Garden Type" },
-                content: `<p>What type of Garden are you planting?</p>
-                          <select name="gardenType" style="width: 100%;">
-                              <option value="Decorative">Decorative</option>
-                              <option value="Food">Food</option>
-                              <option value="Herb">Herb</option>
-                              <option value="Poison">Poison</option>
-                          </select>`,
-                ok: { callback: (event, button) => button.form.elements.gardenType.value }
-            });
-            if (chosenType) foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.subType", chosenType);
-        }
-
         let expectedHirelings = 0;
         const hData = itemDoc.system?.hireling || itemDoc.system?.hirelings || itemDoc.system?.details?.hireling || itemDoc.system?.details?.hirelings;
 
@@ -259,30 +323,73 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         else if (typeof hData === "string") expectedHirelings = parseInt(hData) || 0;
         else if (typeof hData === "object" && hData !== null) expectedHirelings = parseInt(hData.max) || parseInt(hData.value) || 0;
 
+        let requiresTypeSelection = itemDoc.name === "Garden" || itemDoc.name === "Workshop";
+        let promptContent = "";
+
+        if (requiresTypeSelection) {
+            let options = "";
+            if (itemDoc.name === "Garden") {
+                options = `
+                    <option value="Decorative">Decorative</option>
+                    <option value="Food">Food</option>
+                    <option value="Herb">Herb</option>
+                    <option value="Poison">Poison</option>`;
+            } else if (itemDoc.name === "Workshop") {
+                options = `
+                    <option value="Wood">Wood/Carpentry</option>
+                    <option value="Stone">Stone/Masonry</option>
+                    <option value="Cloth">Cloth/Tailoring</option>
+                    <option value="Leather">Leatherworking</option>
+                    <option value="Metal">Metalworking</option>`;
+            }
+            promptContent += `
+                <div style="margin-bottom: 10px;">
+                    <p>Select a specialization for your ${itemDoc.name}:</p>
+                    <select name="subType" style="width: 100%;">
+                        ${options}
+                    </select>
+                </div>
+            `;
+        }
+
         if (expectedHirelings > 0 && game.settings.get("dnd-2024-bastion-manager", "nameHirelings")) {
-            let inputFields = "";
+            promptContent += `<p>This facility requires <b>${expectedHirelings}</b> hireling(s). Please name them:</p>`;
             for (let i = 0; i < expectedHirelings; i++) {
-                inputFields += `<div style="margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
+                promptContent += `<div style="margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
                                     <label style="width: 80px;">Hireling ${i+1}:</label>
                                     <input type="text" name="hireling_${i}" value="" style="flex-grow: 1;">
                                 </div>`;
             }
+        }
 
-            const chosenNames = await DialogV2.prompt({
-                window: { title: `Name Hirelings (${itemDoc.name})` },
-                content: `<p>This facility requires <b>${expectedHirelings}</b> hireling(s). Please name them:</p>${inputFields}`,
+        if (promptContent) {
+            const formData = await DialogV2.prompt({
+                window: { title: `Build Facility: ${itemDoc.name}` },
+                content: promptContent,
                 ok: { callback: (event, button) => {
-                    let names = [];
-                    for(let i = 0; i < expectedHirelings; i++) {
-                        let val = button.form.elements[`hireling_${i}`].value.trim();
-                        if (val) names.push(val);
+                    let data = {};
+                    if (requiresTypeSelection) {
+                        data.subType = button.form.elements.subType?.value;
                     }
-                    return names;
+                    if (expectedHirelings > 0) {
+                        let names = [];
+                        for(let i = 0; i < expectedHirelings; i++) {
+                            let val = button.form.elements[`hireling_${i}`].value.trim();
+                            if (val) names.push(val);
+                        }
+                        data.hirelings = names;
+                    }
+                    return data;
                 }}
             });
             
-            if (chosenNames && chosenNames.length > 0) {
-                foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.hirelings", chosenNames);
+            if (formData) {
+                 if (formData.subType) {
+                     foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.subType", formData.subType);
+                 }
+                 if (formData.hirelings && formData.hirelings.length > 0) {
+                     foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.hirelings", formData.hirelings);
+                 }
             }
         }
 
@@ -298,23 +405,40 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     // --- UI ACTION ---
-    static async onAdvanceTurn(event, target) {
+    static async onAdvanceGlobalTurn(event, target) {
         const turnsInput = this.element.querySelector('input[name="turns"]');
         const turnsToAdvance = parseInt(turnsInput?.value) || 1;
-        
-        // Hand off to the standalone logic engine
-        await BastionManager.executeBastionTurn(this.actor, turnsToAdvance);
-        this.render(); 
+
+        const confirm = await DialogV2.confirm({ 
+            window: { title: "Advance Bastion Turn" }, 
+            content: `<p>Are you sure you want to advance the global Bastion turn by <b>${turnsToAdvance}</b>?</p>`, 
+            rejectClose: false, modal: true 
+        });
+
+        if (confirm) {
+            const currentGlobalTurns = game.settings.get("dnd-2024-bastion-manager", "globalTurnCount") || 0;
+            await game.settings.set("dnd-2024-bastion-manager", "globalTurnCount", currentGlobalTurns + turnsToAdvance);
+
+            const playerActors = game.actors.filter(a => a.hasPlayerOwner && a.type === "character");
+            for (let actor of playerActors) {
+                // If they have facilities or had bastion data initialized
+                if (actor.getFlag("dnd-2024-bastion-manager", "data") || actor.items.some(i => i.type === "facility")) {
+                    await BastionManager.executeBastionTurn(actor, turnsToAdvance);
+                }
+            }
+            ui.notifications.info(`Advanced global Bastion turns by ${turnsToAdvance}.`);
+            // Trigger a re-render for everyone since it's global
+            game.socket.emit("module.dnd-2024-bastion-manager", { action: "globalAdvance" });
+            this.render();
+        }
     }
 
     // --- THE STANDALONE ENGINE ---
     static async executeBastionTurn(actor, turnsToAdvance) {
-        const bastionData = actor.getFlag("dnd-2024-bastion-manager", "data") || { turnCount: 0 };
-        const newTurnCount = (bastionData.turnCount || 0) + turnsToAdvance;
-
-        // 1. Gather Facilities
+        // We no longer update actor-specific turn count, it uses globalTurnCount
+        
         let activeFacilities = BastionManager._getActorFacilities(actor);
-        if (activeFacilities.length === 0) return ui.notifications.warn("No facilities found.");
+        if (activeFacilities.length === 0) return; // Silent return, let global loop continue
 
         let allMaintaining = activeFacilities.every(fac => 
             (fac.isFlag ? fac.doc.flags?.["dnd-2024-bastion-manager"]?.order : fac.doc.getFlag("dnd-2024-bastion-manager", "order")) === "Maintain"
@@ -325,18 +449,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         let hasSmithy = activeFacilities.some(fac => fac.doc.name.includes("Smithy"));
         let actorLevel = (actor.type === "character" || actor.type === "npc") ? (actor.system.details?.level || 1) : 1;
 
-        // 2. Resolve Orders
         const resolution = await BastionManager._resolveOrders(actor, activeFacilities, turnsToAdvance, globalDefenders, hasSmithy, actorLevel);
         
-        // 3. Process Inventory & Currency
-        await actor.setFlag("dnd-2024-bastion-manager", "data.turnCount", newTurnCount);
         if (resolution.totalGold !== 0) {
             const finalGold = Math.max(0, (actor.system.currency?.gp || 0) + resolution.totalGold); 
             await actor.update({ "system.currency.gp": finalGold });
         }
         await BastionManager._processInventory(actor, resolution.items);
 
-        // 4. Generate Output
         await BastionManager._generateChat(actor, turnsToAdvance, allMaintaining, resolution);
     }
 
@@ -385,7 +505,6 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             totalGold += localGold;
             
-            // Save state back to DB
             if (fac.isFlag) {
                 const groupFacs = actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
                 const gf = groupFacs.find(f => f._id === fac.doc._id);
@@ -430,18 +549,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (baseName === "Garden" && subType) {
             const kwMap = { "Decorative": ["bouquet", "perfume", "candle"], "Food": ["ration", "food"], "Herb": ["healer", "healing", "herb"], "Poison": ["antitoxin", "poison"] };
             if (kwMap[subType]) possible = possible.filter(i => kwMap[subType].some(kw => i.name.toLowerCase().includes(kw)));
+        } else if (baseName === "Workshop" && subType) {
+            const kwMap = { "Wood": ["wood", "staff", "bow", "club"], "Stone": ["stone", "statue", "block"], "Cloth": ["cloth", "robe", "garment"], "Leather": ["leather", "hide", "armor"], "Metal": ["iron", "steel", "sword", "shield"] };
+            if (kwMap[subType]) possible = possible.filter(i => kwMap[subType].some(kw => i.name.toLowerCase().includes(kw)));
         }
 
         if (possible.length === 0) return { item: null, text: `No valid items found for ${subType}.` };
         
         let chosen = possible[0];
-        if (possible.length > 1) {
-            // Because we decoupled UI, we have to randomly select or pick the first if automated. 
-            // For full UI prompts during logic runs, you'd need a robust async dialog queue. 
-            // For now, we default to the first valid item to prevent infinite async hangs in a global loop.
-            chosen = possible[0]; 
-        }
-        
         let itemObj = chosen.toObject();
         return { item: itemObj, text: `Harvested ${itemObj.system?.quantity || 1}x ${itemObj.name}.` };
     }
@@ -469,26 +584,109 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
     // --- HELPER: CHAT ---
     static async _generateChat(actor, turns, allMaintaining, res) {
-        let dmHtml = `<div style="font-family: var(--font-primary);"><h2 style="border-bottom: 2px solid #a32a22;">DM Bastion Report</h2><p><b>${actor.name}</b> maintained their Bastion for <b>${turns}</b> turn(s).</p><hr>`;
-        let pubHtml = `<div class="bastion-chat-card"><h3 style="border-bottom: 2px solid #a32a22;">Bastion Turn Advanced</h3><p>${actor.name} advanced their Bastion by <b>${turns}</b> turn(s).</p>`;
+        let dmDetailedHtml = `
+            <div style="font-family: var(--font-primary);">
+                <h2 style="border-bottom: 2px solid #a32a22; padding-bottom: 3px; margin-bottom: 10px;">DM Bastion Report</h2>
+                <p><b>${actor.name}</b> maintained their entire Bastion for <b>${turns}</b> turn(s).</p>
+                <hr>
+        `;
+        let publicSummaryEvents = [];
+        let pubHtml = `
+            <div class="bastion-chat-card">
+                <h3 style="border-bottom: 2px solid #a32a22; padding-bottom: 3px; margin-bottom: 10px;">Bastion Turn Advanced</h3>
+                <p style="margin-bottom: 10px;">${actor.name} advanced their Bastion by <b>${turns}</b> turn(s).</p>`;
 
         if (allMaintaining) {
-            let events = [];
             for (let t = 0; t < turns; t++) {
-                const roll = (await new Roll("1d100").evaluate()).total;
-                let cat = roll <= 50 ? "All Is Well" : (roll <= 55 ? "Attack" : (roll <= 58 ? "Criminal Hireling" : (roll <= 63 ? "Extraordinary Opportunity" : (roll <= 72 ? "Friendly Visitors" : (roll <= 76 ? "Guest" : (roll <= 79 ? "Lost Hirelings" : (roll <= 83 ? "Magical Discovery" : (roll <= 91 ? "Refugees" : (roll <= 98 ? "Request for Aid" : "Treasure")))))))));
-                if (cat !== "All Is Well") events.push(cat);
-                dmHtml += `<p>🎲 <b>${roll}</b> — <em>${cat}</em></p>`;
-            }
-            pubHtml += `<b>Notable Events:</b> ${events.length > 0 ? events.join(", ") : "None"}`;
-        } else {
-            pubHtml += `<h4>Executed Orders:</h4><ul style="list-style: none; padding: 0;">${res.orderSummary}</ul>`;
-        }
+                const eventRoll = await new Roll("1d100").evaluate();
+                const rollTotal = eventRoll.total;
+                
+                let eCat = ""; let eDesc = ""; let autoResults = "";
 
-        ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor }), content: pubHtml + `</div>` });
+                if (rollTotal <= 50) { 
+                    eCat = "All Is Well"; eDesc = "No unusual events occur during this turn. Operations continue peacefully."; 
+                } else if (rollTotal <= 55) { 
+                    eCat = "Attack"; let attackers = await new Roll("1d6").evaluate();
+                    eDesc = "A creature or group of creatures attacks the Bastion. The attackers must be repelled, or facilities may be damaged."; 
+                    autoResults = `Rolled <b>${attackers.total}</b> on the DMG attacker table.`; publicSummaryEvents.push(eCat);
+                } else if (rollTotal <= 58) { 
+                    eCat = "Criminal Hireling"; let crime = await new Roll("1d4").evaluate();
+                    let crimeType = ["Extortion", "Fraud", "Smuggling", "Theft"][crime.total - 1];
+                    eDesc = "One of the hirelings is secretly engaged in criminal enterprises. You must investigate and handle the fallout."; 
+                    autoResults = `Crime Committed: <b>${crimeType}</b> (Rolled ${crime.total}).`; publicSummaryEvents.push(eCat);
+                } else if (rollTotal <= 63) { 
+                    eCat = "Extraordinary Opportunity"; let opp = await new Roll("1d4").evaluate();
+                    let oppType = ["Trade Offer", "Magic Item Sale", "Rare Material", "Investment"][opp.total - 1];
+                    eDesc = "A sudden, highly lucrative opportunity arises for the Bastion to capitalize on."; 
+                    autoResults = `Opportunity Type: <b>${oppType}</b> (Rolled ${opp.total}).`; publicSummaryEvents.push(eCat);
+                } else if (rollTotal <= 72) { 
+                    eCat = "Friendly Visitors"; let days = await new Roll("1d4").evaluate();
+                    eDesc = "Friendly travelers or allies seek lodging at the Bastion."; 
+                    autoResults = `They intend to stay for <b>${days.total}</b> days.`; publicSummaryEvents.push(eCat);
+                } else if (rollTotal <= 76) { 
+                    eCat = "Guest"; let guest = await new Roll("1d6").evaluate();
+                    let guestType = ["Artisan", "Bard", "Cleric", "Mage", "Noble", "Veteran"][guest.total - 1];
+                    eDesc = "A notable or highly influential guest arrives, expecting proper hospitality."; 
+                    autoResults = `Guest Type: <b>${guestType}</b> (Rolled ${guest.total}).`; publicSummaryEvents.push(eCat);
+                } else if (rollTotal <= 79) { 
+                    eCat = "Lost Hirelings"; 
+                    eDesc = "One or more of the hirelings have gone missing. They must be tracked down or replaced."; 
+                    autoResults = `Requires DM adjudication to determine who vanished.`; publicSummaryEvents.push(eCat);
+                } else if (rollTotal <= 83) { 
+                    eCat = "Magical Discovery"; let magic = await new Roll("1d6").evaluate();
+                    let magicType = magic.total <= 2 ? "Potion" : (magic.total <= 4 ? "Scroll" : "Minor Wonder");
+                    eDesc = "A magical phenomenon or item is discovered on the Bastion grounds."; 
+                    autoResults = `Discovery Type: <b>${magicType}</b> (Rolled ${magic.total}).`; publicSummaryEvents.push(eCat);
+                } else if (rollTotal <= 91) { 
+                    eCat = "Refugees"; let refCount = await new Roll("2d4").evaluate(); let refGold = await new Roll("1d6 * 100").evaluate();
+                    eDesc = "Displaced people arrive seeking asylum, food, and shelter. They offer to pay for hospitality and protection."; 
+                    autoResults = `<b>${refCount.total}</b> refugees arrived. They are willing to pay up to <b>${refGold.total} GP</b>.`; publicSummaryEvents.push(eCat);
+                } else if (rollTotal <= 98) { 
+                    eCat = "Request for Aid"; 
+                    eDesc = "A local faction, town, or individual directly asks the Bastion for help with a pressing problem."; 
+                    autoResults = `Requires DM narrative design.`; publicSummaryEvents.push(eCat);
+                } else { 
+                    eCat = "Treasure"; let treas = await new Roll("1d4 * 100").evaluate();
+                    eDesc = "A hidden cache of treasure is discovered on or near the premises."; 
+                    autoResults = `The cache contains <b>${treas.total} GP</b> worth of valuables.`; publicSummaryEvents.push(eCat);
+                }
+
+                let eColor = rollTotal <= 50 ? "darkgreen" : (rollTotal <= 58 || (rollTotal >= 77 && rollTotal <= 79) ? "darkred" : "darkblue");
+                let turnLabel = turns > 1 ? `<b>Turn ${t + 1}:</b> ` : "";
+
+                dmDetailedHtml += `
+                    <div style="margin-bottom: 12px; padding: 6px; background: rgba(0,0,0,0.03); border: 1px solid #ccc; border-radius: 4px;">
+                        <p style="margin: 0; font-size: 1.1em; color: ${eColor};">${turnLabel}🎲 <b>${rollTotal}</b> — <em>${eCat}</em></p>
+                        <p style="font-size: 0.9em; color: #333; margin: 4px 0 6px 0;">${eDesc}</p>
+                        ${autoResults ? `<div style="background: #e8ecef; padding: 4px 8px; border-radius: 3px; font-size: 0.85em; border-left: 3px solid #6c757d;"><b>Automation:</b> ${autoResults}</div>` : ""}
+                    </div>`;
+            }
+            dmDetailedHtml += `</div>`;
+
+            let notableEventsStr = publicSummaryEvents.length > 0 ? publicSummaryEvents.join(", ") : "None (All Is Well)";
+            pubHtml += `
+                <div style="padding: 6px; background: rgba(0,0,0,0.05); border-radius: 4px; text-align: center; margin-bottom: 10px;">
+                    <b style="color: #444;"><i class="fa-solid fa-broom"></i> Bastion Maintained</b><br>
+                    <span style="font-size: 0.85em; color: #666;">No specific orders issued.</span>
+                </div>
+                <h4 style="margin-bottom: 5px; border-bottom: 1px solid #ccc;">Summary:</h4>
+                <p style="font-size: 0.95em;"><b>Notable Events:</b> ${notableEventsStr}</p>`;
+
+        } else {
+            pubHtml += `
+                <h4 style="margin-bottom: 5px; border-bottom: 1px solid #ccc;">Executed Orders:</h4>
+                <ul style="list-style: none; padding: 0; margin: 0; font-size: 0.95em;">${res.orderSummary || "<li>No facilities built.</li>"}</ul>`;
+        }
+        pubHtml += `</div>`;
+
+        ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor }), content: pubHtml });
+
         if (allMaintaining) {
-            ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor }), whisper: ChatMessage.getWhisperRecipients("GM"), content: dmHtml + `</div>` });
-            if (game.user.isGM) DialogV2.prompt({ window: { title: "Bastion Report", width: 450 }, content: dmHtml, ok: { label: "Close" } });
+            ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor }), whisper: ChatMessage.getWhisperRecipients("GM"), content: dmDetailedHtml });
+            if (game.user.isGM) {
+                const { DialogV2 } = foundry.applications.api;
+                DialogV2.prompt({ window: { title: "Bastion Report", width: 450 }, content: dmDetailedHtml, ok: { label: "Close" } });
+            }
         }
     }
 }
