@@ -201,6 +201,15 @@ Hooks.once("init", () => {
         default: false
     });
 
+    game.settings.register(MODULE_ID, "promptAllEvents", {
+        name: "Prompt for Every Event",
+        hint: "If enabled, the DM will be asked if they want to automate or manually resolve every single Bastion event that occurs.",
+        scope: "world",
+        config: true,
+        type: Boolean,
+        default: false
+    });
+
     game.settings.register(MODULE_ID, "excludedSourcesData", {
         scope: "world", config: false, type: Array, default: []
     });

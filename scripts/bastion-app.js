@@ -420,11 +420,16 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             await game.settings.set("dnd-2024-bastion-manager", "globalTurnCount", currentGlobalTurns + turnsToAdvance);
 
             const playerActors = game.actors.filter(a => a.hasPlayerOwner && a.type === "character");
+            let reports = [];
             for (let actor of playerActors) {
                 // If they have facilities or had bastion data initialized
                 if (actor.getFlag("dnd-2024-bastion-manager", "data") || actor.items.some(i => i.type === "facility")) {
-                    await BastionManager.executeBastionTurn(actor, turnsToAdvance);
+                    const r = await BastionManager.executeBastionTurn(actor, turnsToAdvance);
+                    if (r) reports.push(r);
                 }
+            }
+            if (reports.length > 0) {
+                await BastionManager._dispatchReports(reports, turnsToAdvance);
             }
             ui.notifications.info(`Advanced global Bastion turns by ${turnsToAdvance}.`);
             // Trigger a re-render for everyone since it's global
@@ -438,7 +443,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         // We no longer update actor-specific turn count, it uses globalTurnCount
         
         let activeFacilities = BastionManager._getActorFacilities(actor);
-        if (activeFacilities.length === 0) return; // Silent return, let global loop continue
+        if (activeFacilities.length === 0) return null; // Silent return, let global loop continue
 
         let allMaintaining = activeFacilities.every(fac => 
             (fac.isFlag ? fac.doc.flags?.["dnd-2024-bastion-manager"]?.order : fac.doc.getFlag("dnd-2024-bastion-manager", "order")) === "Maintain"
@@ -457,7 +462,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         }
         await BastionManager._processInventory(actor, resolution.items);
 
-        await BastionManager._generateChat(actor, turnsToAdvance, allMaintaining, resolution);
+        return await BastionManager._buildReport(actor, turnsToAdvance, allMaintaining, resolution);
     }
 
     // --- HELPER: FACILITY GATHERING ---
@@ -582,110 +587,379 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (toUpdate.length > 0) await actor.updateEmbeddedDocuments("Item", toUpdate);
     }
 
+    static _getHirelingProfession(facName, subType) {
+        const name = facName.toLowerCase();
+        if (name.includes("garden")) {
+            if (subType === "Herb") return "the Herbalist";
+            if (subType === "Food") return "the Farmer";
+            if (subType === "Poison") return "the Botanical Toxicologist";
+            if (subType === "Decorative") return "the Florist";
+            return "the Gardener";
+        }
+        if (name.includes("arcane study")) return "the Arcanist";
+        if (name.includes("library")) return "the Librarian";
+        if (name.includes("barrack")) return "the Recruiter";
+        if (name.includes("sanctuary")) return "the Sanctuary Caretaker";
+        if (name.includes("smithy")) return "the Smith";
+        if (name.includes("storehouse")) return "the Quartermaster";
+        if (name.includes("workshop")) return "the Artisan";
+        if (name.includes("armory")) return "the Armorer";
+        if (name.includes("teleportation circle")) return "the Gatekeeper";
+        if (name.includes("observatory")) return "the Astronomer";
+        if (name.includes("theater")) return "the Stage Manager";
+        if (name.includes("scriptorium")) return "the Scribe";
+        if (name.includes("pub")) return "the Barkeep";
+        if (name.includes("reliquary")) return "the Relic Keeper";
+        if (name.includes("gaming room")) return "the Croupier";
+        if (name.includes("menagerie")) return "the Beastmaster";
+        if (name.includes("greenhouse")) return "the Horticulturist";
+        if (name.includes("laboratory")) return "the Alchemist";
+        
+        // Fallback for custom or basic facilities
+        return "(Hireling)";
+    }
+
     // --- HELPER: CHAT ---
-    static async _generateChat(actor, turns, allMaintaining, res) {
-        let dmDetailedHtml = `
-            <div style="font-family: var(--font-primary);">
-                <h2 style="border-bottom: 2px solid #a32a22; padding-bottom: 3px; margin-bottom: 10px;">DM Bastion Report</h2>
-                <p><b>${actor.name}</b> maintained their entire Bastion for <b>${turns}</b> turn(s).</p>
-                <hr>
-        `;
+    static async _processEventRoll(roll, actor, isReroll = false) {
+        const promptAll = game.settings.get("dnd-2024-bastion-manager", "promptAllEvents");
+        let cat = "", desc = "", auto = "";
+        
+        let allHirelings = [];
+        let specialFacilities = [];
+        if (actor) {
+            const facs = BastionManager._getActorFacilities(actor);
+            for (const fac of facs) {
+                const isBasic = fac.name.toLowerCase().includes("basic") || (fac.doc.system?.type?.value && fac.doc.system.type.value.toLowerCase().includes("basic"));
+                if (!isBasic) specialFacilities.push(fac.name);
+                
+                const hirelings = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.hirelings) : (fac.doc.getFlag("dnd-2024-bastion-manager", "hirelings"));
+                if (Array.isArray(hirelings)) {
+                    let subType = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.subType) : (fac.doc.getFlag("dnd-2024-bastion-manager", "subType"));
+                    let prof = BastionManager._getHirelingProfession(fac.name, subType);
+                    for (const h of hirelings) {
+                        allHirelings.push({ name: h, facility: fac.name, prof: prof });
+                    }
+                }
+            }
+        }
+        const getRandomHireling = () => allHirelings.length ? allHirelings[Math.floor(Math.random() * allHirelings.length)] : null;
+        const getRandomSpecialFac = () => specialFacilities.length ? specialFacilities[Math.floor(Math.random() * specialFacilities.length)] : "random special facility";
+
+        // Wrap output in an identifiable container holding the actor ID so resolution buttons know who to apply currency to
+        const mkRes = (inner) => `<div class="event-resolution" data-actor-id="${actor?.id || ''}"><div style="margin-top: 5px; display: flex; gap: 5px; flex-wrap: wrap; align-items: center;">${inner}</div></div>`;
+        const mkBtn = (evt, choice, label) => `<button type="button" data-action="resolveEvent" data-event="${evt}" data-choice="${choice}" style="width: auto; padding: 4px 10px; font-size: 0.95em; background: rgba(0,0,0,0.2); color: var(--color-text-light-primary); border: 1px solid var(--color-border-light-1); border-radius: 4px; cursor: pointer;">${label}</button>`;
+        const mkAutoBtn = (evt) => mkBtn(evt, 'auto', 'Automate Roll') + mkBtn(evt, 'manual', 'Resolve Manually');
+
+        if (roll <= 50) { 
+            cat = "All Is Well"; desc = "Nothing significant happens.";
+            if (promptAll) auto = mkRes(mkAutoBtn('allIsWell'));
+            else {
+                const h1 = getRandomHireling();
+                const flavor = [
+                    "Accident reports are way down.",
+                    "The leak in the roof has been fixed.",
+                    "No vermin infestations to report.",
+                    h1 ? `${h1.name} lost their spectacles again.` : "You-Know-Who lost their spectacles again.",
+                    h1 ? `${h1.name} ${h1.prof} adopted a stray dog.` : "One of your hirelings adopted a stray dog.",
+                    "You received a lovely letter from a friend.",
+                    h1 ? `Some practical joker has been putting rotten eggs in ${h1.name}'s boots.` : "Some practical joker has been putting rotten eggs in people's boots.",
+                    h1 ? `${h1.name} thought they saw a ghost.` : "Someone thought they saw a ghost."
+                ];
+                const fRoll = (await new Roll("1d8").evaluate()).total;
+                auto = `<b>Result:</b> ${flavor[fRoll - 1]}`;
+            }
+        } else if (roll <= 55) { 
+            cat = "Attack"; desc = "A hostile force attacks your Bastion but is defeated.";
+            if (promptAll) auto = mkRes(mkAutoBtn('attack'));
+            else {
+                const atkRoll = await new Roll("6d6").evaluate();
+                const ones = atkRoll.dice[0].results.filter(d => d.result === 1).length;
+                auto = `Rolled 6d6: <b>${ones}</b> Bastion Defender(s) died. If you have 0 Defenders, a random special facility shuts down (unusable next turn).`; 
+            }
+        } else if (roll <= 58) { 
+            const h2 = getRandomHireling();
+            cat = "Criminal Hireling"; desc = h2 ? `${h2.name} ${h2.prof} has a criminal past that comes to light.` : "One of your Bastion's hirelings has a criminal past that comes to light.";
+            auto = mkRes(`<span style="margin-right: 5px;">Pay 1d6x100 GP to keep ${h2 ? h2.name : "them"}, OR let them be arrested?</span>` + mkBtn('criminal', 'pay', 'Pay Bribe') + mkBtn('criminal', 'arrest', 'Let Arrested'));
+        } else if (roll <= 63) { 
+            cat = "Extraordinary Opportunity"; desc = "Your Bastion is given the opportunity to host an important festival, fund research, or appease a noble.";
+            if (isReroll) auto = `Paid <b>500 GP</b> to seize this opportunity.`;
+            else auto = mkRes(`<span style="margin-right: 5px;">Pay 500 GP to seize the opportunity?</span>` + mkBtn('opportunity', 'pay', 'Pay 500 GP') + mkBtn('opportunity', 'decline', 'Decline'));
+        } else if (roll <= 72) { 
+            cat = "Friendly Visitors"; desc = "Friendly visitors come seeking to use one of your special facilities.";
+            auto = mkRes(`<span style="margin-right: 5px;">Allow use for 1d6x100 GP?</span>` + mkBtn('visitors', 'accept', 'Accept') + mkBtn('visitors', 'decline', 'Decline'));
+        } else if (roll <= 76) { 
+            cat = "Guest"; desc = "A Friendly guest comes to stay at your Bastion.";
+            if (promptAll) auto = mkRes(mkAutoBtn('guest'));
+            else {
+                const gRoll = (await new Roll("1d4").evaluate()).total;
+                if (gRoll === 1) auto = "The guest is of great renown. Stays 7 days, then gives you a <b>Letter of Recommendation</b>.";
+                else if (gRoll === 2) { const offer = (await new Roll("1d6 * 100").evaluate()).total; if(actor) await actor.update({"system.currency.gp": (actor.system.currency?.gp || 0) + offer}); auto = `The guest requests sanctuary for 7 days, offering a gift of <b>${offer} GP</b>.`; }
+                else if (gRoll === 3) auto = "The guest is a mercenary. You gain <b>1 additional Bastion Defender</b> until sent away or killed.";
+                else auto = "The guest is a Friendly monster (e.g., brass dragon). It defends against the next attack so you lose 0 Defenders, then leaves.";
+            }
+        } else if (roll <= 79) { 
+            const f1 = getRandomSpecialFac();
+            cat = "Lost Hirelings"; desc = `The <b>${f1}</b> loses its hirelings.`; 
+            auto = `This facility can't be used on your next Bastion turn (hirelings replaced at no cost after).`; 
+        } else if (roll <= 83) { 
+            const h3 = getRandomHireling();
+            cat = "Magical Discovery"; desc = h3 ? `${h3.name} ${h3.prof} discovers or accidentally creates an Uncommon magic item at no cost.` : "Your hirelings discover or accidentally create an Uncommon magic item of your choice at no cost."; 
+            auto = `Gain one <b>Uncommon Potion</b> or <b>Uncommon Scroll</b> of your choice.`; 
+        } else if (roll <= 91) { 
+            cat = "Refugees"; desc = `A group of refugees seeks refuge in your Bastion.`; 
+            auto = mkRes(`<span style="margin-right: 5px;">Allow 2d4 refugees to stay for a 1d6x100 GP reward?</span>` + mkBtn('refugees', 'accept', 'Offer Protection') + mkBtn('refugees', 'decline', 'Turn Away'));
+        } else if (roll <= 98) { 
+            cat = "Request for Aid"; desc = "Your Bastion is called on to help a local leader."; 
+            auto = mkRes(`<span style="margin-right: 5px;">Send Defenders?</span><input type="number" class="aid-count" value="1" min="1" style="width: 40px; margin-right: 5px; height: 26px; text-align: center;">` + mkBtn('aid', 'send', 'Send Defenders') + mkBtn('aid', 'decline', 'Decline'));
+        } else { 
+            cat = "Treasure"; desc = "Your Bastion acquires an art object or magic item."; 
+            if (promptAll) auto = mkRes(mkAutoBtn('treasure'));
+            else {
+                const tRoll = (await new Roll("1d100").evaluate()).total;
+                if (tRoll <= 40) auto = "Gain a <b>25 GP</b> Art Object.";
+                else if (tRoll <= 63) auto = "Gain a <b>250 GP</b> Art Object.";
+                else if (tRoll <= 73) auto = "Gain a <b>750 GP</b> Art Object.";
+                else if (tRoll <= 75) auto = "Gain a <b>2,500 GP</b> Art Object.";
+                else if (tRoll <= 90) auto = "Gain a <b>Common Magic Item</b> of your choice (Arcana, Armaments, Implements, or Relics).";
+                else if (tRoll <= 98) auto = "Gain an <b>Uncommon Magic Item</b> of your choice (Arcana, Armaments, Implements, or Relics).";
+                else auto = "Gain a <b>Rare Magic Item</b> of your choice (Arcana, Armaments, Implements, or Relics).";
+            }
+        }
+        return { cat, desc, auto };
+    }
+
+    static async _buildReport(actor, turns, allMaintaining, res) {
+        let dmHtml = "";
+        let pubHtml = "";
         let publicSummaryEvents = [];
-        let pubHtml = `
-            <div class="bastion-chat-card">
-                <h3 style="border-bottom: 2px solid #a32a22; padding-bottom: 3px; margin-bottom: 10px;">Bastion Turn Advanced</h3>
-                <p style="margin-bottom: 10px;">${actor.name} advanced their Bastion by <b>${turns}</b> turn(s).</p>`;
 
         if (allMaintaining) {
+            dmHtml += `<div style="margin-bottom: 15px;">
+                <h3 style="margin-bottom: 5px; color: #a32a22; border-bottom: 1px solid #ccc;">${actor.name}</h3>`;
+                
             for (let t = 0; t < turns; t++) {
                 const eventRoll = await new Roll("1d100").evaluate();
                 const rollTotal = eventRoll.total;
                 
-                let eCat = ""; let eDesc = ""; let autoResults = "";
+                const ev = await BastionManager._processEventRoll(rollTotal, actor);
+                let eCat = ev.cat; let eDesc = ev.desc; let autoResults = ev.auto;
 
-                if (rollTotal <= 50) { 
-                    eCat = "All Is Well"; eDesc = "No unusual events occur during this turn. Operations continue peacefully."; 
-                } else if (rollTotal <= 55) { 
-                    eCat = "Attack"; let attackers = await new Roll("1d6").evaluate();
-                    eDesc = "A creature or group of creatures attacks the Bastion. The attackers must be repelled, or facilities may be damaged."; 
-                    autoResults = `Rolled <b>${attackers.total}</b> on the DMG attacker table.`; publicSummaryEvents.push(eCat);
-                } else if (rollTotal <= 58) { 
-                    eCat = "Criminal Hireling"; let crime = await new Roll("1d4").evaluate();
-                    let crimeType = ["Extortion", "Fraud", "Smuggling", "Theft"][crime.total - 1];
-                    eDesc = "One of the hirelings is secretly engaged in criminal enterprises. You must investigate and handle the fallout."; 
-                    autoResults = `Crime Committed: <b>${crimeType}</b> (Rolled ${crime.total}).`; publicSummaryEvents.push(eCat);
-                } else if (rollTotal <= 63) { 
-                    eCat = "Extraordinary Opportunity"; let opp = await new Roll("1d4").evaluate();
-                    let oppType = ["Trade Offer", "Magic Item Sale", "Rare Material", "Investment"][opp.total - 1];
-                    eDesc = "A sudden, highly lucrative opportunity arises for the Bastion to capitalize on."; 
-                    autoResults = `Opportunity Type: <b>${oppType}</b> (Rolled ${opp.total}).`; publicSummaryEvents.push(eCat);
-                } else if (rollTotal <= 72) { 
-                    eCat = "Friendly Visitors"; let days = await new Roll("1d4").evaluate();
-                    eDesc = "Friendly travelers or allies seek lodging at the Bastion."; 
-                    autoResults = `They intend to stay for <b>${days.total}</b> days.`; publicSummaryEvents.push(eCat);
-                } else if (rollTotal <= 76) { 
-                    eCat = "Guest"; let guest = await new Roll("1d6").evaluate();
-                    let guestType = ["Artisan", "Bard", "Cleric", "Mage", "Noble", "Veteran"][guest.total - 1];
-                    eDesc = "A notable or highly influential guest arrives, expecting proper hospitality."; 
-                    autoResults = `Guest Type: <b>${guestType}</b> (Rolled ${guest.total}).`; publicSummaryEvents.push(eCat);
-                } else if (rollTotal <= 79) { 
-                    eCat = "Lost Hirelings"; 
-                    eDesc = "One or more of the hirelings have gone missing. They must be tracked down or replaced."; 
-                    autoResults = `Requires DM adjudication to determine who vanished.`; publicSummaryEvents.push(eCat);
-                } else if (rollTotal <= 83) { 
-                    eCat = "Magical Discovery"; let magic = await new Roll("1d6").evaluate();
-                    let magicType = magic.total <= 2 ? "Potion" : (magic.total <= 4 ? "Scroll" : "Minor Wonder");
-                    eDesc = "A magical phenomenon or item is discovered on the Bastion grounds."; 
-                    autoResults = `Discovery Type: <b>${magicType}</b> (Rolled ${magic.total}).`; publicSummaryEvents.push(eCat);
-                } else if (rollTotal <= 91) { 
-                    eCat = "Refugees"; let refCount = await new Roll("2d4").evaluate(); let refGold = await new Roll("1d6 * 100").evaluate();
-                    eDesc = "Displaced people arrive seeking asylum, food, and shelter. They offer to pay for hospitality and protection."; 
-                    autoResults = `<b>${refCount.total}</b> refugees arrived. They are willing to pay up to <b>${refGold.total} GP</b>.`; publicSummaryEvents.push(eCat);
-                } else if (rollTotal <= 98) { 
-                    eCat = "Request for Aid"; 
-                    eDesc = "A local faction, town, or individual directly asks the Bastion for help with a pressing problem."; 
-                    autoResults = `Requires DM narrative design.`; publicSummaryEvents.push(eCat);
-                } else { 
-                    eCat = "Treasure"; let treas = await new Roll("1d4 * 100").evaluate();
-                    eDesc = "A hidden cache of treasure is discovered on or near the premises."; 
-                    autoResults = `The cache contains <b>${treas.total} GP</b> worth of valuables.`; publicSummaryEvents.push(eCat);
-                }
-
-                let eColor = rollTotal <= 50 ? "darkgreen" : (rollTotal <= 58 || (rollTotal >= 77 && rollTotal <= 79) ? "darkred" : "darkblue");
+                let eColor = rollTotal <= 50 ? "#a8d5a2" : (rollTotal <= 58 || (rollTotal >= 77 && rollTotal <= 79) ? "#f28b82" : "#99c1f1");
                 let turnLabel = turns > 1 ? `<b>Turn ${t + 1}:</b> ` : "";
 
-                dmDetailedHtml += `
-                    <div style="margin-bottom: 12px; padding: 6px; background: rgba(0,0,0,0.03); border: 1px solid #ccc; border-radius: 4px;">
+                dmHtml += `
+                    <div style="margin-bottom: 10px; padding: 8px; background: rgba(0,0,0,0.15); border: 1px solid var(--color-border-light-1); border-radius: 4px;">
                         <p style="margin: 0; font-size: 1.1em; color: ${eColor};">${turnLabel}🎲 <b>${rollTotal}</b> — <em>${eCat}</em></p>
-                        <p style="font-size: 0.9em; color: #333; margin: 4px 0 6px 0;">${eDesc}</p>
-                        ${autoResults ? `<div style="background: #e8ecef; padding: 4px 8px; border-radius: 3px; font-size: 0.85em; border-left: 3px solid #6c757d;"><b>Automation:</b> ${autoResults}</div>` : ""}
+                        <p style="font-size: 0.95em; color: var(--color-text-light-primary); margin: 6px 0 8px 0;">${eDesc}</p>
+                        ${autoResults ? `<div style="background: rgba(0,0,0,0.3); padding: 8px 10px; border-radius: 3px; font-size: 0.9em; border-left: 3px solid #6c757d; color: var(--color-text-light-primary);">${autoResults}</div>` : ""}
                     </div>`;
+
+                if (eCat !== "All Is Well") {
+                    let existingEvent = publicSummaryEvents.find(e => e.cat === eCat);
+                    if (existingEvent) existingEvent.count++;
+                    else publicSummaryEvents.push({ cat: eCat, count: 1 });
+                }
             }
-            dmDetailedHtml += `</div>`;
+            dmHtml += `</div>`;
 
-            let notableEventsStr = publicSummaryEvents.length > 0 ? publicSummaryEvents.join(", ") : "None (All Is Well)";
+            let notableEventsStr = publicSummaryEvents.length > 0 
+                ? publicSummaryEvents.map(e => e.count > 1 ? `${e.cat} (x${e.count})` : e.cat).join(", ") 
+                : "None (All Is Well)";
+            
             pubHtml += `
-                <div style="padding: 6px; background: rgba(0,0,0,0.05); border-radius: 4px; text-align: center; margin-bottom: 10px;">
-                    <b style="color: #444;"><i class="fa-solid fa-broom"></i> Bastion Maintained</b><br>
-                    <span style="font-size: 0.85em; color: #666;">No specific orders issued.</span>
-                </div>
-                <h4 style="margin-bottom: 5px; border-bottom: 1px solid #ccc;">Summary:</h4>
-                <p style="font-size: 0.95em;"><b>Notable Events:</b> ${notableEventsStr}</p>`;
-
+                <div style="margin-bottom: 10px;">
+                    <h4 style="margin: 0 0 5px 0; border-bottom: 1px solid #ccc;">${actor.name}</h4>
+                    <div style="padding: 6px; background: rgba(0,0,0,0.05); border-radius: 4px; text-align: center; margin-bottom: 5px;">
+                        <b style="color: #444;"><i class="fa-solid fa-broom"></i> Bastion Maintained</b><br>
+                        <span style="font-size: 0.85em; color: #666;">No specific orders issued.</span>
+                    </div>
+                    <p style="font-size: 0.9em; margin: 0;"><b>Notable Events:</b> ${notableEventsStr}</p>
+                </div>`;
         } else {
             pubHtml += `
-                <h4 style="margin-bottom: 5px; border-bottom: 1px solid #ccc;">Executed Orders:</h4>
-                <ul style="list-style: none; padding: 0; margin: 0; font-size: 0.95em;">${res.orderSummary || "<li>No facilities built.</li>"}</ul>`;
+                <div style="margin-bottom: 10px;">
+                    <h4 style="margin: 0 0 5px 0; border-bottom: 1px solid #ccc;">${actor.name}</h4>
+                    <ul style="list-style: none; padding: 0; margin: 0; font-size: 0.9em;">${res.orderSummary || "<li>No facilities built.</li>"}</ul>
+                </div>`;
         }
-        pubHtml += `</div>`;
+        
+        return { hasDmContent: allMaintaining, dmHtml, pubHtml };
+    }
 
-        ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor }), content: pubHtml });
+    static async _dispatchReports(reports, turns) {
+        if (reports.length === 0) return;
 
-        if (allMaintaining) {
-            ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor }), whisper: ChatMessage.getWhisperRecipients("GM"), content: dmDetailedHtml });
+        let combinedPubHtml = `
+            <div class="bastion-chat-card">
+                <h3 style="border-bottom: 2px solid #a32a22; padding-bottom: 3px; margin-bottom: 10px;">Global Bastion Turn Advanced</h3>
+                <p style="margin-bottom: 10px;">Bastions were advanced by <b>${turns}</b> turn(s).</p>`;
+        
+        let combinedDmHtml = `
+            <div style="font-family: var(--font-primary);">
+                <h2 style="border-bottom: 2px solid #a32a22; padding-bottom: 3px; margin-bottom: 10px;">Global DM Bastion Report</h2>
+                <p>Bastion events for <b>${turns}</b> turn(s).</p>
+                <hr>
+        `;
+
+        let hasDmEvents = false;
+
+        for (const report of reports) {
+            combinedPubHtml += report.pubHtml;
+            if (report.hasDmContent) {
+                combinedDmHtml += report.dmHtml;
+                hasDmEvents = true;
+            }
+        }
+        
+        combinedPubHtml += `</div>`;
+        combinedDmHtml += `</div>`;
+
+        // Send a single public chat card summarizing all characters
+        ChatMessage.create({ content: combinedPubHtml });
+
+        // Show a single DM whisper/dialog combining all events
+        if (hasDmEvents) {
+            // Keep the whispered message for permanent log, but format it cleanly
+            ChatMessage.create({ whisper: ChatMessage.getWhisperRecipients("GM"), content: combinedDmHtml });
             if (game.user.isGM) {
+                // Show the interactive prompt
                 const { DialogV2 } = foundry.applications.api;
-                DialogV2.prompt({ window: { title: "Bastion Report", width: 450 }, content: dmDetailedHtml, ok: { label: "Close" } });
+                
+                class EventResolverApp extends foundry.applications.api.ApplicationV2 {
+                    static DEFAULT_OPTIONS = {
+                        id: "bastion-event-resolver",
+                        window: { title: "Global Bastion Report", resizable: true },
+                        position: { width: 550, height: "auto" }
+                    };
+                    
+                    async _renderHTML(context, options) {
+                        return `<div style="font-family: var(--font-primary); padding: 8px;">${combinedDmHtml}</div>`;
+                    }
+                    
+                    _replaceHTML(result, content, options) {
+                        content.innerHTML = result;
+                    }
+                    
+                    _onRender(context, options) {
+                        super._onRender(context, options);
+                        const btns = this.element.querySelectorAll('button[data-action="resolveEvent"]');
+                        for (const btn of btns) {
+                            btn.addEventListener('click', async (event) => {
+                                const ds = event.target.dataset;
+                                const eventType = ds.event;
+                                const choice = ds.choice;
+                                
+                                const container = event.target.closest('.event-resolution');
+                                const actorId = container.dataset.actorId;
+                                const a = game.actors.get(actorId);
+
+                                let resultText = "";
+                                
+                                if (eventType === "allIsWell") {
+                                    if (choice === "auto") {
+                                        let hName = null, hProf = null;
+                                        if (a) {
+                                            let hList = [];
+                                            BastionManager._getActorFacilities(a).forEach(fac => {
+                                                const h = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.hirelings) : (fac.doc.getFlag("dnd-2024-bastion-manager", "hirelings"));
+                                                if (Array.isArray(h)) {
+                                                    let sub = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.subType) : (fac.doc.getFlag("dnd-2024-bastion-manager", "subType"));
+                                                    let prof = BastionManager._getHirelingProfession(fac.name, sub);
+                                                    h.forEach(n => hList.push({name: n, prof: prof}));
+                                                }
+                                            });
+                                            if (hList.length > 0) {
+                                                const r = hList[Math.floor(Math.random() * hList.length)];
+                                                hName = r.name; hProf = r.prof;
+                                            }
+                                        }
+                                        const flavor = [
+                                            "Accident reports are way down.",
+                                            "The leak in the roof has been fixed.",
+                                            "No vermin infestations to report.",
+                                            hName ? `${hName} lost their spectacles again.` : "You-Know-Who lost their spectacles again.",
+                                            hName ? `${hName} ${hProf} adopted a stray dog.` : "One of your hirelings adopted a stray dog.",
+                                            "You received a lovely letter from a friend.",
+                                            hName ? `Some practical joker has been putting rotten eggs in ${hName}'s boots.` : "Some practical joker has been putting rotten eggs in people's boots.",
+                                            hName ? `${hName} thought they saw a ghost.` : "Someone thought they saw a ghost."
+                                        ];
+                                        const fRoll = (await new Roll("1d8").evaluate()).total;
+                                        resultText = `<b>Result:</b> ${flavor[fRoll - 1]}`;
+                                    } else resultText = `<b>Resolved Manually.</b>`;
+                                } else if (eventType === "attack") {
+                                    if (choice === "auto") {
+                                        const atkRoll = await new Roll("6d6").evaluate();
+                                        const ones = atkRoll.dice[0].results.filter(d => d.result === 1).length;
+                                        resultText = `Rolled 6d6: <b>${ones}</b> Bastion Defender(s) died. If you have 0 Defenders, a random special facility shuts down (unusable next turn).`; 
+                                    } else resultText = `<b>Resolved Manually.</b>`;
+                                } else if (eventType === "criminal") {
+                                    if (choice === "pay") {
+                                        const bribe = (await new Roll("1d6 * 100").evaluate()).total;
+                                        resultText = `You paid the <b>${bribe} GP</b> bribe.`;
+                                    } else resultText = `You let them be arrested. (If this leaves a facility with 0 hirelings, it is unusable next turn).`; 
+                                } else if (eventType === "opportunity") {
+                                    if (choice === "pay") {
+                                        let bonusRoll = (await new Roll("1d100").evaluate()).total;
+                                        while (bonusRoll >= 59 && bonusRoll <= 63) bonusRoll = (await new Roll("1d100").evaluate()).total;
+                                        const extra = await BastionManager._processEventRoll(bonusRoll, a, true);
+                                        resultText = `Paid <b>500 GP</b> to seize this opportunity.<br><div style="margin-top:8px; padding: 8px; background: rgba(0,0,0,0.2); border-left: 3px solid #ccc;"><em>Bonus Event (Roll ${bonusRoll}):</em> <b style="color: var(--color-text-light-heading);">${extra.cat}</b><br><div style="margin-top: 4px;">${extra.auto}</div></div>`;
+                                    } else resultText = `You declined the opportunity. Nothing happens.`;
+                                } else if (eventType === "visitors") {
+                                    if (choice === "accept") {
+                                        const offer = (await new Roll("1d6 * 100").evaluate()).total;
+                                        if(a) await a.update({"system.currency.gp": (a.system.currency?.gp || 0) + offer});
+                                        resultText = `You accepted. They paid <b>${offer} GP</b> for brief use of the facility.`; 
+                                    } else resultText = `You declined the visitors.`;
+                                } else if (eventType === "guest") {
+                                    if (choice === "auto") {
+                                        const gRoll = (await new Roll("1d4").evaluate()).total;
+                                        if (gRoll === 1) resultText = "The guest is of great renown. Stays 7 days, then gives you a <b>Letter of Recommendation</b>.";
+                                        else if (gRoll === 2) { const offer = (await new Roll("1d6 * 100").evaluate()).total; if(a) await a.update({"system.currency.gp": (a.system.currency?.gp || 0) + offer}); resultText = `The guest requests sanctuary for 7 days, offering a gift of <b>${offer} GP</b>.`; }
+                                        else if (gRoll === 3) resultText = "The guest is a mercenary. You gain <b>1 additional Bastion Defender</b> until sent away or killed.";
+                                        else resultText = "The guest is a Friendly monster. It defends against the next attack so you lose 0 Defenders, then leaves.";
+                                    } else resultText = `<b>Resolved Manually.</b>`;
+                                } else if (eventType === "refugees") {
+                                    if (choice === "accept") {
+                                        const ref = (await new Roll("2d4").evaluate()).total;
+                                        const offer = (await new Roll("1d6 * 100").evaluate()).total;
+                                        if(a) await a.update({"system.currency.gp": (a.system.currency?.gp || 0) + offer});
+                                        resultText = `You took in <b>${ref}</b> refugees. They paid <b>${offer} GP</b>. They stay until relocated or the Bastion is attacked.`; 
+                                    } else resultText = `You turned the refugees away.`;
+                                } else if (eventType === "aid") {
+                                    if (choice === "send") {
+                                        const input = container.querySelector('input.aid-count');
+                                        let count = parseInt(input?.value) || 1;
+                                        if (count < 1) count = 1;
+                                        const dRoll = (await new Roll(`${count}d6`).evaluate()).total;
+                                        if (dRoll >= 10) {
+                                            const reward = (await new Roll("1d6 * 100").evaluate()).total;
+                                            if(a) await a.update({"system.currency.gp": (a.system.currency?.gp || 0) + reward});
+                                            resultText = `Sent ${count} Defender(s). Rolled ${dRoll}. Problem solved, earned <b>${reward} GP</b>.`;
+                                        } else {
+                                            const reward = Math.floor((await new Roll("1d6 * 100").evaluate()).total / 2);
+                                            if(a) await a.update({"system.currency.gp": (a.system.currency?.gp || 0) + reward});
+                                            resultText = `Sent ${count} Defender(s). Rolled ${dRoll} (Failure). Problem solved, earned <b>${reward} GP</b> (half), and <b>1 Defender died</b>.`;
+                                        }
+                                    } else resultText = `You declined to send aid.`;
+                                } else if (eventType === "treasure") {
+                                    if (choice === "auto") {
+                                        const tRoll = (await new Roll("1d100").evaluate()).total;
+                                        if (tRoll <= 40) resultText = "Gain a <b>25 GP</b> Art Object.";
+                                        else if (tRoll <= 63) resultText = "Gain a <b>250 GP</b> Art Object.";
+                                        else if (tRoll <= 73) resultText = "Gain a <b>750 GP</b> Art Object.";
+                                        else if (tRoll <= 75) resultText = "Gain a <b>2,500 GP</b> Art Object.";
+                                        else if (tRoll <= 90) resultText = "Gain a <b>Common Magic Item</b> of your choice (Arcana, Armaments, Implements, or Relics).";
+                                        else if (tRoll <= 98) resultText = "Gain an <b>Uncommon Magic Item</b> of your choice (Arcana, Armaments, Implements, or Relics).";
+                                        else resultText = "Gain a <b>Rare Magic Item</b> of your choice (Arcana, Armaments, Implements, or Relics).";
+                                    } else resultText = `<b>Resolved Manually.</b>`;
+                                }
+
+                                container.innerHTML = resultText;
+                            });
+                        }
+                    }
+                }
+                new EventResolverApp().render({ force: true });
             }
         }
     }
