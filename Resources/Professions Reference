@@ -1,12 +1,30 @@
-[Facility] - [Profession Title]
+[Facility]                              -       [Profession Title]
 
-Garden (Herb) - Herbalist
-Garden (Food) - Farmer
-Garden (Poison) - Botanical Toxicologist
-Garden (Decorative) - Florist
-Arcane Study - Arcanist
-Library - Librarian
-Barrack - Recruiter
-Sanctuary - Sanctuary Caretaker
-Smithy - Smith
-Storehouse - Quartermaster
+Garden (Herb)                           -       Herbalist
+Garden (Food)                           -       Farmer
+Garden (Poison)                         -       Botanical Toxicologist
+Garden (Decorative)                     -       Florist
+Arcane Study                            -       Arcanist
+Library                                 -       Librarian
+Barrack                                 -       Recruiter
+Sanctuary                               -       Sanctuary Caretaker
+Smithy                                  -       Smith
+Storehouse                              -       Quartermaster
+Armory                                  -       Armorer
+Amethyst Dragon Den                     -       Dragon Attendant
+Dragonmark Outpost                      -       House Agent
+Harper Hideout                          -       Harper Agent
+Red Wizard Necropolis                   -       Necromancer
+Workshop                                -       Artisan
+Zhentarim Travel Station                -       Groom
+Emerald Enclave Grove                   -       Emerald Enclave Agent
+Gaming Hall                             -       Gamer
+Greenhouse                              -       Greenthumb
+Kundarak Vault                          -       Investment Manager
+Laboratory                              -       Alchemist
+Lords' Alliance Noble Residence         -       Butler
+Navigator's Helm                        -       Navigator
+Order of the Gauntlet Tournament Field  -       Knight
+Orien Helm                              -       Pilot
+Sacristy                                -       Sacristan
+Scriptorium

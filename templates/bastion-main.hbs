@@ -81,13 +81,16 @@
                     {{/if}}
 
                     {{#if this.hasOrders}}
-                        <div style="font-size: 0.9em; margin-top: 4px;">
+                        <div style="font-size: 0.9em; margin-top: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                             <label>Order: </label>
                             <select class="facility-order-select" data-item-id="{{this.id}}" data-item-name="{{this.itemName}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}">
                                 {{#each this.orderOptions}}
                                     <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
                                 {{/each}}
                             </select>
+                            {{#if this.isLibraryResearching}}
+                                <input type="text" class="library-topic-input" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" value="{{this.libraryTopic}}" placeholder="Enter topic..." style="height: 20px; font-size: 0.85em; width: 120px;">
+                            {{/if}}
                         </div>
                     {{else}}
                         <div style="font-size: 0.85em; margin-top: 4px; color: #777; font-style: italic;">

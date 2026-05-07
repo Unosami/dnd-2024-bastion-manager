@@ -75,10 +75,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 if (order !== "Maintain" && safeProps.some(p => p.includes(lowerOrder)) && !availableOrders.includes(order)) availableOrders.push(order);
             });
 
-            if (fac.name.includes("Garden") || fac.name.includes("Workshop")) availableOrders.push("Change Type");
+            const craftFacs = ["Garden", "Workshop", "Laboratory", "Sacristy", "Scriptorium", "Arcane Study", "Sanctuary", "Smithy"];
+            if (craftFacs.some(n => fac.name.includes(n))) availableOrders.push("Change Type");
 
             const safeOrder = availableOrders.includes(currentOrder) ? currentOrder : "Maintain";
             const hasOrders = availableOrders.length > 1;
+
+            const isLibraryResearching = fac.name.includes("Library") && safeOrder === "Research";
+            const libraryTopic = fac.isFlag ? (fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.libraryTopic || "") : (fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "libraryTopic") || "");
 
             return {
                 id: fac.id, name: fac.isInherited ? `${fac.name} (${fac.ownerName})` : fac.name,
@@ -87,7 +91,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 img: fac.sourceDoc.img, isInherited: fac.isInherited, isFlag: fac.isFlag, memberId: fac.memberActor?.id || null,
                 itemName: fac.name,
                 hasOrders: hasOrders,
-                orderOptions: availableOrders.map(order => ({ value: order, label: order, selected: order === safeOrder }))
+                orderOptions: availableOrders.map(order => ({ value: order, label: order, selected: order === safeOrder })),
+                isLibraryResearching: isLibraryResearching,
+                libraryTopic: libraryTopic
             };
         });
 
@@ -195,11 +201,44 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     } else if (ds.itemName && ds.itemName.includes("Workshop")) {
                         promptContent = `<p>What type of Workshop are you changing to?</p>
                                   <select name="subType" style="width: 100%;">
-                                      <option value="Wood">Wood/Carpentry</option>
-                                      <option value="Stone">Stone/Masonry</option>
-                                      <option value="Cloth">Cloth/Tailoring</option>
-                                      <option value="Leather">Leatherworking</option>
-                                      <option value="Metal">Metalworking</option>
+                                      <option value="Adventuring Gear">Adventuring Gear</option>
+                                      <option value="Magic Item (Implement)">Magic Item (Implement)</option>
+                                  </select>`;
+                    } else if (ds.itemName && ds.itemName.includes("Arcane Study")) {
+                        promptContent = `<p>What type of Crafting are you doing?</p>
+                                  <select name="subType" style="width: 100%;">
+                                      <option value="Arcane Focus">Arcane Focus</option>
+                                      <option value="Book">Book</option>
+                                      <option value="Magic Item (Arcana)">Magic Item (Arcana)</option>
+                                  </select>`;
+                    } else if (ds.itemName && ds.itemName.includes("Sanctuary")) {
+                        promptContent = `<p>What type of Crafting are you doing?</p>
+                                  <select name="subType" style="width: 100%;">
+                                      <option value="Sacred Focus">Sacred Focus</option>
+                                  </select>`;
+                    } else if (ds.itemName && ds.itemName.includes("Smithy")) {
+                        promptContent = `<p>What type of Crafting are you doing?</p>
+                                  <select name="subType" style="width: 100%;">
+                                      <option value="Smith's Tools">Smith's Tools</option>
+                                      <option value="Magic Item (Armament)">Magic Item (Armament)</option>
+                                  </select>`;
+                    } else if (ds.itemName && ds.itemName.includes("Laboratory")) {
+                        promptContent = `<p>What type of Crafting are you doing?</p>
+                                  <select name="subType" style="width: 100%;">
+                                      <option value="Alchemist's Supplies">Alchemist's Supplies</option>
+                                      <option value="Poison">Poison</option>
+                                  </select>`;
+                    } else if (ds.itemName && ds.itemName.includes("Sacristy")) {
+                        promptContent = `<p>What type of Crafting are you doing?</p>
+                                  <select name="subType" style="width: 100%;">
+                                      <option value="Holy Water">Holy Water</option>
+                                  </select>`;
+                    } else if (ds.itemName && ds.itemName.includes("Scriptorium")) {
+                        promptContent = `<p>What type of Crafting are you doing?</p>
+                                  <select name="subType" style="width: 100%;">
+                                      <option value="Book Replica">Book Replica</option>
+                                      <option value="Spell Scroll">Spell Scroll</option>
+                                      <option value="Paperwork">Paperwork</option>
                                   </select>`;
                     } else {
                         // Fallback generic prompt if we don't know the specific subtypes
@@ -252,6 +291,31 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     }
                 }
                 ui.notifications.info(`Order updated to ${newOrder}.`);
+                this.render(); // Re-render to show/hide the library input box
+            });
+        }
+        
+        const inputs = this.element.querySelectorAll('.library-topic-input');
+        for (const input of inputs) {
+            input.addEventListener('change', async (event) => {
+                const ds = event.target.dataset;
+                const newTopic = event.target.value;
+                
+                if (ds.isInherited === "true") {
+                    const member = game.actors.get(ds.memberId); const item = member?.items.get(ds.itemId);
+                    if (item) await item.setFlag("dnd-2024-bastion-manager", "libraryTopic", newTopic);
+                } else if (ds.isFlag === "true") {
+                    const groupFacilities = this.actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
+                    const fac = groupFacilities.find(f => f._id === ds.itemId);
+                    if (fac) {
+                        if (!fac.flags) fac.flags = {}; if (!fac.flags["dnd-2024-bastion-manager"]) fac.flags["dnd-2024-bastion-manager"] = {};
+                        fac.flags["dnd-2024-bastion-manager"].libraryTopic = newTopic;
+                        await this.actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacilities);
+                    }
+                } else {
+                    const item = this.actor.items.get(ds.itemId);
+                    if (item) await item.setFlag("dnd-2024-bastion-manager", "libraryTopic", newTopic);
+                }
             });
         }
     }
@@ -323,7 +387,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         else if (typeof hData === "string") expectedHirelings = parseInt(hData) || 0;
         else if (typeof hData === "object" && hData !== null) expectedHirelings = parseInt(hData.max) || parseInt(hData.value) || 0;
 
-        let requiresTypeSelection = itemDoc.name === "Garden" || itemDoc.name === "Workshop";
+        let requiresTypeSelection = itemDoc.name === "Garden" || itemDoc.name === "Workshop" || itemDoc.name === "Laboratory" || itemDoc.name === "Sacristy" || itemDoc.name === "Scriptorium" || itemDoc.name === "Arcane Study" || itemDoc.name === "Sanctuary" || itemDoc.name === "Smithy";
         let promptContent = "";
 
         if (requiresTypeSelection) {
@@ -334,13 +398,34 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     <option value="Food">Food</option>
                     <option value="Herb">Herb</option>
                     <option value="Poison">Poison</option>`;
+            } else if (itemDoc.name === "Laboratory") {
+                options = `
+                    <option value="Alchemist's Supplies">Alchemist's Supplies</option>
+                    <option value="Poison">Poison</option>`;
+            } else if (itemDoc.name === "Sacristy") {
+                options = `
+                    <option value="Holy Water">Holy Water</option>`;
+            } else if (itemDoc.name === "Scriptorium") {
+                options = `
+                    <option value="Book Replica">Book Replica</option>
+                    <option value="Spell Scroll">Spell Scroll</option>
+                    <option value="Paperwork">Paperwork</option>`;
+            } else if (itemDoc.name === "Arcane Study") {
+                options = `
+                    <option value="Arcane Focus">Arcane Focus</option>
+                    <option value="Book">Book</option>
+                    <option value="Magic Item (Arcana)">Magic Item (Arcana)</option>`;
+            } else if (itemDoc.name === "Sanctuary") {
+                options = `
+                    <option value="Sacred Focus">Sacred Focus</option>`;
+            } else if (itemDoc.name === "Smithy") {
+                options = `
+                    <option value="Smith's Tools">Smith's Tools</option>
+                    <option value="Magic Item (Armament)">Magic Item (Armament)</option>`;
             } else if (itemDoc.name === "Workshop") {
                 options = `
-                    <option value="Wood">Wood/Carpentry</option>
-                    <option value="Stone">Stone/Masonry</option>
-                    <option value="Cloth">Cloth/Tailoring</option>
-                    <option value="Leather">Leatherworking</option>
-                    <option value="Metal">Metalworking</option>`;
+                    <option value="Adventuring Gear">Adventuring Gear</option>
+                    <option value="Magic Item (Implement)">Magic Item (Implement)</option>`;
             }
             promptContent += `
                 <div style="margin-bottom: 10px;">
@@ -389,6 +474,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                  }
                  if (formData.hirelings && formData.hirelings.length > 0) {
                      foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.hirelings", formData.hirelings);
+                     let prof = BastionManager._getHirelingProfession(itemDoc.name, formData.subType);
+                     formData.hirelings.forEach(h => {
+                         BastionManager._createHirelingActor(h, prof, this.actor.name, itemDoc.name, false);
+                     });
                  }
             }
         }
@@ -505,6 +594,41 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     let harvestRes = await BastionManager._handleHarvest(fac.doc.name, subType, fac);
                     if (harvestRes.item) items.push(harvestRes.item);
                     resultText = harvestRes.text;
+                } else if (order === "Research") {
+                    let resRes = await BastionManager._handleResearch(fac.doc.name, fac, subType);
+                    resultText = resRes.text;
+                    if (resRes.resetOrder) {
+                        if (fac.isFlag) {
+                            const groupFacs = actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
+                            const gf = groupFacs.find(f => f._id === fac.doc._id);
+                            if (gf) { foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.order", "Maintain"); await actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacs); }
+                        } else {
+                            await fac.doc.setFlag("dnd-2024-bastion-manager", "order", "Maintain");
+                        }
+                    }
+                } else if (order === "Craft") {
+                    let craftRes = await BastionManager._handleCraft(fac.doc.name, fac, subType);
+                    if (craftRes.gold) localGold += craftRes.gold;
+                    resultText = craftRes.text;
+                } else if (order === "Recruit") {
+                    let recRes = await BastionManager._handleRecruit(fac.doc.name, fac, actor);
+                    resultText = recRes.text;
+                    
+                    if (fac.isFlag) {
+                        const groupFacs = actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
+                        const gf = groupFacs.find(f => f._id === fac.doc._id);
+                        if (gf) {
+                            foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.defenders.count", recRes.newCount);
+                            foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.defenders.names", recRes.newNames);
+                            await actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacs);
+                        }
+                    } else {
+                        await fac.doc.setFlag("dnd-2024-bastion-manager", "defenders.count", recRes.newCount);
+                        await fac.doc.setFlag("dnd-2024-bastion-manager", "defenders.names", recRes.newNames);
+                    }
+                } else if (order === "Empower") {
+                    let empRes = await BastionManager._handleEmpower(fac.doc.name, fac, actor);
+                    resultText = empRes.text;
                 }
             }
 
@@ -526,7 +650,205 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         return { orderSummary, totalGold, items };
     }
 
-    // --- HELPER: TRADE ---
+    static async _createHirelingActor(name, role, ownerName, facilityName, isDefender = false) {
+        if (!game.settings.get("dnd-2024-bastion-manager", "createActorsForHirelings")) return;
+        
+        let folderName = isDefender ? "Bastion Defenders" : "Bastion Hirelings";
+        let folder = game.folders.find(f => f.name === folderName && f.type === "Actor");
+        
+        // Wait for the folder to be created and indexed before proceeding
+        if (!folder) {
+            folder = await Folder.create({ name: folderName, type: "Actor" });
+            // Small delay to ensure the database indices catch up before the loop fires again
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+
+        const actorData = {
+            name: name,
+            type: "npc",
+            folder: folder.id,
+            system: {
+                details: {
+                    biography: { value: `<p>A ${isDefender ? 'Bastion Defender' : 'Bastion Hireling'} (${role}) working at the <b>${facilityName}</b> for ${ownerName}.</p>` }
+                }
+            }
+        };
+
+        // Try to assign a generic token if possible based on role
+        if (isDefender) {
+            actorData.img = "icons/weapons/swords/sword-guard-flanged-steel.webp";
+        } else {
+            actorData.img = "icons/skills/trades/smithing-anvil-silver-red.webp";
+        }
+
+        await Actor.create(actorData);
+    }
+
+    // --- HELPER: CRAFT ---
+    static async _handleCraft(baseName, fac, subType) {
+        let hirelings = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.hirelings) : (fac.doc.getFlag("dnd-2024-bastion-manager", "hirelings"));
+        let hName = (Array.isArray(hirelings) && hirelings.length > 0) ? hirelings[0] : "The hireling";
+        let hProf = BastionManager._getHirelingProfession(baseName, subType);
+        if (hName !== "The hireling") hName = `${hName} ${hProf}`;
+
+        if (baseName === "Arcane Study") {
+            if (subType === "Arcane Focus") return { text: `${hName} spends 7 days crafting an Arcane Focus at no cost.` };
+            if (subType === "Book") return { text: `${hName} spends 7 days crafting a blank book.`, gold: -10 };
+            return { text: `${hName} spends 7 days assisting you in crafting a Common or Uncommon magic item (Arcana) using the chapter 7 rules.` };
+        } else if (baseName === "Sanctuary") {
+            return { text: `${hName} spends 7 days crafting a Druidic Focus or Holy Symbol at no cost.` };
+        } else if (baseName === "Smithy") {
+            if (subType === "Smith's Tools") return { text: `The hirelings craft an item using Smith's Tools following the PHB rules.` };
+            return { text: `The hirelings assist you in crafting a Common or Uncommon magic item (Armament) using the chapter 7 rules.` };
+        } else if (baseName === "Workshop") {
+            if (subType === "Adventuring Gear") return { text: `The hirelings craft Adventuring Gear using their Artisan's Tools following the PHB rules.` };
+            return { text: `The hirelings assist you in crafting a Common or Uncommon magic item (Implement) using the chapter 7 rules.` };
+        } else if (baseName === "Laboratory") {
+            if (subType === "Poison") return { text: `${hName} spends 7 days crafting an application of Burnt Othur Fumes, Essence of Ether, or Torpor at half cost.` };
+            return { text: `${hName} crafts an item using Alchemist's Supplies following the PHB rules.` };
+        } else if (baseName === "Sacristy") {
+            return { text: `${hName} spends 7 days crafting a flask of Holy Water.` };
+        } else if (baseName === "Scriptorium") {
+            if (subType === "Book Replica") return { text: `${hName} spends 7 days making a copy of a nonmagical book (requires a blank book).` };
+            if (subType === "Spell Scroll") return { text: `${hName} scribes a Spell Scroll (Cleric or Wizard, level 3 or lower) using the PHB rules and costs.` };
+            return { text: `${hName} spends 7 days creating up to 50 copies of paperwork.`, gold: -50 }; // Assuming max for simplicity or prompt later
+        }
+
+        return { text: `Executed Craft order.` };
+    }
+
+    // --- HELPER: EMPOWER ---
+    static async _handleEmpower(baseName, fac, actor) {
+        let hirelings = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.hirelings) : (fac.doc.getFlag("dnd-2024-bastion-manager", "hirelings"));
+        let hName = (Array.isArray(hirelings) && hirelings.length > 0) ? hirelings[0] : "The hireling";
+        let hProf = BastionManager._getHirelingProfession(baseName, null);
+        if (hName !== "The hireling") hName = `${hName} ${hProf}`;
+
+        if (baseName === "Theater") {
+            return { text: `The hirelings begin work on a theatrical production or concert.` };
+        } else if (baseName === "Training Area") {
+            return { text: `The hirelings conduct training exercises for the next 7 days.` };
+        } else if (baseName === "Meditation Chamber") {
+            return { text: `The hirelings use the Meditation Chamber to gain inner peace. The next time you roll for a Bastion event, you can roll twice and choose either result.` };
+        } else if (baseName === "Observatory") {
+            const DialogV2 = foundry.applications.api.DialogV2;
+            let accept = await DialogV2.confirm({ window: { title: `Empower: Observatory` }, content: `<p>Roll 1d2 to explore the eldritch mysteries of the stars?</p>`, rejectClose: false });
+            if (accept) {
+                const roll = (await new Roll("1d2").evaluate()).total;
+                if (roll === 1) return { text: `Explored the stars. An unknown power bestows a <b>Charm of Darkvision</b>, <b>Charm of Heroism</b>, or <b>Charm of Vitality</b> on you or a creature of your choice.` };
+                else return { text: `Explored the stars. Nothing is gained.` };
+            }
+            return { text: `You declined to explore the stars.` };
+        } else if (baseName === "Demiplane") {
+            return { text: `Magical runes appear on the Demiplane's walls. For the next 7 days, you gain Temporary Hit Points equal to five times your level after spending an entire Long Rest in the Demiplane.` };
+        } else if (baseName === "Sanctum") {
+            return { text: `The hirelings perform daily rites. The designated beneficiary gains Temporary Hit Points equal to your level after each Long Rest for 7 days.` };
+        }
+        return { text: `Executed Empower order.` };
+    }
+    static async _handleResearch(baseName, fac, subType) {
+        let hirelings = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.hirelings) : (fac.doc.getFlag("dnd-2024-bastion-manager", "hirelings"));
+        let hName = (Array.isArray(hirelings) && hirelings.length > 0) ? hirelings[0] : "The hireling";
+        let hProf = BastionManager._getHirelingProfession(baseName, subType);
+        if (hName !== "The hireling") hName = `${hName} ${hProf}`;
+
+        if (baseName === "Library") {
+            const topic = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.libraryTopic) : (fac.doc.getFlag("dnd-2024-bastion-manager", "libraryTopic"));
+            const topicText = topic ? `<b>${topic}</b>` : `a topic`;
+            return {
+                text: `Research order issued for ${topicText}. ${hName} obtains up to 3 accurate pieces of information about ${topicText}.`
+            };
+        } else if (baseName === "Archive") {
+            return {
+                text: `${hName} searches the Archive for helpful lore, gaining knowledge as if they cast <i>Legend Lore</i>.`
+            };
+        } else if (baseName === "Trophy Room") {
+            return { text: `${hName} conducts research in the Trophy Room.` };
+        } else if (baseName === "Pub") {
+            return { text: `${hName} gathers rumors and research in the Pub.` };
+        }
+        return { text: `Executed Research order.` };
+    }
+
+    // --- HELPER: RECRUIT ---
+    static async _handleRecruit(baseName, fac, actor) {
+        let facDefendersCount = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.defenders?.count || 0) : (fac.doc.getFlag("dnd-2024-bastion-manager", "defenders.count") || 0);
+        let facDefenderNames = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.defenders?.names || []) : (fac.doc.getFlag("dnd-2024-bastion-manager", "defenders.names") || []);
+        
+        let maxDefenders = 12; // Assuming roomy by default
+        const facSize = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.size || "Roomy") : (fac.doc.getFlag("dnd-2024-bastion-manager", "size") || "Roomy");
+        if (facSize === "Vast") maxDefenders = 25;
+
+        if (facDefendersCount >= maxDefenders) {
+            return { text: `Recruitment failed: This facility is fully occupied (${maxDefenders}/${maxDefenders} Defenders).`, newCount: facDefendersCount, newNames: facDefenderNames };
+        }
+
+        const recruitMode = game.settings.get("dnd-2024-bastion-manager", "recruitMode");
+        let newlyRecruited = 0;
+
+        if (recruitMode === "max") {
+            newlyRecruited = Math.min(4, maxDefenders - facDefendersCount);
+        } else if (recruitMode === "manual") {
+            const DialogV2 = foundry.applications.api.DialogV2;
+            newlyRecruited = await DialogV2.prompt({
+                window: { title: "Manual Recruitment" },
+                content: `<p>How many defenders did you recruit for the ${fac.name}?</p><input type="number" name="count" value="0" min="0" max="${Math.min(4, maxDefenders - facDefendersCount)}" autofocus>`,
+                ok: { callback: (event, button) => parseInt(button.form.elements.count.value) || 0 }
+            });
+        } else {
+            const recruitRoll = await new Roll("1d4").evaluate();
+            newlyRecruited = Math.min(recruitRoll.total, maxDefenders - facDefendersCount);
+        }
+
+        if (newlyRecruited > 0) {
+            facDefendersCount += newlyRecruited;
+            let newNames = [];
+            
+            if (game.settings.get("dnd-2024-bastion-manager", "nameHirelings")) {
+                const autoName = game.settings.get("dnd-2024-bastion-manager", "autoNameDefenders");
+                const firstNames = ["Tordek", "Mialee", "Jozan", "Lidda", "Aramil", "Eberk", "Vadania", "Gimble", "Hennet", "Krusk", "Nebin", "Soveliss", "Alhandra", "Devis", "Regdar"];
+                const lastNames = ["Ironfist", "Moonwhisper", "Brightwood", "Nimblefingers", "Starbreeze", "Frostbeard", "Greenleaf", "Timbers", "Tanglehair", "Bonecrusher", "Gemsnatcher", "Sunrunner", "Swiftstep", "Fairweather", "Broadblade"];
+                
+                const DialogV2 = foundry.applications.api.DialogV2;
+                for (let d = 0; d < newlyRecruited; d++) {
+                    let dName = "";
+                    if (autoName) {
+                        let unique = false;
+                        let attempts = 0;
+                        while (!unique && attempts < 50) {
+                            const first = firstNames[Math.floor(Math.random() * firstNames.length)];
+                            const last = lastNames[Math.floor(Math.random() * lastNames.length)];
+                            const testName = `${first} ${last}`;
+                            if (!facDefenderNames.includes(testName) && !newNames.includes(testName)) {
+                                dName = testName;
+                                unique = true;
+                            }
+                            attempts++;
+                        }
+                        if (!dName) dName = `Defender ${facDefendersCount - newlyRecruited + d + 1}`; // absolute fallback
+                        newNames.push(dName);
+                    } else {
+                        dName = await DialogV2.prompt({
+                            window: { title: `Name Defender (${fac.name})` },
+                            content: `<p>Name of recruited Defender #${d + 1}:</p><input type="text" name="defName" value="Defender ${facDefendersCount - newlyRecruited + d + 1}" autofocus>`,
+                            ok: { callback: (event, button) => button.form.elements.defName.value }
+                        });
+                        if (dName) newNames.push(dName);
+                    }
+                    if (dName) {
+                        BastionManager._createHirelingActor(dName, "Defender", actor.name, fac.name, true);
+                    }
+                }
+            }
+            if (newNames.length > 0) facDefenderNames.push(...newNames);
+            
+            let resultText = `Recruited <b>${newlyRecruited}</b> Bastion Defender(s) [${facDefendersCount}/${maxDefenders} occupied].`;
+            if (newNames.length > 0) resultText += ` <em style="color:#555;">(${newNames.join(", ")})</em>`;
+            return { text: resultText, newCount: facDefendersCount, newNames: facDefenderNames };
+        } else {
+            return { text: `Recruited 0 defenders.`, newCount: facDefendersCount, newNames: facDefenderNames };
+        }
+    }
     static async _handleTrade(baseName, defenders, hasSmithy, level) {
         if (baseName === "Armory") {
             let cost = 100 + (100 * defenders); if (hasSmithy) cost = Math.floor(cost / 2);

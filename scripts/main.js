@@ -192,6 +192,24 @@ Hooks.once("init", () => {
         default: true
     });
 
+    game.settings.register(MODULE_ID, "autoNameDefenders", {
+        name: "Auto-Generate Defender Names",
+        hint: "If enabled (and the prompt setting above is enabled), the module will automatically generate random names for recruited Bastion Defenders instead of asking you.",
+        scope: "client",
+        config: true,
+        type: Boolean,
+        default: false
+    });
+
+    game.settings.register(MODULE_ID, "createActorsForHirelings", {
+        name: "Create Actors for Hirelings & Defenders",
+        hint: "If enabled, whenever you name a new hireling or recruit a defender, the module will automatically generate an Actor in the world sidebar for them.",
+        scope: "world",
+        config: true,
+        type: Boolean,
+        default: false
+    });
+
     game.settings.register(MODULE_ID, "ignoreFacilityPrereqs", {
         name: "Ignore Facility Prerequisites",
         hint: "If enabled, the 'Build Facility' dropdown will show all facilities, bypassing level requirements and other prerequisites.",
