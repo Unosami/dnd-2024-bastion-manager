@@ -331,10 +331,13 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             }
         }
 
+        const specialFacilitiesBuilt = facilities.filter(f => !f.isBasic);
+        const basicFacilitiesBuilt = facilities.filter(f => f.isBasic);
+
         return { 
             actor: this.actor, turnCount: globalTurnCount, 
             totalDefenders, defenderNames: allDefenderNames.join(", "), 
-            facilities, specialFacilities, basicFacilities,
+            specialFacilitiesBuilt, basicFacilitiesBuilt, specialFacilities, basicFacilities,
             canAdvanceTurn, grid,
             wallCount, wallDays, hasMap,
             selectedId
