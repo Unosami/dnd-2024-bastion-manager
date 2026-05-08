@@ -103,6 +103,14 @@ class FacilityExclusionApp extends HandlebarsApplicationMixin(ApplicationV2) {
 }
 
 class ConstructionConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
+    static BASES = {
+        buildCramped: { name: "Add Cramped", gp: 500, turns: 3, days: 20 },
+        buildRoomy: { name: "Add Roomy", gp: 1000, turns: 7, days: 45 },
+        buildVast: { name: "Add Vast", gp: 3000, turns: 18, days: 125 },
+        enlargeRoomy: { name: "Enlarge to Roomy", gp: 500, turns: 4, days: 25 },
+        enlargeVast: { name: "Enlarge to Vast", gp: 2000, turns: 12, days: 80 }
+    };
+
     static DEFAULT_OPTIONS = {
         id: "construction-config-app",
         tag: "form",
@@ -135,19 +143,11 @@ class ConstructionConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
         context.buildStages = ["buildCramped", "buildRoomy", "buildVast"];
         context.enlargeStages = ["enlargeRoomy", "enlargeVast"];
 
-        // Table Data calculation
-        const bases = {
-            buildCramped: { name: "Add Cramped", gp: 500, turns: 3, days: 20 },
-            buildRoomy: { name: "Add Roomy", gp: 1000, turns: 7, days: 45 },
-            buildVast: { name: "Add Vast", gp: 3000, turns: 18, days: 125 },
-            enlargeRoomy: { name: "Enlarge to Roomy", gp: 500, turns: 4, days: 25 },
-            enlargeVast: { name: "Enlarge to Vast", gp: 2000, turns: 12, days: 80 }
-        };
-
         const calculatePreview = (entries) => entries.map(([key, base]) => {
-            const sCost = context[`${key}Cost`] ?? base.gp;
-            const sTime = context[`${key}Time`] ?? base.turns;
+            const sCost = context[`${key}Cost`];
+            const sTime = context[`${key}Time`];
             return {
+                key: key,
                 label: base.name,
                 gp: Math.floor(sCost * (globalCost / 100)),
                 turns: Math.floor(sTime * (globalTime / 100)),
@@ -155,11 +155,48 @@ class ConstructionConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
             };
         });
 
-        const baseEntries = Object.entries(bases);
+        const baseEntries = Object.entries(ConstructionConfigApp.BASES);
         context.previewAdd = calculatePreview(baseEntries.filter(([k]) => k.startsWith("build")));
         context.previewEnlarge = calculatePreview(baseEntries.filter(([k]) => k.startsWith("enlarge")));
 
         return context; 
+    }
+
+    _onRender(context, options) {
+        super._onRender(context, options);
+        const form = this.element;
+
+        const updateUI = () => {
+            const data = new FormDataExtended(form).object;
+            const gCost = Number(data.globalCost);
+            const gTime = Number(data.globalTime);
+
+            for (const [key, base] of Object.entries(ConstructionConfigApp.BASES)) {
+                const sCost = Number(data[`${key}Cost`]);
+                const sTime = Number(data[`${key}Time`]);
+                
+                const finalGP = Math.floor(sCost * (gCost / 100));
+                const finalTurns = Math.floor(sTime * (gTime / 100));
+                const finalDays = Math.floor(base.days * (sTime / base.turns) * (gTime / 100));
+
+                const gpEl = form.querySelector(`[data-preview="${key}-gp"]`);
+                const timeEl = form.querySelector(`[data-preview="${key}-time"]`);
+                if (gpEl) gpEl.innerText = `${finalGP} GP`;
+                if (timeEl) timeEl.innerHTML = `${finalTurns} <span style="font-size: 0.9em; color: #888;">(${finalDays}d)</span>`;
+            }
+        };
+
+        form.addEventListener("input", event => {
+            const name = event.target.name;
+            if (!name) return;
+            if (name.endsWith("_num")) {
+                form.elements[name.replace("_num", "")].value = event.target.value;
+            } else {
+                const num = form.elements[`${name}_num`];
+                if (num) num.value = event.target.value;
+            }
+            updateUI();
+        });
     }
 
     static async processForm(event, form, formData) {

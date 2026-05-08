@@ -19,8 +19,8 @@
                 {{#each previewAdd}}
                 <tr style="border-bottom: 1px dashed #eee;">
                     <td style="padding: 2px 0;">{{this.label}}</td>
-                    <td style="text-align: right; font-weight: bold; color: darkgoldenrod;">{{this.gp}} GP</td>
-                    <td style="text-align: right;">{{this.turns}} <span style="font-size: 0.9em; color: #888;">({{this.days}}d)</span></td>
+                    <td style="text-align: right; font-weight: bold; color: darkgoldenrod;" data-preview="{{this.key}}-gp">{{this.gp}} GP</td>
+                    <td style="text-align: right;" data-preview="{{this.key}}-time">{{this.turns}} <span style="font-size: 0.9em; color: #888;">({{this.days}}d)</span></td>
                 </tr>
                 {{/each}}
             </tbody>
@@ -32,8 +32,8 @@
                 {{#each previewEnlarge}}
                 <tr style="border-bottom: 1px dashed #eee;">
                     <td style="padding: 2px 0;">{{this.label}}</td>
-                    <td style="text-align: right; font-weight: bold; color: darkgoldenrod;">{{this.gp}}g</td>
-                    <td style="text-align: right;">{{this.turns}} <span style="font-size: 0.9em; color: #888;">({{this.days}}d)</span></td>
+                    <td style="text-align: right; font-weight: bold; color: darkgoldenrod;" data-preview="{{this.key}}-gp">{{this.gp}} GP</td>
+                    <td style="text-align: right;" data-preview="{{this.key}}-time">{{this.turns}} <span style="font-size: 0.9em; color: #888;">({{this.days}}d)</span></td>
                 </tr>
                 {{/each}}
             </tbody>
@@ -43,17 +43,19 @@
     <div class="global-sliders" style="margin-bottom: 15px;">
         <div class="form-group" style="margin-bottom: 4px;">
             <label style="font-weight: bold; color: #a32a22; font-size: 0.9em;">Global Cost Multiplier</label>
-            <div class="form-fields" style="display: flex; align-items: center; gap: 8px;">
-                <input type="range" name="globalCost" value="{{globalCost}}" min="0" max="500" step="5" style="flex: 1;" oninput="this.nextElementSibling.innerText = this.value + '%'">
-                <span style="font-weight: bold; min-width: 45px; text-align: right; font-size: 0.9em;">{{globalCost}}%</span>
+            <div class="form-fields" style="display: flex; align-items: center; gap: 5px;">
+                <input type="range" name="globalCost" value="{{globalCost}}" min="0" max="500" step="5" style="flex: 1;">
+                <input type="number" name="globalCost_num" value="{{globalCost}}" min="0" max="500" step="1" style="width: 55px; height: 24px; text-align: center;">
+                <span style="font-weight: bold; font-size: 0.85em; width: 15px;">%</span>
             </div>
         </div>
 
         <div class="form-group" style="margin-bottom: 4px;">
             <label style="font-weight: bold; color: #a32a22; font-size: 0.9em;">Global Time Multiplier</label>
-            <div class="form-fields" style="display: flex; align-items: center; gap: 8px;">
-                <input type="range" name="globalTime" value="{{globalTime}}" min="0" max="500" step="5" style="flex: 1;" oninput="this.nextElementSibling.innerText = this.value + '%'">
-                <span style="font-weight: bold; min-width: 45px; text-align: right; font-size: 0.9em;">{{globalTime}}%</span>
+            <div class="form-fields" style="display: flex; align-items: center; gap: 5px;">
+                <input type="range" name="globalTime" value="{{globalTime}}" min="0" max="500" step="5" style="flex: 1;">
+                <input type="number" name="globalTime_num" value="{{globalTime}}" min="0" max="500" step="1" style="width: 55px; height: 24px; text-align: center;">
+                <span style="font-weight: bold; font-size: 0.85em; width: 15px;">%</span>
             </div>
         </div>
     </div>
@@ -63,27 +65,27 @@
             <i class="fas fa-cog"></i> Advanced Granular Configuration
         </summary>
         
-        <div style="padding: 10px; background: rgba(0,0,0,0.15);">
+        <div style="padding: 8px; background: rgba(0,0,0,0.15);">
             <h4 style="border-bottom: 1px solid #666; font-size: 0.9em; margin-top: 0;"><i class="fas fa-hammer"></i> Base Construction Costs</h4>
             {{#each buildStages}}
-            <div style="background: rgba(0,0,0,0.1); padding: 4px; border-radius: 4px; margin-bottom: 4px;">
+            <div style="background: rgba(0,0,0,0.1); padding: 6px; border-radius: 4px; margin-bottom: 5px;">
                 <label style="font-size: 0.9em; font-weight: bold;">
                     {{#if (eq this "buildCramped")}}Cramped Stage{{/if}}
                     {{#if (eq this "buildRoomy")}}Roomy Stage{{/if}}
                     {{#if (eq this "buildVast")}}Vast Stage{{/if}}
                 </label>
-                <div class="form-group" style="margin: 0;">
-                    <label style="font-size: 0.8em;">Cost (GP)</label>
-                    <div class="form-fields" style="display: flex; align-items: center; gap: 8px;">
-                        <input type="range" name="{{this}}Cost" value="{{lookup ../this (concat this "Cost")}}" min="0" max="5000" step="50" oninput="this.nextElementSibling.innerText = this.value + ' GP'">
-                        <span style="font-size: 0.8em; font-weight: bold; min-width: 55px; text-align: right;">{{lookup ../this (concat this "Cost")}} GP</span>
+                <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin: 2px 0;">
+                    <label style="flex: 0 0 70px; font-size: 0.75em; margin: 0;">Cost (GP)</label>
+                    <div class="form-fields" style="display: flex; align-items: center; gap: 5px;">
+                        <input type="range" name="{{this}}Cost" value="{{lookup ../this (concat this "Cost")}}" min="0" max="5000" step="50">
+                        <input type="number" name="{{this}}Cost_num" value="{{lookup ../this (concat this "Cost")}}" min="0" max="5000" step="10" style="width: 60px; height: 22px; font-size: 0.8em;">
                     </div>
                 </div>
-                <div class="form-group" style="margin: 0;">
-                    <label style="font-size: 0.8em;">Time (Turns)</label>
-                    <div class="form-fields" style="display: flex; align-items: center; gap: 8px;">
-                        <input type="range" name="{{this}}Time" value="{{lookup ../this (concat this "Time")}}" min="0" max="50" step="1" oninput="this.nextElementSibling.innerText = this.value + ' T'">
-                        <span style="font-size: 0.8em; font-weight: bold; min-width: 55px; text-align: right;">{{lookup ../this (concat this "Time")}} T</span>
+                <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin: 2px 0;">
+                    <label style="flex: 0 0 70px; font-size: 0.75em; margin: 0;">Time (Turns)</label>
+                    <div class="form-fields" style="display: flex; align-items: center; gap: 5px;">
+                        <input type="range" name="{{this}}Time" value="{{lookup ../this (concat this "Time")}}" min="0" max="50" step="1">
+                        <input type="number" name="{{this}}Time_num" value="{{lookup ../this (concat this "Time")}}" min="0" max="50" step="1" style="width: 60px; height: 22px; font-size: 0.8em;">
                     </div>
                 </div>
             </div>
@@ -91,23 +93,23 @@
 
             <h4 style="border-bottom: 1px solid #666; margin-top: 10px; font-size: 0.9em;"><i class="fas fa-arrow-up-right-dots"></i> Base Enlargement Costs</h4>
             {{#each enlargeStages}}
-            <div style="background: rgba(0,0,0,0.1); padding: 4px; border-radius: 4px; margin-bottom: 4px;">
+            <div style="background: rgba(0,0,0,0.1); padding: 6px; border-radius: 4px; margin-bottom: 5px;">
                 <label style="font-size: 0.9em; font-weight: bold;">
                     {{#if (eq this "enlargeRoomy")}}Cramped to Roomy{{/if}}
                     {{#if (eq this "enlargeVast")}}Roomy to Vast{{/if}}
                 </label>
-                <div class="form-group" style="margin: 0;">
-                    <label style="font-size: 0.8em;">Cost (GP)</label>
-                    <div class="form-fields" style="display: flex; align-items: center; gap: 8px;">
-                        <input type="range" name="{{this}}Cost" value="{{lookup ../this (concat this "Cost")}}" min="0" max="5000" step="50" oninput="this.nextElementSibling.innerText = this.value + ' GP'">
-                        <span style="font-size: 0.8em; font-weight: bold; min-width: 55px; text-align: right;">{{lookup ../this (concat this "Cost")}} GP</span>
+                <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin: 2px 0;">
+                    <label style="flex: 0 0 70px; font-size: 0.75em; margin: 0;">Cost (GP)</label>
+                    <div class="form-fields" style="display: flex; align-items: center; gap: 5px;">
+                        <input type="range" name="{{this}}Cost" value="{{lookup ../this (concat this "Cost")}}" min="0" max="5000" step="50">
+                        <input type="number" name="{{this}}Cost_num" value="{{lookup ../this (concat this "Cost")}}" min="0" max="5000" step="10" style="width: 60px; height: 22px; font-size: 0.8em;">
                     </div>
                 </div>
-                <div class="form-group" style="margin: 0;">
-                    <label style="font-size: 0.8em;">Time (Turns)</label>
-                    <div class="form-fields" style="display: flex; align-items: center; gap: 8px;">
-                        <input type="range" name="{{this}}Time" value="{{lookup ../this (concat this "Time")}}" min="0" max="50" step="1" oninput="this.nextElementSibling.innerText = this.value + ' T'">
-                        <span style="font-size: 0.8em; font-weight: bold; min-width: 55px; text-align: right;">{{lookup ../this (concat this "Time")}} T</span>
+                <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin: 2px 0;">
+                    <label style="flex: 0 0 70px; font-size: 0.75em; margin: 0;">Time (Turns)</label>
+                    <div class="form-fields" style="display: flex; align-items: center; gap: 5px;">
+                        <input type="range" name="{{this}}Time" value="{{lookup ../this (concat this "Time")}}" min="0" max="50" step="1">
+                        <input type="number" name="{{this}}Time_num" value="{{lookup ../this (concat this "Time")}}" min="0" max="50" step="1" style="width: 60px; height: 22px; font-size: 0.8em;">
                     </div>
                 </div>
             </div>
