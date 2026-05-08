@@ -1,6 +1,20 @@
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 const BASTION_ORDERS = ["Maintain", "Craft", "Harvest", "Recruit", "Research", "Trade", "Empower"];
 
+const FACILITY_CONFIG = {
+    "Garden": {
+        type: "specialization",
+        options: ["Decorative", "Food", "Herb", "Poison"]
+    },
+    "Workshop": {
+        type: "tools",
+        options: [
+            "Carpenter's Tools", "Cobbler's Tools", "Glassblower's Tools", "Jeweler's Tools", "Leatherworker's Tools", 
+            "Mason's Tools", "Painter's Tools", "Potter's Tools", "Tinker's Tools", "Weaver's Tools", "Woodcarver's Tools"
+        ]
+    }
+};
+
 export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     constructor(actor, options = {}) { super(options); this.actor = actor; }
     static DEFAULT_OPTIONS = {
@@ -84,6 +98,36 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const isLibraryResearching = fac.name.includes("Library") && safeOrder === "Research";
             const libraryTopic = fac.isFlag ? (fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.libraryTopic || "") : (fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "libraryTopic") || "");
 
+            const isGardenHarvesting = fac.name.includes("Garden") && safeOrder === "Harvest";
+            let harvestOptions = [];
+            if (isGardenHarvesting && facSubType) {
+                if (facSubType === "Decorative") harvestOptions = [{v: "Floral Bouquet", l: "Floral Bouquet (Qty: 10)"}, {v: "Perfume", l: "Perfume (Qty: 10)"}, {v: "Candle", l: "Candle (Qty: 10)"}];
+                else if (facSubType === "Herb") harvestOptions = [{v: "Healer's Kit", l: "Healer's Kit (Qty: 10)"}, {v: "Potion of Healing", l: "Potion of Healing (Qty: 1)"}];
+                else if (facSubType === "Poison") harvestOptions = [{v: "Antitoxin", l: "Antitoxin (Qty: 2)"}, {v: "Basic Poison", l: "Basic Poison (Qty: 1)"}];
+            }
+            const harvestChoice = fac.isFlag ? (fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.harvestChoice) : (fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "harvestChoice"));
+
+            const isGardenChangingType = fac.name.includes("Garden") && safeOrder === "Change Type";
+            const pendingSubType = fac.isFlag ? (fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.pendingSubType || "") : (fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "pendingSubType") || "");
+            const progress = fac.isFlag ? (fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.progress || 0) : (fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "progress") || 0);
+
+            // Determine Enlargeability for UI
+            const basicNames = ["Bedroom", "Dining Room", "Parlor", "Courtyard", "Kitchen", "Storage"];
+            const isBasic = basicNames.some(bn => fac.name.includes(bn));
+            const enlargeableSpecials = ["Archive", "Barrack", "Garden", "Pub", "Stable", "Workshop"];
+            const isEnlargeableSpecial = enlargeableSpecials.some(sn => fac.name.includes(sn));
+            const isEnlargeable = (isBasic && facSize !== "Vast") || (isEnlargeableSpecial && facSize === "Roomy");
+            
+            const upgradeProgress = fac.isFlag ? (fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.upgradeProgress || 0) : (fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "upgradeProgress") || 0);
+            const upgradeTurns = fac.isFlag ? (fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.upgradeTurns || 0) : (fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "upgradeTurns") || 0);
+            const isOrderLocked = progress > 0 || upgradeTurns > 0;
+            const gardenConfig = FACILITY_CONFIG["Garden"];
+            const changeTypeOptions = isGardenChangingType ? gardenConfig.options.map(o => ({
+                value: o, 
+                label: o, 
+                selected: o === pendingSubType 
+            })) : [];
+
             return {
                 id: fac.id, name: fac.isInherited ? `${fac.name} (${fac.ownerName})` : fac.name,
                 hirelings: hirelingsDisplay, defenderCount: facDefenders.count > 0 ? facDefenders.count : null,
@@ -93,7 +137,23 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 hasOrders: hasOrders,
                 orderOptions: availableOrders.map(order => ({ value: order, label: order, selected: order === safeOrder })),
                 isLibraryResearching: isLibraryResearching,
-                libraryTopic: libraryTopic
+                libraryTopic: libraryTopic,
+                isGardenHarvesting: isGardenHarvesting,
+                harvestOptions: harvestOptions.map(o => ({ 
+                    value: o.v, 
+                    label: o.l, 
+                    selected: o.v === harvestChoice 
+                })),
+                isGardenChangingType: isGardenChangingType,
+                changeTypeOptions: changeTypeOptions,
+                isOrderLocked: isOrderLocked,
+                progress: progress,
+                progressPct: Math.round((Math.min(progress, 3) / 3) * 100),
+                isUpgrading: upgradeTurns > 0,
+                upgradeProgress: upgradeProgress,
+                upgradeTurns: upgradeTurns,
+                upgradeProgressPct: Math.round((Math.min(upgradeProgress, upgradeTurns) / (upgradeTurns || 1)) * 100),
+                isEnlargeable: isEnlargeable
             };
         });
 
@@ -188,77 +248,6 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 let newOrder = event.target.value;
                 let pendingSubType = null;
 
-                if (newOrder === "Change Type") {
-                    let promptContent = "";
-                    if (ds.itemName && ds.itemName.includes("Garden")) {
-                        promptContent = `<p>What type of Garden are you changing to?</p>
-                                  <select name="subType" style="width: 100%;">
-                                      <option value="Decorative">Decorative</option>
-                                      <option value="Food">Food</option>
-                                      <option value="Herb">Herb</option>
-                                      <option value="Poison">Poison</option>
-                                  </select>`;
-                    } else if (ds.itemName && ds.itemName.includes("Workshop")) {
-                        promptContent = `<p>What type of Workshop are you changing to?</p>
-                                  <select name="subType" style="width: 100%;">
-                                      <option value="Adventuring Gear">Adventuring Gear</option>
-                                      <option value="Magic Item (Implement)">Magic Item (Implement)</option>
-                                  </select>`;
-                    } else if (ds.itemName && ds.itemName.includes("Arcane Study")) {
-                        promptContent = `<p>What type of Crafting are you doing?</p>
-                                  <select name="subType" style="width: 100%;">
-                                      <option value="Arcane Focus">Arcane Focus</option>
-                                      <option value="Book">Book</option>
-                                      <option value="Magic Item (Arcana)">Magic Item (Arcana)</option>
-                                  </select>`;
-                    } else if (ds.itemName && ds.itemName.includes("Sanctuary")) {
-                        promptContent = `<p>What type of Crafting are you doing?</p>
-                                  <select name="subType" style="width: 100%;">
-                                      <option value="Sacred Focus">Sacred Focus</option>
-                                  </select>`;
-                    } else if (ds.itemName && ds.itemName.includes("Smithy")) {
-                        promptContent = `<p>What type of Crafting are you doing?</p>
-                                  <select name="subType" style="width: 100%;">
-                                      <option value="Smith's Tools">Smith's Tools</option>
-                                      <option value="Magic Item (Armament)">Magic Item (Armament)</option>
-                                  </select>`;
-                    } else if (ds.itemName && ds.itemName.includes("Laboratory")) {
-                        promptContent = `<p>What type of Crafting are you doing?</p>
-                                  <select name="subType" style="width: 100%;">
-                                      <option value="Alchemist's Supplies">Alchemist's Supplies</option>
-                                      <option value="Poison">Poison</option>
-                                  </select>`;
-                    } else if (ds.itemName && ds.itemName.includes("Sacristy")) {
-                        promptContent = `<p>What type of Crafting are you doing?</p>
-                                  <select name="subType" style="width: 100%;">
-                                      <option value="Holy Water">Holy Water</option>
-                                  </select>`;
-                    } else if (ds.itemName && ds.itemName.includes("Scriptorium")) {
-                        promptContent = `<p>What type of Crafting are you doing?</p>
-                                  <select name="subType" style="width: 100%;">
-                                      <option value="Book Replica">Book Replica</option>
-                                      <option value="Spell Scroll">Spell Scroll</option>
-                                      <option value="Paperwork">Paperwork</option>
-                                  </select>`;
-                    } else {
-                        // Fallback generic prompt if we don't know the specific subtypes
-                        promptContent = `<p>Enter new type:</p><input type="text" name="subType" style="width: 100%;">`;
-                    }
-
-                    const chosenType = await DialogV2.prompt({
-                        window: { title: "Select Target Type" },
-                        content: promptContent,
-                        ok: { callback: (event, button) => button.form.elements.subType.value }
-                    });
-                    
-                    if (!chosenType) {
-                        event.target.value = "Maintain"; 
-                        newOrder = "Maintain";
-                    } else {
-                        pendingSubType = chosenType;
-                    }
-                }
-
                 if (ds.isInherited === "true") {
                     const member = game.actors.get(ds.memberId); const item = member?.items.get(ds.itemId);
                     if (item) {
@@ -318,10 +307,179 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 }
             });
         }
+
+        const harvestSelects = this.element.querySelectorAll('.garden-harvest-select');
+        for (const select of harvestSelects) {
+            select.addEventListener('change', async (event) => {
+                const ds = event.target.dataset;
+                const newChoice = event.target.value;
+
+                if (ds.isInherited === "true") {
+                    const member = game.actors.get(ds.memberId); const item = member?.items.get(ds.itemId);
+                    if (item) await item.setFlag("dnd-2024-bastion-manager", "harvestChoice", newChoice);
+                } else if (ds.isFlag === "true") {
+                    const groupFacilities = this.actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
+                    const fac = groupFacilities.find(f => f._id === ds.itemId);
+                    if (fac) {
+                        if (!fac.flags) fac.flags = {}; if (!fac.flags["dnd-2024-bastion-manager"]) fac.flags["dnd-2024-bastion-manager"] = {};
+                        fac.flags["dnd-2024-bastion-manager"].harvestChoice = newChoice;
+                        await this.actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacilities);
+                    }
+                } else {
+                    const item = this.actor.items.get(ds.itemId);
+                    if (item) await item.setFlag("dnd-2024-bastion-manager", "harvestChoice", newChoice);
+                }
+            });
+        }
+
+        const typeSelects = this.element.querySelectorAll('.garden-change-type-select');
+        for (const select of typeSelects) {
+            select.addEventListener('change', async (event) => {
+                const ds = event.target.dataset;
+                const newSubType = event.target.value;
+
+                if (ds.isInherited === "true") {
+                    const member = game.actors.get(ds.memberId); const item = member?.items.get(ds.itemId);
+                    if (item) {
+                        await item.setFlag("dnd-2024-bastion-manager", "pendingSubType", newSubType);
+                        await item.setFlag("dnd-2024-bastion-manager", "progress", 0);
+                    }
+                } else if (ds.isFlag === "true") {
+                    const groupFacilities = this.actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
+                    const fac = groupFacilities.find(f => f._id === ds.itemId);
+                    if (fac) {
+                        if (!fac.flags) fac.flags = {}; if (!fac.flags["dnd-2024-bastion-manager"]) fac.flags["dnd-2024-bastion-manager"] = {};
+                        fac.flags["dnd-2024-bastion-manager"].pendingSubType = newSubType;
+                        fac.flags["dnd-2024-bastion-manager"].progress = 0;
+                        await this.actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacilities);
+                    }
+                } else {
+                    const item = this.actor.items.get(ds.itemId);
+                    if (item) {
+                        await item.setFlag("dnd-2024-bastion-manager", "pendingSubType", newSubType);
+                        await item.setFlag("dnd-2024-bastion-manager", "progress", 0);
+                    }
+                }
+                ui.notifications.info(`Target specialization set to ${newSubType}.`);
+            });
+        }
     }
 
     static async onUpgradeFacility(event, target) {
-        ui.notifications.info("Upgrade logic pending!");
+        const ds = target.dataset;
+        if (!ds.itemId) return;
+
+        let fac;
+        if (ds.isFlag === "true") {
+            const groupFacilities = this.actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
+            fac = groupFacilities.find(f => f._id === ds.itemId);
+        } else {
+            fac = this.actor.items.get(ds.itemId);
+        }
+        if (!fac) return;
+
+        const name = fac.name;
+        const flags = ds.isFlag === "true" ? fac.flags?.["dnd-2024-bastion-manager"] : fac.getFlag("dnd-2024-bastion-manager", "");
+        const currentSize = flags?.size || "Roomy";
+        
+        if (flags?.upgradeTurns > 0) return ui.notifications.warn("This facility is already being enlarged.");
+
+        // Determine if basic or special and next size costs
+        const basicNames = ["Bedroom", "Dining Room", "Parlor", "Courtyard", "Kitchen", "Storage"];
+        const isBasic = basicNames.some(bn => name.includes(bn));
+        const enlargeableSpecials = ["Archive", "Barrack", "Garden", "Pub", "Stable", "Workshop"];
+        const isEnlargeableSpecial = enlargeableSpecials.some(sn => name.includes(sn));
+
+        let upgradeData = null;
+        if (isBasic) {
+            if (currentSize === "Cramped") {
+                upgradeData = { 
+                    to: "Roomy", 
+                    cost: getVal("enlargeRoomyCost", 500), 
+                    turns: getVal("enlargeRoomyTime", 4) 
+                };
+            } else if (currentSize === "Roomy") {
+                upgradeData = { 
+                    to: "Vast", 
+                    cost: getVal("enlargeVastCost", 2000), 
+                    turns: getVal("enlargeVastTime", 12) 
+                };
+            }
+        } else if (isEnlargeableSpecial) {
+            if (currentSize === "Roomy") {
+                upgradeData = { 
+                    to: "Vast", 
+                    cost: getVal("enlargeVastCost", 2000), 
+                    turns: getVal("enlargeVastTime", 12) 
+                };
+            }
+        }
+
+        // Apply Scaling Settings
+        const ignoreReqs = game.settings.get("dnd-2024-bastion-manager", "ignoreConstructionCosts");
+        const getVal = (key, base) => {
+            if (ignoreReqs) return 0;
+            const perc = game.settings.get("dnd-2024-bastion-manager", key) ?? 100;
+            return Math.floor(base * (perc / 100));
+        }
+
+        if (!upgradeData) return ui.notifications.warn("This facility cannot be enlarged further according to the DMG rules.");
+
+        const currentGP = this.actor.system.currency?.gp || 0;
+        if (currentGP < upgradeData.cost) return ui.notifications.warn(`Insufficient gold. Need ${upgradeData.cost} GP.`);
+
+        const confirm = await DialogV2.confirm({
+            window: { title: "Enlarge Facility" },
+            content: `
+                <p>Enlarging the <b>${name}</b> from ${currentSize} to <b>${upgradeData.to}</b>:</p>
+                <ul>
+                    <li><b>Cost:</b> ${upgradeData.cost} GP</li>
+                    <li><b>Time:</b> ${upgradeData.turns} Bastion turns</li>
+                </ul>
+                <p>Proceed with the construction?</p>`,
+            rejectClose: false, modal: true
+        });
+
+        if (confirm) {
+            if (upgradeData.cost > 0) await this.actor.update({ "system.currency.gp": currentGP - upgradeData.cost });
+            
+            // If time is ignored or multiplier results in 0, upgrade instantly
+            if (upgradeData.turns === 0) {
+                if (ds.isFlag === "true") {
+                    const groupFacilities = this.actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
+                    const gf = groupFacilities.find(f => f._id === ds.itemId);
+                    if (gf) {
+                        if (!gf.flags) gf.flags = {}; if (!gf.flags["dnd-2024-bastion-manager"]) gf.flags["dnd-2024-bastion-manager"] = {};
+                        gf.flags["dnd-2024-bastion-manager"].size = upgradeData.to;
+                        await this.actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacilities);
+                    }
+                } else {
+                    await fac.setFlag("dnd-2024-bastion-manager", "size", upgradeData.to);
+                }
+                ui.notifications.info(`${name} instantly enlarged to ${upgradeData.to}.`);
+                return this.render();
+            }
+
+            const updateObj = {
+                "targetSize": upgradeData.to,
+                "upgradeProgress": 0,
+                "upgradeTurns": upgradeData.turns
+            };
+
+            if (ds.isFlag === "true") {
+                const groupFacilities = this.actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
+                const gf = groupFacilities.find(f => f._id === ds.itemId);
+                if (gf) {
+                    if (!gf.flags) gf.flags = {}; if (!gf.flags["dnd-2024-bastion-manager"]) gf.flags["dnd-2024-bastion-manager"] = {};
+                    Object.assign(gf.flags["dnd-2024-bastion-manager"], updateObj);
+                    await this.actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacilities);
+                }
+            } else {
+                for (let [k, v] of Object.entries(updateObj)) await fac.setFlag("dnd-2024-bastion-manager", k, v);
+            }
+            ui.notifications.info(`Enlargement of ${name} has begun.`);
+            this.render();
+        }
     }
 
     static async onMaintainAll(event, target) {
@@ -386,53 +544,32 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (typeof hData === "number") expectedHirelings = hData;
         else if (typeof hData === "string") expectedHirelings = parseInt(hData) || 0;
         else if (typeof hData === "object" && hData !== null) expectedHirelings = parseInt(hData.max) || parseInt(hData.value) || 0;
-
-        let requiresTypeSelection = itemDoc.name === "Garden" || itemDoc.name === "Workshop" || itemDoc.name === "Laboratory" || itemDoc.name === "Sacristy" || itemDoc.name === "Scriptorium" || itemDoc.name === "Arcane Study" || itemDoc.name === "Sanctuary" || itemDoc.name === "Smithy";
+        
+        const config = FACILITY_CONFIG[itemDoc.name];
         let promptContent = "";
 
-        if (requiresTypeSelection) {
-            let options = "";
-            if (itemDoc.name === "Garden") {
-                options = `
-                    <option value="Decorative">Decorative</option>
-                    <option value="Food">Food</option>
-                    <option value="Herb">Herb</option>
-                    <option value="Poison">Poison</option>`;
-            } else if (itemDoc.name === "Laboratory") {
-                options = `
-                    <option value="Alchemist's Supplies">Alchemist's Supplies</option>
-                    <option value="Poison">Poison</option>`;
-            } else if (itemDoc.name === "Sacristy") {
-                options = `
-                    <option value="Holy Water">Holy Water</option>`;
-            } else if (itemDoc.name === "Scriptorium") {
-                options = `
-                    <option value="Book Replica">Book Replica</option>
-                    <option value="Spell Scroll">Spell Scroll</option>
-                    <option value="Paperwork">Paperwork</option>`;
-            } else if (itemDoc.name === "Arcane Study") {
-                options = `
-                    <option value="Arcane Focus">Arcane Focus</option>
-                    <option value="Book">Book</option>
-                    <option value="Magic Item (Arcana)">Magic Item (Arcana)</option>`;
-            } else if (itemDoc.name === "Sanctuary") {
-                options = `
-                    <option value="Sacred Focus">Sacred Focus</option>`;
-            } else if (itemDoc.name === "Smithy") {
-                options = `
-                    <option value="Smith's Tools">Smith's Tools</option>
-                    <option value="Magic Item (Armament)">Magic Item (Armament)</option>`;
-            } else if (itemDoc.name === "Workshop") {
-                options = `
-                    <option value="Adventuring Gear">Adventuring Gear</option>
-                    <option value="Magic Item (Implement)">Magic Item (Implement)</option>`;
-            }
+        if (config?.type === "specialization") {
+            const options = config.options.map(o => `<option value="${o}">${o}</option>`).join("");
             promptContent += `
                 <div style="margin-bottom: 10px;">
                     <p>Select a specialization for your ${itemDoc.name}:</p>
                     <select name="subType" style="width: 100%;">
                         ${options}
                     </select>
+                </div>
+            `;
+        } else if (config?.type === "tools") {
+            const checkboxes = config.options.map(t => `
+                <label style="display: block; margin-bottom: 4px;">
+                    <input type="checkbox" name="workshopTools" value="${t}"> ${t}
+                </label>
+            `).join("");
+            promptContent += `
+                <div style="margin-bottom: 10px;">
+                    <p>Select <b>6</b> Artisan's Tools for your Workshop:</p>
+                    <div class="tool-selection-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 0.9em;">
+                        ${checkboxes}
+                    </div>
                 </div>
             `;
         }
@@ -451,11 +588,21 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const formData = await DialogV2.prompt({
                 window: { title: `Build Facility: ${itemDoc.name}` },
                 content: promptContent,
-                ok: { callback: (event, button) => {
-                    let data = {};
-                    if (requiresTypeSelection) {
-                        data.subType = button.form.elements.subType?.value;
+                ok: { callback: (event, button) => { 
+                    const data = {};
+                    const form = button.form;
+                    
+                    if (config?.type === "specialization") {
+                        data.subType = form.elements.subType?.value;
+                    } else if (config?.type === "tools") {
+                        const selected = Array.from(form.elements.workshopTools).filter(i => i.checked).map(i => i.value);
+                        if (selected.length !== 6) {
+                            ui.notifications.error("You must select exactly 6 tools for a Workshop.");
+                            return null; // Prevents dialog from closing
+                        }
+                        data.tools = selected;
                     }
+
                     if (expectedHirelings > 0) {
                         let names = [];
                         for(let i = 0; i < expectedHirelings; i++) {
@@ -471,6 +618,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (formData) {
                  if (formData.subType) {
                      foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.subType", formData.subType);
+                 }
+                 if (formData.tools) {
+                     foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.workshopTools", formData.tools);
                  }
                  if (formData.hirelings && formData.hirelings.length > 0) {
                      foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.hirelings", formData.hirelings);
@@ -498,7 +648,26 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const turnsInput = this.element.querySelector('input[name="turns"]');
         const turnsToAdvance = parseInt(turnsInput?.value) || 1;
 
-        const confirm = await DialogV2.confirm({ 
+        const playerActors = game.actors.filter(a => a.hasPlayerOwner && a.type === "character");
+        let allMissing = [];
+        let warningShown = false;
+        for (let actor of playerActors) {
+            allMissing.push(...BastionManager._validateFacilities(actor));
+        }
+
+        if (allMissing.length > 0) {
+            let list = allMissing.map(m => `<li>${m}</li>`).join("");
+            const proceed = await DialogV2.confirm({
+                window: { title: "Incomplete Selections" },
+                content: `<p>The following facilities have active orders but are missing required selections:</p><ul>${list}</ul><p>Facilities with missing selections will be issued the Maintain order. Proceed anyway?</p>`,
+                rejectClose: false,
+                modal: true
+            });
+            if (!proceed) return;
+            warningShown = true;
+        }
+
+        const confirm = warningShown || await DialogV2.confirm({ 
             window: { title: "Advance Bastion Turn" }, 
             content: `<p>Are you sure you want to advance the global Bastion turn by <b>${turnsToAdvance}</b>?</p>`, 
             rejectClose: false, modal: true 
@@ -554,6 +723,35 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         return await BastionManager._buildReport(actor, turnsToAdvance, allMaintaining, resolution);
     }
 
+    // --- HELPER: VALIDATION ---
+    static _validateFacilities(actor) {
+        const facilities = BastionManager._getActorFacilities(actor);
+        const missing = [];
+
+        for (const fac of facilities) {
+            const order = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.order || "Maintain") : (fac.doc.getFlag("dnd-2024-bastion-manager", "order") || "Maintain");
+            
+            if (order === "Maintain") continue;
+
+            if (fac.name.includes("Library") && order === "Research") {
+                const topic = fac.isFlag ? fac.doc.flags?.["dnd-2024-bastion-manager"]?.libraryTopic : fac.doc.getFlag("dnd-2024-bastion-manager", "libraryTopic");
+                if (!topic || topic.trim() === "") missing.push(`${actor.name}: Library needs a Research Topic.`);
+            }
+
+            if (fac.name.includes("Garden")) {
+                if (order === "Harvest") {
+                    const choice = fac.isFlag ? fac.doc.flags?.["dnd-2024-bastion-manager"]?.harvestChoice : fac.doc.getFlag("dnd-2024-bastion-manager", "harvestChoice");
+                    if (!choice) missing.push(`${actor.name}: Garden needs a Harvest selection.`);
+                }
+                if (order === "Change Type") {
+                    const pending = fac.isFlag ? fac.doc.flags?.["dnd-2024-bastion-manager"]?.pendingSubType : fac.doc.getFlag("dnd-2024-bastion-manager", "pendingSubType");
+                    if (!pending) missing.push(`${actor.name}: Garden needs a target Specialization for Change Type.`);
+                }
+            }
+        }
+        return missing;
+    }
+
     // --- HELPER: FACILITY GATHERING ---
     static _getActorFacilities(actor) {
         let facs = [];
@@ -576,12 +774,34 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let subType = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.subType) : (fac.doc.getFlag("dnd-2024-bastion-manager", "subType"));
             let progress = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.progress || 0) : (fac.doc.getFlag("dnd-2024-bastion-manager", "progress") || 0);
             
+            let facSize = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.size || "Roomy") : (fac.doc.getFlag("dnd-2024-bastion-manager", "size") || "Roomy");
+            let upgradeProgress = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.upgradeProgress || 0) : (fac.doc.getFlag("dnd-2024-bastion-manager", "upgradeProgress") || 0);
+            let targetSize = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.targetSize) : (fac.doc.getFlag("dnd-2024-bastion-manager", "targetSize"));
+            let upgradeTurns = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.upgradeTurns || 0) : (fac.doc.getFlag("dnd-2024-bastion-manager", "upgradeTurns") || 0);
+
+            // Check for insufficient input - default to Maintain if missing required data
+            let insufficientReason = null;
+            if (fac.name.includes("Library") && order === "Research") {
+                const topic = fac.isFlag ? fac.doc.flags?.["dnd-2024-bastion-manager"]?.libraryTopic : fac.doc.getFlag("dnd-2024-bastion-manager", "libraryTopic");
+                if (!topic || topic.trim() === "") insufficientReason = "No research topic chosen";
+            } else if (fac.name.includes("Garden")) {
+                if (order === "Harvest") {
+                    const choice = fac.isFlag ? fac.doc.flags?.["dnd-2024-bastion-manager"]?.harvestChoice : fac.doc.getFlag("dnd-2024-bastion-manager", "harvestChoice");
+                    if (!choice) insufficientReason = "No harvest selection made";
+                } else if (order === "Change Type") {
+                    const pending = fac.isFlag ? fac.doc.flags?.["dnd-2024-bastion-manager"]?.pendingSubType : fac.doc.getFlag("dnd-2024-bastion-manager", "pendingSubType");
+                    if (!pending) insufficientReason = "No specialization chosen";
+                }
+            }
+
+            if (insufficientReason) order = "Maintain";
+
             let resultText = "";
             let localGold = 0;
 
             for (let i = 0; i < turns; i++) {
                 if (order === "Maintain") {
-                    resultText = "Maintained standard operations.";
+                    resultText = insufficientReason ? `Maintained operations (${insufficientReason}).` : "Maintained standard operations.";
                 } else if (order === "Change Type") {
                     let pending = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.pendingSubType) : (fac.doc.getFlag("dnd-2024-bastion-manager", "pendingSubType"));
                     progress += 1;
@@ -631,15 +851,42 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     resultText = empRes.text;
                 }
             }
+            
+            // Handle Background Upgrade Progress
+            if (targetSize) {
+                upgradeProgress += turns;
+                if (upgradeProgress >= upgradeTurns) {
+                    facSize = targetSize;
+                    resultText += ` (Enlargement to <b>${facSize}</b> completed!)`;
+                    targetSize = null; upgradeProgress = 0; upgradeTurns = 0;
+                } else {
+                    resultText += ` (Enlarging to ${targetSize}: ${upgradeProgress}/${upgradeTurns} turns)`;
+                }
+            }
 
             totalGold += localGold;
             
             if (fac.isFlag) {
                 const groupFacs = actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
                 const gf = groupFacs.find(f => f._id === fac.doc._id);
-                if (gf) { foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.subType", subType); foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.progress", progress); foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.order", order); await actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacs); }
+                if (gf) { 
+                    foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.subType", subType); 
+                    foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.progress", progress); 
+                    foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.order", order); 
+                    foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.size", facSize);
+                    foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.upgradeProgress", upgradeProgress);
+                    foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.targetSize", targetSize);
+                    foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.upgradeTurns", upgradeTurns);
+                    await actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacs); 
+                }
             } else {
-                await fac.doc.setFlag("dnd-2024-bastion-manager", "subType", subType); await fac.doc.setFlag("dnd-2024-bastion-manager", "progress", progress); await fac.doc.setFlag("dnd-2024-bastion-manager", "order", order);
+                await fac.doc.setFlag("dnd-2024-bastion-manager", "subType", subType); 
+                await fac.doc.setFlag("dnd-2024-bastion-manager", "progress", progress); 
+                await fac.doc.setFlag("dnd-2024-bastion-manager", "order", order);
+                await fac.doc.setFlag("dnd-2024-bastion-manager", "size", facSize);
+                await fac.doc.setFlag("dnd-2024-bastion-manager", "upgradeProgress", upgradeProgress);
+                await fac.doc.setFlag("dnd-2024-bastion-manager", "targetSize", targetSize);
+                await fac.doc.setFlag("dnd-2024-bastion-manager", "upgradeTurns", upgradeTurns);
             }
 
             orderSummary += `<li style="margin-bottom: 6px; padding: 4px; background: rgba(0,0,0,0.03); border-radius: 3px;">
@@ -874,8 +1121,15 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         
         let possible = allDocs.filter(i => i.folder?.id === folder.id);
         if (baseName === "Garden" && subType) {
+            const choice = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.harvestChoice) : (fac.doc.getFlag("dnd-2024-bastion-manager", "harvestChoice"));
             const kwMap = { "Decorative": ["bouquet", "perfume", "candle"], "Food": ["ration", "food"], "Herb": ["healer", "healing", "herb"], "Poison": ["antitoxin", "poison"] };
             if (kwMap[subType]) possible = possible.filter(i => kwMap[subType].some(kw => i.name.toLowerCase().includes(kw)));
+            
+            if (choice) {
+                possible = possible.filter(i => i.name.toLowerCase().includes(choice.toLowerCase()));
+            } else if (kwMap[subType]) {
+                possible = possible.filter(i => kwMap[subType].some(kw => i.name.toLowerCase().includes(kw)));
+            }
         } else if (baseName === "Workshop" && subType) {
             const kwMap = { "Wood": ["wood", "staff", "bow", "club"], "Stone": ["stone", "statue", "block"], "Cloth": ["cloth", "robe", "garment"], "Leather": ["leather", "hide", "armor"], "Metal": ["iron", "steel", "sword", "shield"] };
             if (kwMap[subType]) possible = possible.filter(i => kwMap[subType].some(kw => i.name.toLowerCase().includes(kw)));

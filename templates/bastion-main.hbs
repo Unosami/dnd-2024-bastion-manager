@@ -83,13 +83,64 @@
                     {{#if this.hasOrders}}
                         <div style="font-size: 0.9em; margin-top: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                             <label>Order: </label>
-                            <select class="facility-order-select" data-item-id="{{this.id}}" data-item-name="{{this.itemName}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}">
+                            <select class="facility-order-select" 
+                                    data-item-id="{{this.id}}" data-item-name="{{this.itemName}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}"
+                                    {{#if this.isOrderLocked}}disabled style="opacity: 0.6; cursor: not-allowed;" title="This order is currently in progress and cannot be changed."{{/if}}>
                                 {{#each this.orderOptions}}
                                     <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
                                 {{/each}}
                             </select>
                             {{#if this.isLibraryResearching}}
                                 <input type="text" class="library-topic-input" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" value="{{this.libraryTopic}}" placeholder="Enter topic..." style="height: 20px; font-size: 0.85em; width: 120px;">
+                            {{/if}}
+                            {{#if this.isGardenHarvesting}}
+                                {{#if this.harvestOptions.length}}
+                                <div class="garden-harvest-container" style="margin-top: 5px;">
+                                    <select class="garden-harvest-select" 
+                                            data-item-id="{{id}}" 
+                                            data-is-inherited="{{isInherited}}" 
+                                            data-is-flag="{{isFlag}}" 
+                                            data-member-id="{{memberId}}"
+                                            style="width: 100%; font-size: 0.85em;">
+                                        <option value="">-- Choose Harvest --</option>
+                                        {{#each harvestOptions}}
+                                        <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                                        {{/each}}
+                                    </select>
+                                </div>
+                                {{/if}}
+                            {{/if}}
+                            {{#if this.isGardenChangingType}}
+                                <div class="garden-change-type-container" style="margin-top: 5px;">
+                                    <select class="garden-change-type-select" 
+                                            data-item-id="{{id}}" 
+                                            data-is-inherited="{{isInherited}}" 
+                                            data-is-flag="{{isFlag}}" 
+                                            data-member-id="{{memberId}}"
+                                            style="width: 100%; font-size: 0.85em; {{#if this.isOrderLocked}}opacity: 0.6; cursor: not-allowed;{{/if}}"
+                                            {{#if this.isOrderLocked}}disabled{{/if}}>
+                                        <option value="">-- Choose New Type (3 Turns) --</option>
+                                        {{#each changeTypeOptions}}
+                                        <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                                        {{/each}}
+                                    </select>
+                                </div>
+                                {{#if this.progress}}
+                                    <div class="bastion-progress-bar" title="Turns spent: {{this.progress}} / 3" style="margin-top: 4px; height: 14px; background: rgba(0,0,0,0.1); border: 1px solid #7a7971; border-radius: 3px; position: relative; overflow: hidden; width: 100%;">
+                                        <div class="fill" style="width: {{this.progressPct}}%; height: 100%; background: #4a86e8; border-right: 1px solid #7a7971; transition: width 0.5s;"></div>
+                                        <span style="position: absolute; top: 0; left: 0; width: 100%; text-align: center; font-size: 0.8em; line-height: 14px; color: white; text-shadow: 1px 1px 2px black;">
+                                            {{this.progress}} / 3 Turns
+                                        </span>
+                                    </div>
+                                {{/if}}
+                            {{/if}}
+                            {{#if this.isUpgrading}}
+                                <div class="bastion-upgrade-bar" title="Construction progress: {{this.upgradeProgress}} / {{this.upgradeTurns}}" style="margin-top: 4px; height: 14px; background: rgba(0,0,0,0.1); border: 1px solid #7a7971; border-radius: 3px; position: relative; overflow: hidden; width: 100%;">
+                                    <div class="fill" style="width: {{this.upgradeProgressPct}}%; height: 100%; background: #f1c232; border-right: 1px solid #7a7971; transition: width 0.5s;"></div>
+                                    <span style="position: absolute; top: 0; left: 0; width: 100%; text-align: center; font-size: 0.8em; line-height: 14px; color: black; text-shadow: 1px 1px 1px rgba(255,255,255,0.5);">
+                                        Enlarging: {{this.upgradeProgress}} / {{this.upgradeTurns}} Turns
+                                    </span>
+                                </div>
                             {{/if}}
                         </div>
                     {{else}}
@@ -105,9 +156,11 @@
                             <i class="fa-solid fa-lock"></i>
                         </button>
                     {{else}}
-                        <button type="button" data-action="upgradeFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 4px 8px; color: darkgoldenrod;" title="Enlarge Facility">
-                            <i class="fa-solid fa-arrow-up-right-dots"></i>
-                        </button>
+                        {{#if this.isEnlargeable}}
+                            <button type="button" data-action="upgradeFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 4px 8px; color: darkgoldenrod;" title="Enlarge Facility">
+                                <i class="fa-solid fa-arrow-up-right-dots"></i>
+                            </button>
+                        {{/if}}
                         <button type="button" data-action="deleteFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 4px 8px; color: darkred;" title="Demolish">
                             <i class="fa-solid fa-trash"></i>
                         </button>

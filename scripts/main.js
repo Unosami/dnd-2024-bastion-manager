@@ -102,6 +102,49 @@ class FacilityExclusionApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 }
 
+class ConstructionConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
+    static DEFAULT_OPTIONS = {
+        id: "construction-config-app",
+        tag: "form",
+        window: { title: "Construction Configuration", resizable: true },
+        position: { width: 450, height: "auto" },
+        classes: ["bastion-app"],
+        form: {
+            handler: ConstructionConfigApp.processForm,
+            submitOnChange: false,
+            closeOnSubmit: true
+        }
+    };
+
+    static PARTS = {
+        main: { template: "modules/dnd-2024-bastion-manager/templates/construction-config.hbs" }
+    };
+
+    async _prepareContext(options) {
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        const settings = ["buildCramped", "buildRoomy", "buildVast", "enlargeRoomy", "enlargeVast"];
+        const context = {};
+        for ( const s of settings ) {
+            context[`${s}Cost`] = game.settings.get(MODULE_ID, `${s}Cost`);
+            context[`${s}Time`] = game.settings.get(MODULE_ID, `${s}Time`);
+        }
+        context.buildStages = ["buildCramped", "buildRoomy", "buildVast"];
+        context.enlargeStages = ["enlargeRoomy", "enlargeVast"];
+        return context; 
+    }
+
+    static async processForm(event, form, formData) {
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        const data = formData.object;
+        const settings = ["buildCramped", "buildRoomy", "buildVast", "enlargeRoomy", "enlargeVast"];
+        for ( const s of settings ) {
+            await game.settings.set(MODULE_ID, `${s}Cost`, Number(data[`${s}Cost`]));
+            await game.settings.set(MODULE_ID, `${s}Time`, Number(data[`${s}Time`]));
+        }
+        ui.notifications.info("Bastion Manager | Construction configuration saved.");
+    }
+}
+
 class ResetBastionsApp extends ApplicationV2 {
     static DEFAULT_OPTIONS = {
         id: "reset-bastions-app",
@@ -133,6 +176,33 @@ class ResetBastionsApp extends ApplicationV2 {
 Hooks.once("init", () => {
     const MODULE_ID = "dnd-2024-bastion-manager";
     
+    // --- Construction & Upgrade Settings (Main Menu) ---
+    game.settings.register(MODULE_ID, "ignoreConstructionCosts", {
+        name: "Construction: Ignore All Requirements",
+        hint: "If enabled, facilities are built or upgraded instantly with no gold cost or time investment.",
+        scope: "world",
+        config: true,
+        type: Boolean,
+        default: false,
+        order: 1
+    });
+
+    const constructionStages = ["buildCramped", "buildRoomy", "buildVast", "enlargeRoomy", "enlargeVast"];
+    for ( const s of constructionStages ) {
+        game.settings.register(MODULE_ID, `${s}Cost`, { scope: "world", config: false, type: Number, default: 100 });
+        game.settings.register(MODULE_ID, `${s}Time`, { scope: "world", config: false, type: Number, default: 100 });
+    }
+
+    game.settings.registerMenu(MODULE_ID, "constructionConfigBtn", {
+        name: "Construction Configuration",
+        label: "Configure Construction",
+        hint: "Adjust the gold and time costs for building and enlarging facilities.",
+        icon: "fas fa-hammer",
+        type: ConstructionConfigApp,
+        restricted: true,
+        order: 2
+    });
+
     game.settings.register(MODULE_ID, "advancePermission", {
         name: "Advance Turn Permission",
         hint: "Minimum permission level required to see the Advance Turn controls on a character sheet.",
@@ -244,6 +314,7 @@ Hooks.once("init", () => {
         type: FacilityExclusionApp,
         restricted: true
     });
+
 
 });
 // Hook into the modern V13 ApplicationV2 Header Controls (The 3-dot menu)

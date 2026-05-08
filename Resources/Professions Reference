@@ -16,7 +16,7 @@ Dragonmark Outpost                      -       House Agent
 Harper Hideout                          -       Harper Agent
 Red Wizard Necropolis                   -       Necromancer
 Workshop                                -       Artisan
-Zhentarim Travel Station                -       Groom
+Zhentarim Travel Station                -       Station Keeper
 Emerald Enclave Grove                   -       Emerald Enclave Agent
 Gaming Hall                             -       Gamer
 Greenhouse                              -       Greenthumb
@@ -27,4 +27,11 @@ Navigator's Helm                        -       Navigator
 Order of the Gauntlet Tournament Field  -       Knight
 Orien Helm                              -       Pilot
 Sacristy                                -       Sacristan
-Scriptorium
+Scriptorium                             -       Scribe
+Stable                                  -       Groom
+Teleportation Circle                    -       Magician Diplomat
+Theater                                 -       Performer
+Training Area                           -       Training Partner
+Trophy Room                             -       Curator
+Archive                                 -       Archivist
+Artificer's Forge                       -       Forgemaster

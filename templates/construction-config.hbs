@@ -1,0 +1,64 @@
+<div class="construction-config-container" style="padding: 10px; max-height: 85vh; overflow-y: auto;">
+    <p class="notes" style="margin-bottom: 15px; font-style: italic; color: #555;">Adjust how gold and time requirements are scaled for building and enlarging facilities compared to the standard DMG rules.</p>
+
+    <h3 style="border-bottom: 1px solid #aaa; margin-top: 15px;"><i class="fas fa-hammer"></i> Adding Facilities (From Nothing)</h3>
+    
+    {{#each buildStages}}
+    <div style="background: rgba(0,0,0,0.05); padding: 8px; border-radius: 4px; margin-bottom: 10px;">
+        <label style="font-weight: bold; display: block; border-bottom: 1px solid #ddd; margin-bottom: 5px;">
+            {{#if (eq this "buildCramped")}}Nothing to Cramped (500 GP, 3 Turns){{/if}}
+            {{#if (eq this "buildRoomy")}}Nothing to Roomy (1000 GP, 7 Turns){{/if}}
+            {{#if (eq this "buildVast")}}Nothing to Vast (3000 GP, 18 Turns){{/if}}
+        </label>
+        
+        <div class="form-group" style="margin: 5px 0;">
+            <label style="font-size: 0.9em;">Cost Scalar</label>
+            <div class="form-fields" style="display: flex; gap: 10px; align-items: center;">
+                <input type="range" name="{{this}}Cost" value="{{lookup ../this (concat this "Cost")}}" min="0" max="500" step="5" style="flex: 1;" oninput="this.nextElementSibling.innerText = this.value + '%'">
+                <output style="width: 45px; text-align: right; font-weight: bold;">{{lookup ../this (concat this "Cost")}}%</output>
+            </div>
+        </div>
+
+        <div class="form-group" style="margin: 5px 0;">
+            <label style="font-size: 0.9em;">Time Scalar</label>
+            <div class="form-fields" style="display: flex; gap: 10px; align-items: center;">
+                <input type="range" name="{{this}}Time" value="{{lookup ../this (concat this "Time")}}" min="0" max="500" step="5" style="flex: 1;" oninput="this.nextElementSibling.innerText = this.value + '%'">
+                <output style="width: 45px; text-align: right; font-weight: bold;">{{lookup ../this (concat this "Time")}}%</output>
+            </div>
+        </div>
+    </div>
+    {{/each}}
+
+    <h3 style="border-bottom: 1px solid #aaa; margin-top: 15px;"><i class="fas fa-arrow-up-right-dots"></i> Enlarging Facilities</h3>
+
+    {{#each enlargeStages}}
+    <div style="background: rgba(0,0,0,0.05); padding: 8px; border-radius: 4px; margin-bottom: 10px;">
+        <label style="font-weight: bold; display: block; border-bottom: 1px solid #ddd; margin-bottom: 5px;">
+            {{#if (eq this "enlargeRoomy")}}Cramped to Roomy (500 GP, 4 Turns){{/if}}
+            {{#if (eq this "enlargeVast")}}Roomy to Vast (2000 GP, 12 Turns){{/if}}
+        </label>
+        
+        <div class="form-group" style="margin: 5px 0;">
+            <label style="font-size: 0.9em;">Cost Scalar</label>
+            <div class="form-fields" style="display: flex; gap: 10px; align-items: center;">
+                <input type="range" name="{{this}}Cost" value="{{lookup ../this (concat this "Cost")}}" min="0" max="500" step="5" style="flex: 1;" oninput="this.nextElementSibling.innerText = this.value + '%'">
+                <output style="width: 45px; text-align: right; font-weight: bold;">{{lookup ../this (concat this "Cost")}}%</output>
+            </div>
+        </div>
+
+        <div class="form-group" style="margin: 5px 0;">
+            <label style="font-size: 0.9em;">Time Scalar</label>
+            <div class="form-fields" style="display: flex; gap: 10px; align-items: center;">
+                <input type="range" name="{{this}}Time" value="{{lookup ../this (concat this "Time")}}" min="0" max="500" step="5" style="flex: 1;" oninput="this.nextElementSibling.innerText = this.value + '%'">
+                <output style="width: 45px; text-align: right; font-weight: bold;">{{lookup ../this (concat this "Time")}}%</output>
+            </div>
+        </div>
+    </div>
+    {{/each}}
+
+    <footer class="sheet-footer" style="margin-top: 20px; display: flex; justify-content: center; border-top: 1px solid #ccc; padding-top: 15px;">
+        <button type="submit" name="submit" style="width: auto; padding: 6px 20px; font-weight: bold; cursor: pointer;">
+            <i class="fas fa-save"></i> Save Configuration
+        </button>
+    </footer>
+</div>

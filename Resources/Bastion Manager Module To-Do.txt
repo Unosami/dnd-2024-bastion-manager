@@ -2,8 +2,12 @@ Bastion Module notes:
 - Next I want to start fleshing out the other facility outputs.
     - Specify what the garden/workshop/etc. should be producing.
     - Workshop requires 6 Artisan's Tools selections when built.
+    - Make sure the enlarged facilites get their mechanical benefits.
+
 - Bastion Events when the Maintain order is issued. (Groundwork is done)
     - Flesh out the events and add automation for the DM
+    - Allow for custom events?
+
 - UI Improvements
     - Show all input options in the same dialog rather than clicking through all of the options when creating a facility or advacing a turn.
     - the ability to layout your bastion on a grid.
