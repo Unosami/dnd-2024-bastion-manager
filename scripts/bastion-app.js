@@ -66,8 +66,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             totalDefenders += facDefenders.count;
             if (facDefenders.names.length > 0) allDefenderNames.push(...facDefenders.names);
 
-            let facSize = fac.isFlag ? (fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.size || "Roomy") : (fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "size") || "Roomy");
+            let facSize = fac.isFlag ? fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.size : fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "size");
             let facSubType = fac.isFlag ? (fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.subType) : (fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "subType"));
+            let facSubType2 = fac.isFlag ? (fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.subType2) : (fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "subType2"));
+            let harvestChoice2 = fac.isFlag ? (fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.harvestChoice2) : (fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "harvestChoice2"));
 
             let rawProps = fac.sourceDoc.system?.properties;
             let propArray = [];
@@ -104,8 +106,18 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 if (facSubType === "Decorative") harvestOptions = [{v: "Floral Bouquet", l: "Floral Bouquet (Qty: 10)"}, {v: "Perfume", l: "Perfume (Qty: 10)"}, {v: "Candle", l: "Candle (Qty: 10)"}];
                 else if (facSubType === "Herb") harvestOptions = [{v: "Healer's Kit", l: "Healer's Kit (Qty: 10)"}, {v: "Potion of Healing", l: "Potion of Healing (Qty: 1)"}];
                 else if (facSubType === "Poison") harvestOptions = [{v: "Antitoxin", l: "Antitoxin (Qty: 2)"}, {v: "Basic Poison", l: "Basic Poison (Qty: 1)"}];
+                else if (facSubType === "Food") harvestOptions = [{v: "Rations", l: "Rations (Qty: 100)"}];
             }
             const harvestChoice = fac.isFlag ? (fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.harvestChoice) : (fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "harvestChoice"));
+
+            const isVastGarden = fac.name.includes("Garden") && facSize === "Vast";
+            let harvestOptions2 = [];
+            if (isGardenHarvesting && isVastGarden && facSubType2) {
+                if (facSubType2 === "Decorative") harvestOptions2 = [{v: "Floral Bouquet", l: "Floral Bouquet (Qty: 10)"}, {v: "Perfume", l: "Perfume (Qty: 10)"}, {v: "Candle", l: "Candle (Qty: 10)"}];
+                else if (facSubType2 === "Herb") harvestOptions2 = [{v: "Healer's Kit", l: "Healer's Kit (Qty: 10)"}, {v: "Potion of Healing", l: "Potion of Healing (Qty: 1)"}];
+                else if (facSubType2 === "Poison") harvestOptions2 = [{v: "Antitoxin", l: "Antitoxin (Qty: 2)"}, {v: "Basic Poison", l: "Basic Poison (Qty: 1)"}];
+                else if (facSubType2 === "Food") harvestOptions2 = [{v: "Rations", l: "Rations (Qty: 100)"}];
+            }
 
             const isGardenChangingType = fac.name.includes("Garden") && safeOrder === "Change Type";
             const pendingSubType = fac.isFlag ? (fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.pendingSubType || "") : (fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "pendingSubType") || "");
@@ -120,9 +132,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             
             const upgradeProgress = fac.isFlag ? (fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.upgradeProgress || 0) : (fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "upgradeProgress") || 0);
             const upgradeTurns = fac.isFlag ? (fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.upgradeTurns || 0) : (fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "upgradeTurns") || 0);
-            const isOrderLocked = progress > 0 || upgradeTurns > 0;
+            const isUnderConstruction = upgradeTurns > 0;
+            const isBuilding = isUnderConstruction && !facSize;
+            const isOrderLocked = progress > 0 || isBuilding;
+
             const gardenConfig = FACILITY_CONFIG["Garden"];
-            const changeTypeOptions = isGardenChangingType ? gardenConfig.options.map(o => ({
+            const constructionLabel = facSize ? "Enlarging" : "Building";
+
+            const changeTypeOptions = (isGardenChangingType && !isBuilding) ? gardenConfig.options.map(o => ({
                 value: o, 
                 label: o, 
                 selected: o === pendingSubType 
@@ -131,25 +148,34 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             return {
                 id: fac.id, name: fac.isInherited ? `${fac.name} (${fac.ownerName})` : fac.name,
                 hirelings: hirelingsDisplay, defenderCount: facDefenders.count > 0 ? facDefenders.count : null,
-                size: facSize, subType: facSubType,
+                size: facSize || (isUnderConstruction ? "Construction" : "Roomy"), subType: facSubType,
                 img: fac.sourceDoc.img, isInherited: fac.isInherited, isFlag: fac.isFlag, memberId: fac.memberActor?.id || null,
                 itemName: fac.name,
                 hasOrders: hasOrders,
+                showOrderDropdown: hasOrders && !isBuilding,
                 orderOptions: availableOrders.map(order => ({ value: order, label: order, selected: order === safeOrder })),
                 isLibraryResearching: isLibraryResearching,
                 libraryTopic: libraryTopic,
                 isGardenHarvesting: isGardenHarvesting,
+                isVastGarden: isVastGarden,
+                subType2: facSubType2,
                 harvestOptions: harvestOptions.map(o => ({ 
                     value: o.v, 
                     label: o.l, 
                     selected: o.v === harvestChoice 
+                })),
+                harvestOptions2: harvestOptions2.map(o => ({
+                    value: o.v,
+                    label: o.l,
+                    selected: o.v === harvestChoice2
                 })),
                 isGardenChangingType: isGardenChangingType,
                 changeTypeOptions: changeTypeOptions,
                 isOrderLocked: isOrderLocked,
                 progress: progress,
                 progressPct: Math.round((Math.min(progress, 3) / 3) * 100),
-                isUpgrading: upgradeTurns > 0,
+                isUnderConstruction: isUnderConstruction,
+                constructionLabel: constructionLabel,
                 upgradeProgress: upgradeProgress,
                 upgradeTurns: upgradeTurns,
                 upgradeProgressPct: Math.round((Math.min(upgradeProgress, upgradeTurns) / (upgradeTurns || 1)) * 100),
@@ -281,6 +307,30 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 }
                 ui.notifications.info(`Order updated to ${newOrder}.`);
                 this.render(); // Re-render to show/hide the library input box
+            });
+        }
+
+        const harvestSelects2 = this.element.querySelectorAll('.garden-harvest-select-2');
+        for (const select of harvestSelects2) {
+            select.addEventListener('change', async (event) => {
+                const ds = event.target.dataset;
+                const newChoice = event.target.value;
+
+                if (ds.isInherited === "true") {
+                    const member = game.actors.get(ds.memberId); const item = member?.items.get(ds.itemId);
+                    if (item) await item.setFlag("dnd-2024-bastion-manager", "harvestChoice2", newChoice);
+                } else if (ds.isFlag === "true") {
+                    const groupFacilities = this.actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
+                    const fac = groupFacilities.find(f => f._id === ds.itemId);
+                    if (fac) {
+                        if (!fac.flags) fac.flags = {}; if (!fac.flags["dnd-2024-bastion-manager"]) fac.flags["dnd-2024-bastion-manager"] = {};
+                        fac.flags["dnd-2024-bastion-manager"].harvestChoice2 = newChoice;
+                        await this.actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacilities);
+                    }
+                } else {
+                    const item = this.actor.items.get(ds.itemId);
+                    if (item) await item.setFlag("dnd-2024-bastion-manager", "harvestChoice2", newChoice);
+                }
             });
         }
         
@@ -433,16 +483,49 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const currentGP = this.actor.system.currency?.gp || 0;
         if (currentGP < upgradeData.cost) return ui.notifications.warn(`Insufficient gold. Need ${upgradeData.cost} GP.`);
 
-        const confirm = await DialogV2.confirm({
+        let promptContent = `<p>Enlarging the <b>${name}</b> from ${currentSize} to <b>${upgradeData.to}</b>:</p>
+                            <ul>
+                                <li><b>Cost:</b> ${upgradeData.cost} GP</li>
+                                <li><b>Time:</b> ${upgradeData.turns} Bastion turns</li>
+                            </ul>`;
+
+        let subType2SelectionNeeded = false;
+        if (name.includes("Garden") && upgradeData.to === "Vast") {
+            const options = FACILITY_CONFIG["Garden"].options.map(o => `<option value="${o}">${o}</option>`).join("");
+            promptContent += `<div style="margin-top: 10px; border-top: 1px solid #ccc; padding-top: 10px;">
+                                <p>A Vast Garden functions as two Roomy Gardens. Select the type for your <b>second</b> garden plot:</p>
+                                <select name="subType2" style="width: 100%;">${options}</select>
+                              </div>`;
+            subType2SelectionNeeded = true;
+        }
+
+        const confirmData = await DialogV2.prompt({
             window: { title: "Enlarge Facility" },
-            content: `
-                <p>Enlarging the <b>${name}</b> from ${currentSize} to <b>${upgradeData.to}</b>:</p>
-                <ul>
-                    <li><b>Cost:</b> ${upgradeData.cost} GP</li>
-                    <li><b>Time:</b> ${upgradeData.turns} Bastion turns</li>
-                </ul>
-                <p>Proceed with the construction?</p>`,
-            rejectClose: false, modal: true
+            content: promptContent + `<p>Proceed with the construction?</p>`,
+            buttons: [
+                {
+                    action: "cancel",
+                    label: "Cancel",
+                    icon: "fas fa-times",
+                    callback: () => null // Explicitly return null on cancel
+                },
+                {
+                    action: "ok",
+                    label: "Confirm",
+                    icon: "fas fa-check",
+                    default: true,
+                    callback: (event, button) => {
+                        const data = {};
+                        if (subType2SelectionNeeded) {
+                            data.subType2 = button.form.elements.subType2?.value;
+                        } else {
+                            data.subType2 = null; // Ensure subType2 is always present in the returned object
+                        }
+                        return data;
+                    }
+                }
+            ],
+            rejectClose: false
         });
 
         if (confirm) {
@@ -456,10 +539,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     if (gf) {
                         if (!gf.flags) gf.flags = {}; if (!gf.flags["dnd-2024-bastion-manager"]) gf.flags["dnd-2024-bastion-manager"] = {};
                         gf.flags["dnd-2024-bastion-manager"].size = upgradeData.to;
+                        if (confirmData.subType2) gf.flags["dnd-2024-bastion-manager"].subType2 = confirmData.subType2; // confirmData.subType2 will be null or a value
                         await this.actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacilities);
                     }
                 } else {
                     await fac.setFlag("dnd-2024-bastion-manager", "size", upgradeData.to);
+                    if (confirmData.subType2) await fac.setFlag("dnd-2024-bastion-manager", "subType2", confirmData.subType2); // confirmData.subType2 will be null or a value
                 }
                 ui.notifications.info(`${name} instantly enlarged to ${upgradeData.to}.`);
                 return this.render();
@@ -468,7 +553,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const updateObj = {
                 "targetSize": upgradeData.to,
                 "upgradeProgress": 0,
-                "upgradeTurns": upgradeData.turns
+                "upgradeTurns": upgradeData.turns,
+                "targetSubType2": confirmData.subType2 // confirmData.subType2 will be null or a value
             };
 
             if (ds.isFlag === "true") {
@@ -540,8 +626,38 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const pack = game.packs.get("dnd-2024-bastion-manager.bastion-facilities");
         const itemDoc = await pack.getDocument(selectElement.value);
         let newFacData = itemDoc.toObject();
+        const MODULE_ID = "dnd-2024-bastion-manager";
 
-        foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.size", "Roomy");
+        // Identify Basic vs Special
+        const basicNames = ["Bedroom", "Dining Room", "Parlor", "Courtyard", "Kitchen", "Storage"];
+        const isBasic = basicNames.some(bn => itemDoc.name.includes(bn));
+
+        // Cost Calculation Helper
+        const getVal = (key, base, isTime = false) => {
+            if (game.settings.get(MODULE_ID, "ignoreConstructionCosts")) return 0;
+            const granularValue = game.settings.get(MODULE_ID, key) ?? base;
+            if (granularValue !== base) return granularValue;
+            const globalMult = isTime ? game.settings.get(MODULE_ID, "globalTimeMultiplier") : game.settings.get(MODULE_ID, "globalCostMultiplier");
+            return Math.floor(base * ((globalMult ?? 100) / 100));
+        };
+
+        const sizeCosts = {
+            Cramped: { 
+                cost: getVal("buildCrampedCost", 500, false), 
+                turns: getVal("buildCrampedTime", 3, true) 
+            },
+            Roomy: { 
+                cost: getVal("buildRoomyCost", 1000, false), 
+                turns: getVal("buildRoomyTime", 7, true) 
+            },
+            Vast: { 
+                cost: getVal("buildVastCost", 3000, false), 
+                turns: getVal("buildVastTime", 18, true) 
+            }
+        };
+
+        // Default size for Specials is Roomy; Basic size is determined by user input
+        if (!isBasic) foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.size", "Roomy");
 
         let expectedHirelings = 0;
         const hData = itemDoc.system?.hireling || itemDoc.system?.hirelings || itemDoc.system?.details?.hireling || itemDoc.system?.details?.hirelings;
@@ -552,6 +668,19 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         
         const config = FACILITY_CONFIG[itemDoc.name];
         let promptContent = "";
+
+        if (isBasic) {
+            promptContent += `
+                <div style="margin-bottom: 15px; border-bottom: 1px solid #ccc; padding-bottom: 10px;">
+                    <p>Select the size for your new <b>${itemDoc.name}</b>:</p>
+                    <select name="size" style="width: 100%;">
+                        <option value="Cramped">Cramped (${sizeCosts.Cramped.cost} GP, ${sizeCosts.Cramped.turns} Turns)</option>
+                        <option value="Roomy" selected>Roomy (${sizeCosts.Roomy.cost} GP, ${sizeCosts.Roomy.turns} Turns)</option>
+                        <option value="Vast">Vast (${sizeCosts.Vast.cost} GP, ${sizeCosts.Vast.turns} Turns)</option>
+                    </select>
+                </div>
+            `;
+        }
 
         if (config?.type === "specialization") {
             const options = config.options.map(o => `<option value="${o}">${o}</option>`).join("");
@@ -590,12 +719,16 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         }
 
         if (promptContent) {
-            const formData = await DialogV2.prompt({
+            const formData = await DialogV2.wait({
                 window: { title: `Build Facility: ${itemDoc.name}` },
                 content: promptContent,
-                ok: { callback: (event, button) => { 
+                buttons: [{ action: "cancel", label: "Cancel", icon: "fas fa-times" }, { action: "ok", label: "Build", icon: "fas fa-hammer", default: true, callback: (event, button) => { 
                     const data = {};
                     const form = button.form;
+
+                    if (isBasic) {
+                        data.size = form.elements.size?.value;
+                    }
                     
                     if (config?.type === "specialization") {
                         data.subType = form.elements.subType?.value;
@@ -617,10 +750,31 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         data.hirelings = names;
                     }
                     return data;
-                }}
+                }}]
             });
             
-            if (formData) {
+            if (formData && formData !== "cancel") {
+                 // Handle Basic Facility Construction Costs and Flags
+                 if (isBasic && formData.size) {
+                    const cost = sizeCosts[formData.size].cost;
+                    const turns = sizeCosts[formData.size].turns;
+                    const currentGP = this.actor.system.currency?.gp || 0;
+                    
+                    if (currentGP < cost) {
+                        ui.notifications.warn(`Insufficient gold. Need ${cost} GP.`);
+                        return;
+                    }
+                    if (cost > 0) await this.actor.update({ "system.currency.gp": currentGP - cost });
+
+                    if (turns > 0) {
+                        foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.upgradeTurns", turns);
+                        foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.upgradeProgress", 0);
+                        foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.targetSize", formData.size);
+                    } else {
+                        foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.size", formData.size);
+                    }
+                 }
+
                  if (formData.subType) {
                      foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.subType", formData.subType);
                  }
@@ -782,6 +936,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let facSize = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.size || "Roomy") : (fac.doc.getFlag("dnd-2024-bastion-manager", "size") || "Roomy");
             let upgradeProgress = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.upgradeProgress || 0) : (fac.doc.getFlag("dnd-2024-bastion-manager", "upgradeProgress") || 0);
             let targetSize = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.targetSize) : (fac.doc.getFlag("dnd-2024-bastion-manager", "targetSize"));
+            let targetSubType2 = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.targetSubType2) : (fac.doc.getFlag("dnd-2024-bastion-manager", "targetSubType2"));
+            let facSubType2 = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.subType2) : (fac.doc.getFlag("dnd-2024-bastion-manager", "subType2"));
             let upgradeTurns = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.upgradeTurns || 0) : (fac.doc.getFlag("dnd-2024-bastion-manager", "upgradeTurns") || 0);
 
             // Check for insufficient input - default to Maintain if missing required data
@@ -819,6 +975,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     let harvestRes = await BastionManager._handleHarvest(fac.doc.name, subType, fac);
                     if (harvestRes.item) items.push(harvestRes.item);
                     resultText = harvestRes.text;
+                    if (fac.name.includes("Garden") && facSize === "Vast" && facSubType2) {
+                        let harvestRes2 = await BastionManager._handleHarvest(fac.doc.name, facSubType2, fac, true);
+                        if (harvestRes2.item) items.push(harvestRes2.item);
+                        resultText += ` and ${harvestRes2.text}`;
+                    }
                 } else if (order === "Research") {
                     let resRes = await BastionManager._handleResearch(fac.doc.name, fac, subType);
                     resultText = resRes.text;
@@ -862,8 +1023,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 upgradeProgress += turns;
                 if (upgradeProgress >= upgradeTurns) {
                     facSize = targetSize;
+                    if (targetSubType2) facSubType2 = targetSubType2;
                     resultText += ` (Enlargement to <b>${facSize}</b> completed!)`;
-                    targetSize = null; upgradeProgress = 0; upgradeTurns = 0;
+                    targetSize = null; upgradeProgress = 0; upgradeTurns = 0; targetSubType2 = null;
                 } else {
                     resultText += ` (Enlarging to ${targetSize}: ${upgradeProgress}/${upgradeTurns} turns)`;
                 }
@@ -879,8 +1041,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.progress", progress); 
                     foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.order", order); 
                     foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.size", facSize);
+                    foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.subType2", facSubType2);
                     foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.upgradeProgress", upgradeProgress);
                     foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.targetSize", targetSize);
+                    foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.targetSubType2", targetSubType2);
                     foundry.utils.setProperty(gf, "flags.dnd-2024-bastion-manager.upgradeTurns", upgradeTurns);
                     await actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacs); 
                 }
@@ -889,8 +1053,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 await fac.doc.setFlag("dnd-2024-bastion-manager", "progress", progress); 
                 await fac.doc.setFlag("dnd-2024-bastion-manager", "order", order);
                 await fac.doc.setFlag("dnd-2024-bastion-manager", "size", facSize);
+                await fac.doc.setFlag("dnd-2024-bastion-manager", "subType2", facSubType2);
                 await fac.doc.setFlag("dnd-2024-bastion-manager", "upgradeProgress", upgradeProgress);
                 await fac.doc.setFlag("dnd-2024-bastion-manager", "targetSize", targetSize);
+                await fac.doc.setFlag("dnd-2024-bastion-manager", "targetSubType2", targetSubType2);
                 await fac.doc.setFlag("dnd-2024-bastion-manager", "upgradeTurns", upgradeTurns);
             }
 
@@ -1115,7 +1281,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     // --- HELPER: HARVEST ---
-    static async _handleHarvest(baseName, subType, fac) {
+    static async _handleHarvest(baseName, subType, fac, isSecondPlot = false) {
         const outPack = game.packs.get("dnd-2024-bastion-manager.bastion-output-items");
         if (!outPack) return { item: null, text: "Output compendium missing." };
         const allDocs = await outPack.getDocuments(); const folder = outPack.folders.find(f => f.name === baseName);
@@ -1126,7 +1292,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         
         let possible = allDocs.filter(i => i.folder?.id === folder.id);
         if (baseName === "Garden" && subType) {
-            const choice = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.harvestChoice) : (fac.doc.getFlag("dnd-2024-bastion-manager", "harvestChoice"));
+            const flagKey = isSecondPlot ? "harvestChoice2" : "harvestChoice";
+            const choice = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.[flagKey]) : (fac.doc.getFlag("dnd-2024-bastion-manager", flagKey));
             const kwMap = { "Decorative": ["bouquet", "perfume", "candle"], "Food": ["ration", "food"], "Herb": ["healer", "healing", "herb"], "Poison": ["antitoxin", "poison"] };
             if (kwMap[subType]) possible = possible.filter(i => kwMap[subType].some(kw => i.name.toLowerCase().includes(kw)));
             
