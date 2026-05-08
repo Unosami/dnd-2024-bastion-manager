@@ -111,7 +111,7 @@ class ConstructionConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
         classes: ["bastion-app"],
         form: {
             handler: ConstructionConfigApp.processForm,
-            submitOnChange: true,
+            submitOnChange: false,
             closeOnSubmit: true
         }
     };
@@ -144,19 +144,20 @@ class ConstructionConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
             enlargeVast: { name: "Enlarge to Vast", gp: 2000, turns: 12, days: 80 }
         };
 
-        context.preview = Object.entries(bases).map(([key, base]) => {
-            const sCost = context[`${key}Cost`];
-            const sTime = context[`${key}Time`];
-            const finalGP = Math.floor(base.gp * (sCost / 100) * (globalCost / 100));
-            const finalTurns = Math.floor(base.turns * (sTime / 100) * (globalTime / 100));
-            const finalDays = Math.floor(base.days * (sTime / 100) * (globalTime / 100));
+        const calculatePreview = (entries) => entries.map(([key, base]) => {
+            const sCost = context[`${key}Cost`] ?? base.gp;
+            const sTime = context[`${key}Time`] ?? base.turns;
             return {
                 label: base.name,
-                gp: finalGP,
-                turns: finalTurns,
-                days: finalDays
+                gp: Math.floor(sCost * (globalCost / 100)),
+                turns: Math.floor(sTime * (globalTime / 100)),
+                days: Math.floor(base.days * (sTime / base.turns) * (globalTime / 100))
             };
         });
+
+        const baseEntries = Object.entries(bases);
+        context.previewAdd = calculatePreview(baseEntries.filter(([k]) => k.startsWith("build")));
+        context.previewEnlarge = calculatePreview(baseEntries.filter(([k]) => k.startsWith("enlarge")));
 
         return context; 
     }
@@ -223,9 +224,17 @@ Hooks.once("init", () => {
     game.settings.register(MODULE_ID, "globalTimeMultiplier", { scope: "world", config: false, type: Number, default: 100 });
 
     const constructionStages = ["buildCramped", "buildRoomy", "buildVast", "enlargeRoomy", "enlargeVast"];
+    const defaultValues = {
+        buildCrampedCost: 500, buildCrampedTime: 3,
+        buildRoomyCost: 1000, buildRoomyTime: 7,
+        buildVastCost: 3000, buildVastTime: 18,
+        enlargeRoomyCost: 500, enlargeRoomyTime: 4,
+        enlargeVastCost: 2000, enlargeVastTime: 12
+    };
+
     for ( const s of constructionStages ) {
-        game.settings.register(MODULE_ID, `${s}Cost`, { scope: "world", config: false, type: Number, default: 100 });
-        game.settings.register(MODULE_ID, `${s}Time`, { scope: "world", config: false, type: Number, default: 100 });
+        game.settings.register(MODULE_ID, `${s}Cost`, { scope: "world", config: false, type: Number, default: defaultValues[`${s}Cost`] });
+        game.settings.register(MODULE_ID, `${s}Time`, { scope: "world", config: false, type: Number, default: defaultValues[`${s}Time`] });
     }
 
     game.settings.registerMenu(MODULE_ID, "constructionConfigBtn", {
