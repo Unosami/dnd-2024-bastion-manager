@@ -30,7 +30,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             viewBastionMap: BastionManager.onViewBastionMap,
             buildDefensiveWall: BastionManager.onBuildDefensiveWall,
             selectFacilityLayout: BastionManager.onSelectFacilityLayout,
-            clearLayout: BastionManager.onClearLayout
+            clearLayout: BastionManager.onClearLayout,
+            saveLayout: BastionManager.onSaveLayout
         }
     };
     static PARTS = { main: { template: "modules/dnd-2024-bastion-manager/templates/bastion-main.hbs" } };
@@ -64,7 +65,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const mapSceneId = this.actor.getFlag(MODULE_ID, "mapSceneId");
         const hasMap = !!game.scenes.get(mapSceneId);
         
-        const layoutData = this.actor.getFlag(MODULE_ID, "layout") || {};
+        // Initialize local layout from flags if not already present
+        if (this._localLayout === undefined) {
+            this._localLayout = foundry.utils.deepClone(this.actor.getFlag(MODULE_ID, "layout") || {});
+        }
+        const layoutData = this._localLayout;
         const selectedId = this._selectedFacilityId;
         
         let totalDefenders = 0;
@@ -488,28 +493,22 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         // Grid Square Listeners
         const squares = this.element.querySelectorAll('.bastion-grid-square');
         squares.forEach(sq => {
-            sq.addEventListener('click', async (ev) => {
+            sq.addEventListener('click', (ev) => {
                 if (!this._selectedFacilityId) return ui.notifications.warn("Select a facility from the list first to place squares.");
                 
                 const coord = ev.currentTarget.dataset.coord;
-                const MODULE_ID = "dnd-2024-bastion-manager";
-                const layout = foundry.utils.deepClone(this.actor.getFlag(MODULE_ID, "layout") || {});
+                const fac = context.facilities.find(f => f.id === this._selectedFacilityId);
                 
-                const facilities = this._prepareContext().then(ctx => {
-                    const fac = ctx.facilities.find(f => f.id === this._selectedFacilityId);
-                    
-                    if (layout[coord] === this._selectedFacilityId) {
-                        delete layout[coord];
-                    } else {
-                        if (fac.placedSquares >= fac.maxSquares) {
-                            return ui.notifications.warn(`${fac.name} has already reached its maximum area of ${fac.maxSquares} squares.`);
-                        }
-                        layout[coord] = this._selectedFacilityId;
+                if (this._localLayout[coord] === this._selectedFacilityId) {
+                    delete this._localLayout[coord];
+                } else {
+                    const currentlyPlaced = Object.values(this._localLayout).filter(id => id === this._selectedFacilityId).length;
+                    if (currentlyPlaced >= fac.maxSquares) {
+                        return ui.notifications.warn(`${fac.name} has already reached its maximum area of ${fac.maxSquares} squares.`);
                     }
-                    
-                    this.actor.setFlag(MODULE_ID, "layout", layout);
-                    this.render();
-                });
+                    this._localLayout[coord] = this._selectedFacilityId;
+                }
+                this.render();
             });
         });
     }
@@ -520,13 +519,20 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         this.render();
     }
 
-    static async onClearLayout(event, target) {
+    static onClearLayout(event, target) {
+        this._localLayout = {};
+        this.render();
+    }
+
+    static async onSaveLayout(event, target) {
+        const MODULE_ID = "dnd-2024-bastion-manager";
         const confirm = await DialogV2.confirm({
-            window: { title: "Clear Layout" },
-            content: "<p>Are you sure you want to clear the entire Bastion layout? This cannot be undone.</p>"
+            window: { title: "Save Layout" },
+            content: "<p>Save the current grid layout to the Bastion?</p>"
         });
         if (confirm) {
-            await this.actor.unsetFlag("dnd-2024-bastion-manager", "layout");
+            await this.actor.setFlag(MODULE_ID, "layout", this._localLayout);
+            ui.notifications.info("Bastion layout saved.");
             this.render();
         }
     }
