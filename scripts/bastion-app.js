@@ -20,13 +20,17 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     static DEFAULT_OPTIONS = {
         id: "bastion-manager", classes: ["bastion-app"], tag: "form",
         window: { title: "Bastion Management", icon: "fa-solid fa-chess-rook", resizable: true },
-        position: { width: 450, height: "auto" },
+        position: { width: 850, height: 600 },
         actions: { 
             buildFromDropdown: BastionManager.onBuildFromDropdown, 
             deleteFacility: BastionManager.onDeleteFacility, 
             upgradeFacility: BastionManager.onUpgradeFacility,
             maintainAll: BastionManager.onMaintainAll,
-            advanceGlobalTurn: BastionManager.onAdvanceGlobalTurn
+            advanceGlobalTurn: BastionManager.onAdvanceGlobalTurn,
+            viewBastionMap: BastionManager.onViewBastionMap,
+            buildDefensiveWall: BastionManager.onBuildDefensiveWall,
+            selectFacilityLayout: BastionManager.onSelectFacilityLayout,
+            clearLayout: BastionManager.onClearLayout
         }
     };
     static PARTS = { main: { template: "modules/dnd-2024-bastion-manager/templates/bastion-main.hbs" } };
@@ -53,6 +57,15 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     async _prepareContext(options) {
         const globalTurnCount = game.settings.get("dnd-2024-bastion-manager", "globalTurnCount") || 0;
         const rawFacilities = this._getUnifiedFacilities();
+        const MODULE_ID = "dnd-2024-bastion-manager";
+
+        const wallCount = this.actor.getFlag(MODULE_ID, "completedWalls") || 0;
+        const wallDays = this.actor.getFlag(MODULE_ID, "pendingWallDays") || 0;
+        const mapSceneId = this.actor.getFlag(MODULE_ID, "mapSceneId");
+        const hasMap = !!game.scenes.get(mapSceneId);
+        
+        const layoutData = this.actor.getFlag(MODULE_ID, "layout") || {};
+        const selectedId = this._selectedFacilityId;
         
         let totalDefenders = 0;
         let allDefenderNames = [];
@@ -136,6 +149,16 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const isBuilding = isUnderConstruction && !facSize;
             const isOrderLocked = progress > 0 || isBuilding;
 
+            // Layout Logic
+            const maxSquares = facSize === "Vast" ? 36 : (facSize === "Cramped" ? 4 : 16);
+            const placedSquares = Object.values(layoutData).filter(id => id === fac.id).length;
+            const isLayoutActive = selectedId === fac.id;
+
+            // Facility Color (random but consistent for layout)
+            const colorSeed = fac.id.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+            const hue = colorSeed % 360;
+            const facColor = `hsl(${hue}, 60%, 40%)`;
+
             const gardenConfig = FACILITY_CONFIG["Garden"];
             const constructionLabel = facSize ? "Enlarging" : "Building";
 
@@ -179,7 +202,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 upgradeProgress: upgradeProgress,
                 upgradeTurns: upgradeTurns,
                 upgradeProgressPct: Math.round((Math.min(upgradeProgress, upgradeTurns) / (upgradeTurns || 1)) * 100),
-                isEnlargeable: isEnlargeable
+                isEnlargeable: isEnlargeable,
+                maxSquares,
+                placedSquares,
+                isLayoutActive,
+                facColor
             };
         });
 
@@ -284,11 +311,28 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const requiredRole = parseInt(game.settings.get("dnd-2024-bastion-manager", "advancePermission")) || 4;
         const canAdvanceTurn = game.user.role >= requiredRole;
 
+        // Generate Grid for Template
+        const grid = [];
+        for (let y = 0; y < 20; y++) {
+            for (let x = 0; x < 20; x++) {
+                const coord = `${x},${y}`;
+                const facId = layoutData[coord];
+                const fac = facilities.find(f => f.id === facId);
+                grid.push({
+                    x, y, coord,
+                    color: fac ? fac.facColor : "transparent",
+                    name: fac ? fac.name : ""
+                });
+            }
+        }
+
         return { 
             actor: this.actor, turnCount: globalTurnCount, 
             totalDefenders, defenderNames: allDefenderNames.join(", "), 
             facilities, specialFacilities, basicFacilities,
-            canAdvanceTurn 
+            canAdvanceTurn, grid,
+            wallCount, wallDays, hasMap,
+            selectedId
         };
     }
 
@@ -440,6 +484,51 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 ui.notifications.info(`Target specialization set to ${newSubType}.`);
             });
         }
+
+        // Grid Square Listeners
+        const squares = this.element.querySelectorAll('.bastion-grid-square');
+        squares.forEach(sq => {
+            sq.addEventListener('click', async (ev) => {
+                if (!this._selectedFacilityId) return ui.notifications.warn("Select a facility from the list first to place squares.");
+                
+                const coord = ev.currentTarget.dataset.coord;
+                const MODULE_ID = "dnd-2024-bastion-manager";
+                const layout = foundry.utils.deepClone(this.actor.getFlag(MODULE_ID, "layout") || {});
+                
+                const facilities = this._prepareContext().then(ctx => {
+                    const fac = ctx.facilities.find(f => f.id === this._selectedFacilityId);
+                    
+                    if (layout[coord] === this._selectedFacilityId) {
+                        delete layout[coord];
+                    } else {
+                        if (fac.placedSquares >= fac.maxSquares) {
+                            return ui.notifications.warn(`${fac.name} has already reached its maximum area of ${fac.maxSquares} squares.`);
+                        }
+                        layout[coord] = this._selectedFacilityId;
+                    }
+                    
+                    this.actor.setFlag(MODULE_ID, "layout", layout);
+                    this.render();
+                });
+            });
+        });
+    }
+
+    static onSelectFacilityLayout(event, target) {
+        const id = target.dataset.itemId;
+        this._selectedFacilityId = this._selectedFacilityId === id ? null : id;
+        this.render();
+    }
+
+    static async onClearLayout(event, target) {
+        const confirm = await DialogV2.confirm({
+            window: { title: "Clear Layout" },
+            content: "<p>Are you sure you want to clear the entire Bastion layout? This cannot be undone.</p>"
+        });
+        if (confirm) {
+            await this.actor.unsetFlag("dnd-2024-bastion-manager", "layout");
+            this.render();
+        }
     }
 
     static async onUpgradeFacility(event, target) {
@@ -555,7 +644,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             rejectClose: false
         });
 
-        if (confirm) {
+        if (confirmData) {
             if (upgradeData.cost > 0) await this.actor.update({ "system.currency.gp": currentGP - upgradeData.cost });
             
             // If time is ignored or multiplier results in 0, upgrade instantly
@@ -829,6 +918,75 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         this.render(); 
     }
 
+    static async onViewBastionMap(event, target) {
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        let sceneId = this.actor.getFlag(MODULE_ID, "mapSceneId");
+        let scene = game.scenes.get(sceneId);
+
+        if (!scene) {
+            if (!game.user.can("SCENE_CREATE")) {
+                return ui.notifications.error("You do not have permission to create Scenes. Please ask your GM to initialize the Bastion Map.");
+            }
+
+            const confirm = await DialogV2.confirm({
+                window: { title: "Create Bastion Map" },
+                content: `<p>No map exists for <b>${this.actor.name}</b>. Create a new Scene for the Bastion layout? (Grid: 5ft, Size: 3000x3000px)</p>`,
+                rejectClose: false,
+                modal: true
+            });
+            if (!confirm) return;
+
+            scene = await Scene.create({
+                name: `${this.actor.name}'s Bastion Map`,
+                grid: { type: 1, size: 100, distance: 5, units: "ft" },
+                width: 3000,
+                height: 3000,
+                backgroundColor: "#222222",
+                ownership: { [game.user.id]: 3 }
+            });
+            await this.actor.setFlag(MODULE_ID, "mapSceneId", scene.id);
+            ui.notifications.info("Bastion Scene created. You have ownership to edit the layout.");
+        }
+        await scene.view();
+    }
+
+    static async onBuildDefensiveWall(event, target) {
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        const squares = await DialogV2.prompt({
+            window: { title: "Build Defensive Walls" },
+            content: `
+                <div class="form-group">
+                    <p>Each 5-foot square of wall costs <b>250 GP</b> and takes <b>10 days</b> to build.</p>
+                    <label>Number of 5ft Squares:</label>
+                    <input type="number" name="squares" value="1" min="1" step="1">
+                </div>
+            `,
+            ok: { 
+                label: "Start Construction",
+                callback: (event, button) => parseInt(button.form.elements.squares.value) || 0 
+            }
+        });
+
+        if (!squares) return;
+        
+        const cost = squares * 250;
+        const currentGP = this.actor.system.currency?.gp || 0;
+
+        if (currentGP < cost) return ui.notifications.warn(`Insufficient gold. Need ${cost} GP.`);
+        
+        const confirm = await DialogV2.confirm({
+            window: { title: "Confirm Wall Construction" },
+            content: `<p>Spend <b>${cost} GP</b> to begin building <b>${squares}</b> squares of wall? (Total time: ${squares * 10} days)</p>`
+        });
+
+        if (confirm) {
+            await this.actor.update({ "system.currency.gp": currentGP - cost });
+            const currentPending = this.actor.getFlag(MODULE_ID, "pendingWallDays") || 0;
+            await this.actor.setFlag(MODULE_ID, "pendingWallDays", currentPending + (squares * 10));
+            this.render();
+        }
+    }
+
     // --- UI ACTION ---
     static async onAdvanceGlobalTurn(event, target) {
         const turnsInput = this.element.querySelector('input[name="turns"]');
@@ -954,6 +1112,34 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         let orderSummary = "";
         let totalGold = 0;
         let items = [];
+        const MODULE_ID = "dnd-2024-bastion-manager";
+
+        // Handle Defensive Wall Progress
+        let wallDays = actor.getFlag(MODULE_ID, "pendingWallDays") || 0;
+        if (wallDays > 0) {
+            let wallCount = actor.getFlag(MODULE_ID, "completedWalls") || 0;
+            let wallRemainder = actor.getFlag(MODULE_ID, "wallDayRemainder") || 0;
+            
+            const elapsedDays = (turns * 7) + wallRemainder;
+            const finishedSquares = Math.floor(elapsedDays / 10);
+            const remainingPending = Math.max(0, wallDays - (turns * 7));
+            
+            // We only finish squares up to the amount that was actually pending
+            const actualFinished = Math.min(finishedSquares, Math.ceil(wallDays / 10));
+            
+            wallCount += actualFinished;
+            wallRemainder = elapsedDays % 10;
+            
+            await actor.setFlag(MODULE_ID, "completedWalls", wallCount);
+            await actor.setFlag(MODULE_ID, "pendingWallDays", remainingPending);
+            await actor.setFlag(MODULE_ID, "wallDayRemainder", remainingPending > 0 ? wallRemainder : 0);
+
+            if (actualFinished > 0) {
+                orderSummary += `<li style="margin-bottom: 6px; padding: 4px; background: rgba(163,42,34,0.1); border-radius: 3px;">
+                    <i class="fa-solid fa-border-all"></i> <b>Defensive Walls:</b> Built ${actualFinished} square(s). Total: ${wallCount}
+                </li>`;
+            }
+        }
 
         for (const fac of facilities) {
             let order = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.order || "Maintain") : (fac.doc.getFlag("dnd-2024-bastion-manager", "order") || "Maintain");

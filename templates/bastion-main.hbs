@@ -1,4 +1,5 @@
-<div class="bastion-manager-container">
+<div class="bastion-manager-container" style="display: flex; gap: 15px; height: 100%;">
+    <div class="bastion-sidebar" style="flex: 0 0 400px; overflow-y: auto; padding-right: 5px; border-right: 1px solid #ccc;">
     <div class="bastion-header" style="text-align: center; margin-bottom: 10px;">
         <h2>{{actor.name}}'s Bastion</h2>
         <div style="font-size: 1.1em; display: flex; align-items: center; justify-content: center; gap: 15px; flex-wrap: wrap;">
@@ -27,7 +28,24 @@
         {{/if}}
     </div>
 
-<hr>
+    <div class="bastion-map-controls" style="display: flex; gap: 5px; margin-bottom: 10px; padding: 6px; background: rgba(0,0,0,0.05); border-radius: 4px; align-items: center; justify-content: space-between;">
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <button type="button" data-action="viewBastionMap" style="width: auto; padding: 4px 12px;" title="Open or create the Bastion Scene">
+                <i class="fa-solid fa-map"></i> {{#if hasMap}}View Map{{else}}Create Map{{/if}}
+            </button>
+            <button type="button" data-action="buildDefensiveWall" style="width: auto; padding: 4px 12px; color: #444;" title="Build 5ft wall squares (250 GP, 10 Days)">
+                <i class="fa-solid fa-wall-brick"></i> Build Walls
+            </button>
+        </div>
+        <div style="font-size: 0.85em; text-align: right;">
+            <b title="Completed 5ft squares of defensive wall">Walls:</b> {{wallCount}} sq 
+            {{#if wallDays}}
+                <span style="color: darkgoldenrod; font-style: italic;">({{wallDays}}d pending)</span>
+            {{/if}}
+        </div>
+    </div>
+
+    <hr>
 
     <div class="bastion-build-section" style="margin-bottom: 10px; display: flex; gap: 5px;">
         <select name="compendium-facility" style="flex-grow: 1;">
@@ -59,7 +77,7 @@
     <h3 style="border-bottom: 1px solid #ccc; margin-bottom: 5px;">Built Facilities</h3>
     <ul style="list-style: none; padding: 0; margin: 0;">
         {{#each facilities}}
-            <li style="margin-bottom: 6px; padding: 4px; background: rgba(0,0,0,0.03); border-radius: 3px; {{#if this.isUnderConstruction}}opacity: 0.7;{{/if}}">
+            <li class="facility-item {{#if this.isLayoutActive}}active-layout{{/if}}" style="margin-bottom: 6px; padding: 4px; background: {{#if this.isLayoutActive}}rgba(0,0,0,0.15){{else}}rgba(0,0,0,0.03){{/if}}; border-radius: 3px; border-left: 4px solid {{this.facColor}}; {{#if this.isUnderConstruction}}opacity: 0.7;{{/if}}">
                 <img src="{{this.img}}" width="32" height="32" style="border: none; border-radius: 4px; vertical-align: middle; {{#if this.isUnderConstruction}}filter: grayscale(1);{{/if}}">
                 
                 <div style="display: inline-block; vertical-align: middle; width: calc(100% - 80px);">
@@ -79,6 +97,13 @@
                     {{#if this.hirelings}}
                         <span style="font-size: 0.85em; color: #555; font-style: italic; display: block;">(Hirelings: {{this.hirelings}})</span>
                     {{/if}}
+
+                    <div style="font-size: 0.7em; margin-top: 2px;">
+                        <i class="fa-solid fa-layer-group"></i> Layout: 
+                        <span style="{{#if (eq this.placedSquares this.maxSquares)}}color: green; font-weight: bold;{{/if}}">
+                            {{this.placedSquares}} / {{this.maxSquares}} sq
+                        </span>
+                    </div>
 
                     {{#if this.hasOrders}}
                         <div style="font-size: 0.9em; margin-top: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
@@ -182,6 +207,11 @@
                                 <i class="fa-solid fa-arrow-up-right-dots"></i>
                             </button>
                         {{/if}}
+                    <button type="button" data-action="selectFacilityLayout" data-item-id="{{this.id}}" 
+                        style="width: auto; padding: 4px 8px; {{#if this.isLayoutActive}}background: #444; color: white;{{else}}color: #444;{{/if}}" 
+                        title="Select to layout squares on grid">
+                        <i class="fa-solid fa-pen-ruler"></i>
+                    </button>
                         <button type="button" data-action="deleteFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 4px 8px; color: darkred;" title="Demolish">
                             <i class="fa-solid fa-trash"></i>
                         </button>
@@ -190,4 +220,23 @@
             </li>
         {{/each}}
     </ul>
+    </div>
+
+    <div class="bastion-layout-designer" style="flex: 1; display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+            <h3 style="margin: 0;"><i class="fa-solid fa-grid-2"></i> Layout Designer</h3>
+            <button type="button" data-action="clearLayout" style="width: auto; padding: 2px 8px; font-size: 0.7em;">Clear All</button>
+        </div>
+        <p style="font-size: 0.8em; margin-bottom: 5px; font-style: italic; color: #666;">Select a facility on the left, then click grid squares to place them.</p>
+        
+        <div class="bastion-grid" style="display: grid; grid-template-columns: repeat(20, 1fr); grid-template-rows: repeat(20, 1fr); gap: 1px; background: #999; border: 1px solid #666; aspect-ratio: 1/1; width: 100%; max-width: 420px; cursor: crosshair;">
+            {{#each grid}}
+                <div class="bastion-grid-square" 
+                    data-coord="{{this.coord}}" 
+                    title="{{#if this.name}}{{this.name}}{{else}}{{this.coord}}{{/if}}"
+                    style="background: {{#if this.name}}{{this.color}}{{else}}#eee{{/if}}; border-radius: 1px;">
+                </div>
+            {{/each}}
+        </div>
+    </div>
 </div>
