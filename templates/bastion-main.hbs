@@ -36,7 +36,7 @@
                 <optgroup label="Level {{this.level}}">
                 {{#each this.facilities}}
                     <option value="{{this._id}}">
-                        {{this.name}}{{#if this.prerequisite}} ({{this.prerequisite}}){{/if}}
+                        {{this.name}}{{#if this.prerequisite}}&nbsp;&nbsp; — &nbsp;&nbsp;{{this.prerequisite}}{{/if}}
                     </option>
                 {{/each}}
                 </optgroup>

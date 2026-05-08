@@ -237,6 +237,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 const prereqMatch = desc.replace(/<[^>]*>/g, '\n').match(/prerequisites?:\s*(.*)/i);
                 let prereq = prereqMatch ? prereqMatch[1].split('\n')[0].trim() : "";
 
+                // Clean up Foundry specific enrichment tags (e.g. @item[Name|ID] or @UUID[ID]{Name})
+                prereq = prereq.replace(/@[\w]+\[[^\]]+\]\{([^}]+)\}/g, "$1").replace(/@[\w]+\[([^|\]]+)(?:\|[^\]]+)?\]/g, "$1");
+
                 // If no prerequisite is found or it is "None", keep it empty so it doesn't display in the UI
                 if ( !prereq || prereq.toLowerCase() === "none" ) prereq = "";
 
