@@ -111,7 +111,7 @@ class ConstructionConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
         classes: ["bastion-app"],
         form: {
             handler: ConstructionConfigApp.processForm,
-            submitOnChange: false,
+            submitOnChange: true,
             closeOnSubmit: true
         }
     };
@@ -122,20 +122,52 @@ class ConstructionConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
     async _prepareContext(options) {
         const MODULE_ID = "dnd-2024-bastion-manager";
+        const globalCost = game.settings.get(MODULE_ID, "globalCostMultiplier");
+        const globalTime = game.settings.get(MODULE_ID, "globalTimeMultiplier");
+        
         const settings = ["buildCramped", "buildRoomy", "buildVast", "enlargeRoomy", "enlargeVast"];
-        const context = {};
+        const context = { globalCost, globalTime };
+        
         for ( const s of settings ) {
             context[`${s}Cost`] = game.settings.get(MODULE_ID, `${s}Cost`);
             context[`${s}Time`] = game.settings.get(MODULE_ID, `${s}Time`);
         }
         context.buildStages = ["buildCramped", "buildRoomy", "buildVast"];
         context.enlargeStages = ["enlargeRoomy", "enlargeVast"];
+
+        // Table Data calculation
+        const bases = {
+            buildCramped: { name: "Add Cramped", gp: 500, turns: 3, days: 20 },
+            buildRoomy: { name: "Add Roomy", gp: 1000, turns: 7, days: 45 },
+            buildVast: { name: "Add Vast", gp: 3000, turns: 18, days: 125 },
+            enlargeRoomy: { name: "Enlarge to Roomy", gp: 500, turns: 4, days: 25 },
+            enlargeVast: { name: "Enlarge to Vast", gp: 2000, turns: 12, days: 80 }
+        };
+
+        context.preview = Object.entries(bases).map(([key, base]) => {
+            const sCost = context[`${key}Cost`];
+            const sTime = context[`${key}Time`];
+            const finalGP = Math.floor(base.gp * (sCost / 100) * (globalCost / 100));
+            const finalTurns = Math.floor(base.turns * (sTime / 100) * (globalTime / 100));
+            const finalDays = Math.floor(base.days * (sTime / 100) * (globalTime / 100));
+            return {
+                label: base.name,
+                gp: finalGP,
+                turns: finalTurns,
+                days: finalDays
+            };
+        });
+
         return context; 
     }
 
     static async processForm(event, form, formData) {
         const MODULE_ID = "dnd-2024-bastion-manager";
         const data = formData.object;
+
+        await game.settings.set(MODULE_ID, "globalCostMultiplier", Number(data.globalCost));
+        await game.settings.set(MODULE_ID, "globalTimeMultiplier", Number(data.globalTime));
+
         const settings = ["buildCramped", "buildRoomy", "buildVast", "enlargeRoomy", "enlargeVast"];
         for ( const s of settings ) {
             await game.settings.set(MODULE_ID, `${s}Cost`, Number(data[`${s}Cost`]));
@@ -186,6 +218,9 @@ Hooks.once("init", () => {
         default: false,
         order: 1
     });
+
+    game.settings.register(MODULE_ID, "globalCostMultiplier", { scope: "world", config: false, type: Number, default: 100 });
+    game.settings.register(MODULE_ID, "globalTimeMultiplier", { scope: "world", config: false, type: Number, default: 100 });
 
     const constructionStages = ["buildCramped", "buildRoomy", "buildVast", "enlargeRoomy", "enlargeVast"];
     for ( const s of constructionStages ) {

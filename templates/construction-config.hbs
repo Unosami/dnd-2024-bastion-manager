@@ -1,64 +1,112 @@
 <div class="construction-config-container" style="padding: 10px; max-height: 85vh; overflow-y: auto;">
-    <p class="notes" style="margin-bottom: 15px; font-style: italic; color: #555;">Adjust how gold and time requirements are scaled for building and enlarging facilities compared to the standard DMG rules.</p>
+    <p class="notes" style="margin-bottom: 10px; font-style: italic; color: #555; font-size: 0.9em;">Adjust scaling for gold and time requirements for Bastion facilities.</p>
 
-    <h3 style="border-bottom: 1px solid #aaa; margin-top: 15px;"><i class="fas fa-hammer"></i> Adding Facilities (From Nothing)</h3>
-    
-    {{#each buildStages}}
-    <div style="background: rgba(0,0,0,0.05); padding: 8px; border-radius: 4px; margin-bottom: 10px;">
-        <label style="font-weight: bold; display: block; border-bottom: 1px solid #ddd; margin-bottom: 5px;">
-            {{#if (eq this "buildCramped")}}Nothing to Cramped (500 GP, 3 Turns){{/if}}
-            {{#if (eq this "buildRoomy")}}Nothing to Roomy (1000 GP, 7 Turns){{/if}}
-            {{#if (eq this "buildVast")}}Nothing to Vast (3000 GP, 18 Turns){{/if}}
-        </label>
-        
-        <div class="form-group" style="margin: 5px 0;">
-            <label style="font-size: 0.9em;">Cost Scalar</label>
-            <div class="form-fields" style="display: flex; gap: 10px; align-items: center;">
-                <input type="range" name="{{this}}Cost" value="{{lookup ../this (concat this "Cost")}}" min="0" max="500" step="5" style="flex: 1;" oninput="this.nextElementSibling.innerText = this.value + '%'">
-                <output style="width: 45px; text-align: right; font-weight: bold;">{{lookup ../this (concat this "Cost")}}%</output>
+    <section class="info-panel" style="background: #fdfdfd; border: 1px solid #ccc; border-radius: 4px; padding: 10px; margin-bottom: 15px; box-shadow: inset 0 0 5px rgba(0,0,0,0.05);">
+        <h3 style="margin: 0 0 10px 0; font-size: 1.1em; border-bottom: 2px solid #a32a22; display: flex; align-items: center; gap: 8px;">
+            <i class="fas fa-calculator"></i> Current Cost Estimates
+        </h3>
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+            <thead>
+                <tr style="border-bottom: 1px solid #ddd; text-align: left;">
+                    <th>Facility Type</th>
+                    <th style="text-align: right;">Cost (GP)</th>
+                    <th style="text-align: right;">Turns</th>
+                    <th style="text-align: right;">Total Days</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{#each preview}}
+                <tr style="border-bottom: 1px dashed #eee;">
+                    <td style="padding: 4px 0;">{{this.label}}</td>
+                    <td style="text-align: right; font-weight: bold; color: darkgoldenrod;">{{this.gp}} GP</td>
+                    <td style="text-align: right;">{{this.turns}}</td>
+                    <td style="text-align: right; font-style: italic; color: #666;">{{this.days}} d</td>
+                </tr>
+                {{/each}}
+            </tbody>
+        </table>
+    </section>
+
+    <div class="global-sliders" style="margin-bottom: 20px;">
+        <div class="form-group">
+            <label style="font-weight: bold; color: #a32a22;">Global Cost Multiplier</label>
+            <div class="form-fields">
+                <input type="range" name="globalCost" value="{{globalCost}}" min="0" max="500" step="5" style="flex: 1;">
+                <span style="font-weight: bold; width: 45px; text-align: right;">{{globalCost}}%</span>
             </div>
+            <p class="hint">Adjusts ALL gold costs for construction and enlargement.</p>
         </div>
 
-        <div class="form-group" style="margin: 5px 0;">
-            <label style="font-size: 0.9em;">Time Scalar</label>
-            <div class="form-fields" style="display: flex; gap: 10px; align-items: center;">
-                <input type="range" name="{{this}}Time" value="{{lookup ../this (concat this "Time")}}" min="0" max="500" step="5" style="flex: 1;" oninput="this.nextElementSibling.innerText = this.value + '%'">
-                <output style="width: 45px; text-align: right; font-weight: bold;">{{lookup ../this (concat this "Time")}}%</output>
+        <div class="form-group">
+            <label style="font-weight: bold; color: #a32a22;">Global Time Multiplier</label>
+            <div class="form-fields">
+                <input type="range" name="globalTime" value="{{globalTime}}" min="0" max="500" step="5" style="flex: 1;">
+                <span style="font-weight: bold; width: 45px; text-align: right;">{{globalTime}}%</span>
             </div>
-        </div>
-    </div>
-    {{/each}}
-
-    <h3 style="border-bottom: 1px solid #aaa; margin-top: 15px;"><i class="fas fa-arrow-up-right-dots"></i> Enlarging Facilities</h3>
-
-    {{#each enlargeStages}}
-    <div style="background: rgba(0,0,0,0.05); padding: 8px; border-radius: 4px; margin-bottom: 10px;">
-        <label style="font-weight: bold; display: block; border-bottom: 1px solid #ddd; margin-bottom: 5px;">
-            {{#if (eq this "enlargeRoomy")}}Cramped to Roomy (500 GP, 4 Turns){{/if}}
-            {{#if (eq this "enlargeVast")}}Roomy to Vast (2000 GP, 12 Turns){{/if}}
-        </label>
-        
-        <div class="form-group" style="margin: 5px 0;">
-            <label style="font-size: 0.9em;">Cost Scalar</label>
-            <div class="form-fields" style="display: flex; gap: 10px; align-items: center;">
-                <input type="range" name="{{this}}Cost" value="{{lookup ../this (concat this "Cost")}}" min="0" max="500" step="5" style="flex: 1;" oninput="this.nextElementSibling.innerText = this.value + '%'">
-                <output style="width: 45px; text-align: right; font-weight: bold;">{{lookup ../this (concat this "Cost")}}%</output>
-            </div>
-        </div>
-
-        <div class="form-group" style="margin: 5px 0;">
-            <label style="font-size: 0.9em;">Time Scalar</label>
-            <div class="form-fields" style="display: flex; gap: 10px; align-items: center;">
-                <input type="range" name="{{this}}Time" value="{{lookup ../this (concat this "Time")}}" min="0" max="500" step="5" style="flex: 1;" oninput="this.nextElementSibling.innerText = this.value + '%'">
-                <output style="width: 45px; text-align: right; font-weight: bold;">{{lookup ../this (concat this "Time")}}%</output>
-            </div>
+            <p class="hint">Adjusts construction and enlargement time (Bastion Turns).</p>
         </div>
     </div>
-    {{/each}}
 
-    <footer class="sheet-footer" style="margin-top: 20px; display: flex; justify-content: center; border-top: 1px solid #ccc; padding-top: 15px;">
-        <button type="submit" name="submit" style="width: auto; padding: 6px 20px; font-weight: bold; cursor: pointer;">
-            <i class="fas fa-save"></i> Save Configuration
+    <details style="border: 1px solid #ddd; border-radius: 4px; padding: 5px;">
+        <summary style="cursor: pointer; padding: 5px; font-weight: bold; background: #eee;">
+            <i class="fas fa-cog"></i> Advanced Granular Configuration
+        </summary>
+        
+        <div style="padding-top: 10px;">
+            <h4 style="border-bottom: 1px solid #ccc;"><i class="fas fa-hammer"></i> Adding Facilities</h4>
+            {{#each buildStages}}
+            <div style="background: rgba(0,0,0,0.03); padding: 5px; border-radius: 4px; margin-bottom: 5px;">
+                <label style="font-size: 0.9em; font-weight: bold;">
+                    {{#if (eq this "buildCramped")}}Cramped Stage{{/if}}
+                    {{#if (eq this "buildRoomy")}}Roomy Stage{{/if}}
+                    {{#if (eq this "buildVast")}}Vast Stage{{/if}}
+                </label>
+                <div class="form-group" style="margin: 2px 0;">
+                    <label style="font-size: 0.8em;">Cost Scalar</label>
+                    <div class="form-fields">
+                        <input type="range" name="{{this}}Cost" value="{{lookup ../this (concat this "Cost")}}" min="0" max="500" step="5">
+                        <span style="font-size: 0.8em; font-weight: bold;">{{lookup ../this (concat this "Cost")}}%</span>
+                    </div>
+                </div>
+                <div class="form-group" style="margin: 2px 0;">
+                    <label style="font-size: 0.8em;">Time Scalar</label>
+                    <div class="form-fields">
+                        <input type="range" name="{{this}}Time" value="{{lookup ../this (concat this "Time")}}" min="0" max="500" step="5">
+                        <span style="font-size: 0.8em; font-weight: bold;">{{lookup ../this (concat this "Time")}}%</span>
+                    </div>
+                </div>
+            </div>
+            {{/each}}
+
+            <h4 style="border-bottom: 1px solid #ccc; margin-top: 10px;"><i class="fas fa-arrow-up-right-dots"></i> Enlarging Facilities</h4>
+            {{#each enlargeStages}}
+            <div style="background: rgba(0,0,0,0.03); padding: 5px; border-radius: 4px; margin-bottom: 5px;">
+                <label style="font-size: 0.9em; font-weight: bold;">
+                    {{#if (eq this "enlargeRoomy")}}Cramped to Roomy{{/if}}
+                    {{#if (eq this "enlargeVast")}}Roomy to Vast{{/if}}
+                </label>
+                <div class="form-group" style="margin: 2px 0;">
+                    <label style="font-size: 0.8em;">Cost Scalar</label>
+                    <div class="form-fields">
+                        <input type="range" name="{{this}}Cost" value="{{lookup ../this (concat this "Cost")}}" min="0" max="500" step="5">
+                        <span style="font-size: 0.8em; font-weight: bold;">{{lookup ../this (concat this "Cost")}}%</span>
+                    </div>
+                </div>
+                <div class="form-group" style="margin: 2px 0;">
+                    <label style="font-size: 0.8em;">Time Scalar</label>
+                    <div class="form-fields">
+                        <input type="range" name="{{this}}Time" value="{{lookup ../this (concat this "Time")}}" min="0" max="500" step="5">
+                        <span style="font-size: 0.8em; font-weight: bold;">{{lookup ../this (concat this "Time")}}%</span>
+                    </div>
+                </div>
+            </div>
+            {{/each}}
+        </div>
+    </details>
+
+    <footer class="sheet-footer" style="margin-top: 20px; display: flex; justify-content: center; border-top: 1px solid #ccc; padding-top: 10px;">
+        <button type="submit" name="submit" style="width: auto; padding: 6px 20px; font-weight: bold; cursor: pointer; display: none;">
+            <i class="fas fa-save"></i> Applied Automatically
         </button>
     </footer>
 </div>

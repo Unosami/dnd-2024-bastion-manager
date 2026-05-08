@@ -381,6 +381,18 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const name = fac.name;
         const flags = ds.isFlag === "true" ? fac.flags?.["dnd-2024-bastion-manager"] : fac.getFlag("dnd-2024-bastion-manager", "");
         const currentSize = flags?.size || "Roomy";
+
+        // Define scaling logic first
+        const ignoreReqs = game.settings.get("dnd-2024-bastion-manager", "ignoreConstructionCosts");
+        const globalCostMult = game.settings.get("dnd-2024-bastion-manager", "globalCostMultiplier") ?? 100;
+        const globalTimeMult = game.settings.get("dnd-2024-bastion-manager", "globalTimeMultiplier") ?? 100;
+
+        const getVal = (key, base, isTime = false) => {
+            if (ignoreReqs) return 0;
+            const perc = game.settings.get("dnd-2024-bastion-manager", key) ?? 100;
+            const globalMult = isTime ? globalTimeMult : globalCostMult;
+            return Math.floor(base * (perc / 100) * (globalMult / 100));
+        }
         
         if (flags?.upgradeTurns > 0) return ui.notifications.warn("This facility is already being enlarged.");
 
@@ -395,34 +407,25 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (currentSize === "Cramped") {
                 upgradeData = { 
                     to: "Roomy", 
-                    cost: getVal("enlargeRoomyCost", 500), 
-                    turns: getVal("enlargeRoomyTime", 4) 
+                    cost: getVal("enlargeRoomyCost", 500, false), 
+                    turns: getVal("enlargeRoomyTime", 4, true) 
                 };
             } else if (currentSize === "Roomy") {
                 upgradeData = { 
                     to: "Vast", 
-                    cost: getVal("enlargeVastCost", 2000), 
-                    turns: getVal("enlargeVastTime", 12) 
+                    cost: getVal("enlargeVastCost", 2000, false), 
+                    turns: getVal("enlargeVastTime", 12, true) 
                 };
             }
         } else if (isEnlargeableSpecial) {
             if (currentSize === "Roomy") {
                 upgradeData = { 
                     to: "Vast", 
-                    cost: getVal("enlargeVastCost", 2000), 
-                    turns: getVal("enlargeVastTime", 12) 
+                    cost: getVal("enlargeVastCost", 2000, false), 
+                    turns: getVal("enlargeVastTime", 12, true) 
                 };
             }
         }
-
-        // Apply Scaling Settings
-        const ignoreReqs = game.settings.get("dnd-2024-bastion-manager", "ignoreConstructionCosts");
-        const getVal = (key, base) => {
-            if (ignoreReqs) return 0;
-            const perc = game.settings.get("dnd-2024-bastion-manager", key) ?? 100;
-            return Math.floor(base * (perc / 100));
-        }
-
         if (!upgradeData) return ui.notifications.warn("This facility cannot be enlarged further according to the DMG rules.");
 
         const currentGP = this.actor.system.currency?.gp || 0;
