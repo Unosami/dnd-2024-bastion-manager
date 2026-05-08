@@ -214,11 +214,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
                 // Try multiple places a level might be stored depending on the exact 5e system schema version
                 let reqLevel = item.system?.prerequisites?.level || item.system?.requirements?.level;
+                const desc = item.system?.description?.value || "";
                 
                 // If not found in a clean integer field, try parsing the description for "Level X"
                 if (reqLevel === undefined || reqLevel === null || reqLevel === 0) {
-                    const desc = item.system?.description?.value || "";
-                    const levelMatch = desc.match(/Level\s+(\d+)/i);
+                    // Look for "Level X" in the description, ignoring HTML tags
+                    const levelMatch = desc.replace(/<[^>]*>/g, '').match(/Level\s+(\d+)/i);
                     if (levelMatch) {
                         reqLevel = parseInt(levelMatch[1]);
                     } else {
@@ -232,10 +233,18 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     continue;
                 }
 
+                // Parse for "Prerequisite(s): [Text]". Convert to plain text first for a clean capture.
+                const prereqMatch = desc.replace(/<[^>]*>/g, '\n').match(/prerequisites?:\s*(.*)/i);
+                let prereq = prereqMatch ? prereqMatch[1].split('\n')[0].trim() : "";
+
+                // If no prerequisite is found or it is "None", keep it empty so it doesn't display in the UI
+                if ( !prereq || prereq.toLowerCase() === "none" ) prereq = "";
+
                 const facData = {
                     _id: item._id,
                     name: item.name,
-                    reqLevel: reqLevel
+                    reqLevel: reqLevel,
+                    prerequisite: prereq
                 };
 
                 // Sort into Basic vs Special facilities. 
@@ -250,7 +259,22 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 }
             }
 
-            specialFacilities.sort((a, b) => a.name.localeCompare(b.name));
+            specialFacilities.sort((a, b) => {
+                if (a.reqLevel !== b.reqLevel) return a.reqLevel - b.reqLevel;
+                return a.name.localeCompare(b.name);
+            });
+
+            const grouped = [];
+            for ( const f of specialFacilities ) {
+                let g = grouped.find(x => x.level === f.reqLevel);
+                if ( !g ) {
+                    g = { level: f.reqLevel, facilities: [] };
+                    grouped.push(g);
+                }
+                g.facilities.push(f);
+            }
+            specialFacilities = grouped;
+
             basicFacilities.sort((a, b) => a.name.localeCompare(b.name));
         }
 

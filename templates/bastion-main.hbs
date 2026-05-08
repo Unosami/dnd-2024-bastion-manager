@@ -32,15 +32,15 @@
     <div class="bastion-build-section" style="margin-bottom: 10px; display: flex; gap: 5px;">
         <select name="compendium-facility" style="flex-grow: 1;">
             <option value="">-- Select Facility to Build --</option>
-            {{#if specialFacilities.length}}
-                <optgroup label="Special Facilities">
-                {{#each specialFacilities}}
+            {{#each specialFacilities}}
+                <optgroup label="Level {{this.level}}">
+                {{#each this.facilities}}
                     <option value="{{this._id}}">
-                        {{this.name}}
+                        {{this.name}}{{#if this.prerequisite}} ({{this.prerequisite}}){{/if}}
                     </option>
                 {{/each}}
                 </optgroup>
-            {{/if}}
+            {{/each}}
             {{#if basicFacilities.length}}
                 <optgroup label="Basic Facilities">
                 {{#each basicFacilities}}
