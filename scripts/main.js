@@ -146,12 +146,14 @@ class ConstructionConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
         const calculatePreview = (entries) => entries.map(([key, base]) => {
             const sCost = context[`${key}Cost`];
             const sTime = context[`${key}Time`];
+            const costPinned = sCost !== base.gp;
+            const timePinned = sTime !== base.turns;
             return {
                 key: key,
                 label: base.name,
-                gp: Math.floor(sCost * (globalCost / 100)),
-                turns: Math.floor(sTime * (globalTime / 100)),
-                days: Math.floor(base.days * (sTime / base.turns) * (globalTime / 100))
+                gp: costPinned ? sCost : Math.floor(base.gp * (globalCost / 100)),
+                turns: timePinned ? sTime : Math.floor(base.turns * (globalTime / 100)),
+                days: timePinned ? Math.floor(base.days * (sTime / base.turns)) : Math.floor(base.days * (globalTime / 100))
             };
         });
 
@@ -167,7 +169,7 @@ class ConstructionConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
         const form = this.element;
 
         const updateUI = () => {
-            const data = new FormDataExtended(form).object;
+            const data = new foundry.applications.ux.FormDataExtended(form).object;
             const gCost = Number(data.globalCost);
             const gTime = Number(data.globalTime);
 
@@ -175,14 +177,21 @@ class ConstructionConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
                 const sCost = Number(data[`${key}Cost`]);
                 const sTime = Number(data[`${key}Time`]);
                 
-                const finalGP = Math.floor(sCost * (gCost / 100));
-                const finalTurns = Math.floor(sTime * (gTime / 100));
-                const finalDays = Math.floor(base.days * (sTime / base.turns) * (gTime / 100));
+                const costPinned = sCost !== base.gp;
+                const timePinned = sTime !== base.turns;
+
+                const finalGP = costPinned ? sCost : Math.floor(base.gp * (gCost / 100));
+                const finalTurns = timePinned ? sTime : Math.floor(base.turns * (gTime / 100));
+                const finalDays = timePinned ? Math.floor(base.days * (sTime / base.turns)) : Math.floor(base.days * (gTime / 100));
 
                 const gpEl = form.querySelector(`[data-preview="${key}-gp"]`);
                 const timeEl = form.querySelector(`[data-preview="${key}-time"]`);
                 if (gpEl) gpEl.innerText = `${finalGP} GP`;
                 if (timeEl) timeEl.innerHTML = `${finalTurns} <span style="font-size: 0.9em; color: #888;">(${finalDays}d)</span>`;
+
+                // Visual feedback for pinning
+                form.querySelector(`[name="${key}Cost"]`).closest('.form-group').style.opacity = costPinned ? "1" : "0.7";
+                form.querySelector(`[name="${key}Time"]`).closest('.form-group').style.opacity = timePinned ? "1" : "0.7";
             }
         };
 
@@ -196,6 +205,32 @@ class ConstructionConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
                 if (num) num.value = event.target.value;
             }
             updateUI();
+        });
+
+        form.addEventListener("click", event => {
+            const btn = event.target.closest('button[data-action]');
+            if (!btn) return;
+            
+            if (btn.dataset.action === "reset-setting") {
+                const target = btn.dataset.target;
+                const val = btn.dataset.default;
+                form.elements[target].value = val;
+                form.elements[`${target}_num`].value = val;
+                updateUI();
+            } else if (btn.dataset.action === "reset-all") {
+                form.elements.globalCost.value = 100;
+                form.elements.globalCost_num.value = 100;
+                form.elements.globalTime.value = 100;
+                form.elements.globalTime_num.value = 100;
+                
+                for (const [key, base] of Object.entries(ConstructionConfigApp.BASES)) {
+                    form.elements[`${key}Cost`].value = base.gp;
+                    form.elements[`${key}Cost_num`].value = base.gp;
+                    form.elements[`${key}Time`].value = base.turns;
+                    form.elements[`${key}Time_num`].value = base.turns;
+                }
+                updateUI();
+            }
         });
     }
 

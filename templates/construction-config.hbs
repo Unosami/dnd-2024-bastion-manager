@@ -1,5 +1,5 @@
 <div class="construction-config-container" style="padding: 10px; max-height: 85vh; overflow-y: auto;">
-    <p class="notes" style="margin-bottom: 8px; font-style: italic; color: #777; font-size: 0.85em;">Adjust scaling for gold and time requirements. Changes apply after saving.</p>
+    <p class="notes" style="margin-bottom: 8px; font-style: italic; color: #777; font-size: 0.85em;">Note: Changing Advanced values "pins" them, ignoring Global Multipliers.</p>
 
     <section class="info-panel" style="background: rgba(0,0,0,0.2); border: 1px solid #444; border-radius: 4px; padding: 8px; margin-bottom: 15px;">
         <h3 style="margin: 0 0 8px 0; font-size: 1.05em; border-bottom: 2px solid #a32a22; display: flex; align-items: center; gap: 8px;">
@@ -79,6 +79,7 @@
                     <div class="form-fields" style="display: flex; align-items: center; gap: 5px;">
                         <input type="range" name="{{this}}Cost" value="{{lookup ../this (concat this "Cost")}}" min="0" max="5000" step="50">
                         <input type="number" name="{{this}}Cost_num" value="{{lookup ../this (concat this "Cost")}}" min="0" max="5000" step="10" style="width: 60px; height: 22px; font-size: 0.8em;">
+                        <button type="button" class="reset-icon" title="Reset to DMG Default" data-action="reset-setting" data-target="{{this}}Cost" data-default="{{#if (eq this "buildCramped")}}500{{else}}{{#if (eq this "buildRoomy")}}1000{{else}}3000{{/if}}{{/if}}" style="flex: 0; padding: 0 5px; background: none; border: none; color: #777;"><i class="fas fa-undo"></i></button>
                     </div>
                 </div>
                 <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin: 2px 0;">
@@ -86,6 +87,7 @@
                     <div class="form-fields" style="display: flex; align-items: center; gap: 5px;">
                         <input type="range" name="{{this}}Time" value="{{lookup ../this (concat this "Time")}}" min="0" max="50" step="1">
                         <input type="number" name="{{this}}Time_num" value="{{lookup ../this (concat this "Time")}}" min="0" max="50" step="1" style="width: 60px; height: 22px; font-size: 0.8em;">
+                        <button type="button" class="reset-icon" title="Reset to DMG Default" data-action="reset-setting" data-target="{{this}}Time" data-default="{{#if (eq this "buildCramped")}}3{{else}}{{#if (eq this "buildRoomy")}}7{{else}}18{{/if}}{{/if}}" style="flex: 0; padding: 0 5px; background: none; border: none; color: #777;"><i class="fas fa-undo"></i></button>
                     </div>
                 </div>
             </div>
@@ -103,6 +105,7 @@
                     <div class="form-fields" style="display: flex; align-items: center; gap: 5px;">
                         <input type="range" name="{{this}}Cost" value="{{lookup ../this (concat this "Cost")}}" min="0" max="5000" step="50">
                         <input type="number" name="{{this}}Cost_num" value="{{lookup ../this (concat this "Cost")}}" min="0" max="5000" step="10" style="width: 60px; height: 22px; font-size: 0.8em;">
+                        <button type="button" class="reset-icon" title="Reset to DMG Default" data-action="reset-setting" data-target="{{this}}Cost" data-default="{{#if (eq this "enlargeRoomy")}}500{{else}}2000{{/if}}" style="flex: 0; padding: 0 5px; background: none; border: none; color: #777;"><i class="fas fa-undo"></i></button>
                     </div>
                 </div>
                 <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin: 2px 0;">
@@ -110,6 +113,7 @@
                     <div class="form-fields" style="display: flex; align-items: center; gap: 5px;">
                         <input type="range" name="{{this}}Time" value="{{lookup ../this (concat this "Time")}}" min="0" max="50" step="1">
                         <input type="number" name="{{this}}Time_num" value="{{lookup ../this (concat this "Time")}}" min="0" max="50" step="1" style="width: 60px; height: 22px; font-size: 0.8em;">
+                        <button type="button" class="reset-icon" title="Reset to DMG Default" data-action="reset-setting" data-target="{{this}}Time" data-default="{{#if (eq this "enlargeRoomy")}}4{{else}}12{{/if}}" style="flex: 0; padding: 0 5px; background: none; border: none; color: #777;"><i class="fas fa-undo"></i></button>
                     </div>
                 </div>
             </div>
@@ -117,8 +121,11 @@
         </div>
     </details>
 
-    <footer class="sheet-footer" style="margin-top: 20px; display: flex; justify-content: center; border-top: 1px solid #ccc; padding-top: 10px;">
-        <button type="submit" name="submit" style="width: auto; padding: 6px 20px; font-weight: bold; cursor: pointer;">
+    <footer class="sheet-footer" style="margin-top: 20px; display: flex; justify-content: space-between; border-top: 1px solid #ccc; padding-top: 10px; gap: 10px;">
+        <button type="button" data-action="reset-all" style="flex: 1; font-size: 0.8em; color: #666;">
+            <i class="fas fa-sync"></i> Reset All to Defaults
+        </button>
+        <button type="submit" name="submit" style="flex: 2; font-weight: bold; cursor: pointer; background: rgba(0,0,0,0.1);">
             <i class="fas fa-save"></i> Save Configuration
         </button>
     </footer>

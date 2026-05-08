@@ -390,8 +390,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const getVal = (key, base, isTime = false) => {
             if (ignoreReqs) return 0;
             const granularValue = game.settings.get("dnd-2024-bastion-manager", key) ?? base;
+            if (granularValue !== base) return granularValue; // Precedence: Manually changed values ignore global mults
+
             const globalMult = isTime ? globalTimeMult : globalCostMult;
-            return Math.floor(granularValue * (globalMult / 100));
+            return Math.floor(base * (globalMult / 100));
         }
         
         if (flags?.upgradeTurns > 0) return ui.notifications.warn("This facility is already being enlarged.");
