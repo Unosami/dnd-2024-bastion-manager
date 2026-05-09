@@ -7,8 +7,11 @@
             <span><b>Total Defenders:</b> {{totalDefenders}}</span>
 
             {{#if neglectWarning}}
-                <span style="color: darkred; font-weight: bold;" title="Neglect Counter: {{neglectCounter}} / {{actorLevel}} turns. If this reaches {{actorLevel}} without an order being issued, the Bastion is lost.">
-                    <i class="fa-solid fa-triangle-exclamation"></i> Decaying ({{neglectCounter}}/{{actorLevel}})
+                <span class="neglect-warning" style="color: {{neglectColor}}; font-weight: bold; display: flex; align-items: center; gap: 4px;" 
+                    title="Neglect Counter: {{neglectCounter}} / {{actorLevel}} turns. If this reaches {{actorLevel}} without an order being issued, the Bastion is lost.">
+                    <i class="fa-solid fa-triangle-exclamation"></i> 
+                    Decaying ({{neglectCounter}}/{{actorLevel}})
+                    <i class="fa-solid fa-circle-info" style="font-size: 0.8em; opacity: 0.7;" title="NEGLECT RULES: If no orders are issued for a number of consecutive turns equal to your level, the Bastion is abandoned and looted. Issuing any order other than 'Maintain' resets this counter."></i>
                 </span>
             {{/if}}
 

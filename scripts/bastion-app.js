@@ -97,7 +97,29 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
         const neglectCounter = this.actor.getFlag(MODULE_ID, "neglectCounter") || 0;
         const actorLevel = (this.actor.type === "character" || this.actor.type === "npc") ? (this.actor.system.details?.level || 1) : 1;
-        const neglectWarning = neglectCounter > 0;
+        const disableNeglect = game.settings.get(MODULE_ID, "disableNeglect");
+
+        // Special Facility Cap (DMG 2024 Rules)
+        let specCap = 0;
+        if (actorLevel >= 17) specCap = 6;
+        else if (actorLevel >= 13) specCap = 5;
+        else if (actorLevel >= 9) specCap = 4;
+        else if (actorLevel >= 5) specCap = 2;
+
+        const currentSpecials = rawFacilities.filter(f => !f.isInherited && f.sourceDoc.system?.type?.value !== "basic").length;
+        const atSpecCap = currentSpecials >= specCap;
+
+        const hasActiveOrder = rawFacilities.some(fac => {
+            if (fac.isInherited) return false;
+            const flags = fac.isFlag ? (fac.sourceDoc.flags?.[MODULE_ID]) : (fac.sourceDoc.getFlag(MODULE_ID) || {});
+            return flags?.order && flags.order !== "Maintain";
+        });
+        const neglectWarning = !disableNeglect && (neglectCounter > 0 && !hasActiveOrder);
+
+        const ratio = Math.min(neglectCounter / actorLevel, 1);
+        const r = Math.floor(255 - (116 * ratio));
+        const g = Math.floor(165 * (1 - ratio));
+        const neglectColor = `rgb(${r}, ${g}, 0)`;
 
         if (this._localLayout === undefined) {
             this._localLayout = foundry.utils.deepClone(layoutActor.getFlag(MODULE_ID, "layout") || {});
@@ -295,6 +317,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             for (const item of allDocs) {
                 // Check exclusions
                 if (excludedFacilities.includes(item.id)) continue;
+
+                // Check Special Facility Cap
+                const isBasic = item.system?.type?.value === "basic";
+                const isFree = !!item.system?.freeFacility;
+                if (atSpecCap && !isBasic && !isFree) continue;
                 
                 let source = "Unknown Source";
                 if (typeof item.system?.source === "string") source = item.system.source;
@@ -341,9 +368,6 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     reqLevel: reqLevel,
                     prerequisite: prereq
                 };
-
-                // Sort into Basic vs Special facilities. 
-                const isBasic = item.system?.type?.value === "basic";
 
                 if (isBasic) {
                     basicFacilities.push(facData);
@@ -449,7 +473,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             wallCount, wallDays, hasMap,
             selectedId, combinedGroup, wallCost, wallTime,
             totalWallSquaresAllowed, placedWallSquares, structIds: STRUCT_IDS,
-            gridBackground, selectedOpening: this._selectedOpeningType || "Door", neglectWarning, neglectCounter, actorLevel,
+            gridBackground, selectedOpening: this._selectedOpeningType || "Door", neglectWarning, neglectColor, neglectCounter, actorLevel,
             sectionStates: this._sectionStates
         };
     }
@@ -1670,19 +1694,19 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
         // --- NEGLECT LOGIC ---
         const MODULE_ID = "dnd-2024-bastion-manager";
+        const disableNeglect = game.settings.get(MODULE_ID, "disableNeglect");
         let neglectCounter = actor.getFlag(MODULE_ID, "neglectCounter") || 0;
         
-        if (allMaintaining) {
+        if (allMaintaining && !disableNeglect) {
             neglectCounter += turnsToAdvance;
-            await actor.setFlag(MODULE_ID, "neglectCounter", neglectCounter);
             
             if (neglectCounter >= actorLevel) {
                 await BastionManager._triggerBastionFall(actor, "Neglect");
                 return null; // Stop turn processing, the bastion is gone
             }
         } else {
-            // Reset counter if any actual orders were issued
-            if (neglectCounter > 0) await actor.setFlag(MODULE_ID, "neglectCounter", 0);
+            // Reset counter if any actual orders were issued or neglect is disabled
+            if (neglectCounter > 0 || disableNeglect) neglectCounter = 0;
         }
 
         const resolution = await BastionManager._resolveOrders(actor, activeFacilities, turnsToAdvance, globalDefenders, hasSmithy, actorLevel);

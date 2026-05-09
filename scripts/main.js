@@ -300,6 +300,16 @@ Hooks.once("init", () => {
         order: 1
     });
 
+    game.settings.register(MODULE_ID, "disableNeglect", {
+        name: "Disable Bastion Neglect",
+        hint: "If enabled, Bastions will never decay or be lost due to neglect, even if no orders are issued for long periods.",
+        scope: "world",
+        config: true,
+        type: Boolean,
+        default: false,
+        order: 1
+    });
+
     game.settings.register(MODULE_ID, "globalCostMultiplier", { scope: "world", config: false, type: Number, default: 100 });
     game.settings.register(MODULE_ID, "globalTimeMultiplier", { scope: "world", config: false, type: Number, default: 100 });
 
