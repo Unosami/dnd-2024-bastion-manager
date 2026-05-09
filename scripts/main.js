@@ -148,11 +148,13 @@ class ConstructionConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
             const sTime = context[`${key}Time`];
             const costPinned = sCost !== base.gp;
             const timePinned = sTime !== base.turns;
+            let finalTurns = timePinned ? sTime : Math.floor(base.turns * (globalTime / 100));
+            if (!timePinned && globalTime > 0 && base.turns > 0) finalTurns = Math.max(1, finalTurns);
             return {
                 key: key,
                 label: base.name,
                 gp: costPinned ? sCost : Math.floor(base.gp * (globalCost / 100)),
-                turns: timePinned ? sTime : Math.floor(base.turns * (globalTime / 100)),
+                turns: finalTurns,
                 days: timePinned ? Math.floor(base.days * (sTime / base.turns)) : Math.floor(base.days * (globalTime / 100))
             };
         });
@@ -181,7 +183,8 @@ class ConstructionConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
                 const timePinned = sTime !== base.turns;
 
                 const finalGP = costPinned ? sCost : Math.floor(base.gp * (gCost / 100));
-                const finalTurns = timePinned ? sTime : Math.floor(base.turns * (gTime / 100));
+                let finalTurns = timePinned ? sTime : Math.floor(base.turns * (gTime / 100));
+                if (!timePinned && gTime > 0 && base.turns > 0) finalTurns = Math.max(1, finalTurns);
                 const finalDays = timePinned ? Math.floor(base.days * (sTime / base.turns)) : Math.floor(base.days * (gTime / 100));
 
                 const gpEl = form.querySelector(`[data-preview="${key}-gp"]`);
@@ -377,6 +380,15 @@ Hooks.once("init", () => {
     game.settings.register(MODULE_ID, "nameHirelings", {
         name: "Prompt for Hireling/Defender Names",
         hint: "If enabled, the module will prompt you to name new hirelings when building facilities and new defenders when recruiting.",
+        scope: "world",
+        config: true,
+        type: Boolean,
+        default: true
+    });
+
+    game.settings.register(MODULE_ID, "specialFacilitiesBuildTime", {
+        name: "Special Facilities Have Build Times",
+        hint: "If enabled, Special Facilities (except those gained during founding) require gold and time to build based on 'Add Roomy' costs.",
         scope: "world",
         config: true,
         type: Boolean,

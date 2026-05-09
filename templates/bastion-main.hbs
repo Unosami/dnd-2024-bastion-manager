@@ -6,12 +6,23 @@
             <span><b>Total Turns:</b> {{turnCount}}</span>
             <span><b>Total Defenders:</b> {{totalDefenders}}</span>
 
+            {{#if neglectWarning}}
+                <span style="color: darkred; font-weight: bold;" title="Neglect Counter: {{neglectCounter}} / {{actorLevel}} turns. If this reaches {{actorLevel}} without an order being issued, the Bastion is lost.">
+                    <i class="fa-solid fa-triangle-exclamation"></i> Decaying ({{neglectCounter}}/{{actorLevel}})
+                </span>
+            {{/if}}
+
             {{#if (ne actor.type "group")}}
                 <button type="button" data-action="toggleCombine" style="width: auto; padding: 2px 8px; font-size: 0.75em; {{#if combinedGroup}}color: green; font-weight: bold;{{/if}}" 
                     title="{{#if combinedGroup}}Combined with {{combinedGroup.name}}{{else}}Combine this Bastion with a shared Group Bastion{{/if}}">
                     <i class="fa-solid fa-people-group"></i> {{#if combinedGroup}}Combined{{else}}Combine{{/if}}
                 </button>
             {{/if}}
+            
+            <button type="button" data-action="abandonBastion" style="width: auto; padding: 2px 8px; font-size: 0.75em; color: #a32a22;" 
+                title="Abandon/Divest Bastion (Permanently removes all facilities)">
+                <i class="fa-solid fa-burst"></i> Abandon
+            </button>
 
             <div style="display: flex; gap: 5px; align-items: center; border: 1px solid #ccc; padding: 4px; border-radius: 4px; background: rgba(0,0,0,0.05);">
                 <button type="button" data-action="maintainAll" style="width: auto; padding: 2px 8px; font-size: 0.75em;" title="Set all facilities to Maintain">
@@ -50,7 +61,7 @@
         </div>
     {{/if}}
 
-    <div class="bastion-build-section" style="margin-bottom: 8px; display: flex; gap: 5px;">
+    {{#if (ne actor.type "group")}}<div class="bastion-build-section" style="margin-bottom: 8px; display: flex; gap: 5px;">
         <select name="compendium-facility" style="flex-grow: 1;">
             <option value="">-- Select Facility to Build --</option>
             {{#each specialFacilities}}
@@ -75,7 +86,7 @@
         <button type="button" data-action="buildFromDropdown" style="width: auto; padding: 4px 10px;">
             <i class="fa-solid fa-hammer"></i> Build
         </button>
-    </div>
+    </div>{{/if}}
 
     {{#if combinedGroup}}
         <div style="background: rgba(0, 100, 200, 0.05); border: 1px solid #005a9e; padding: 6px; border-radius: 4px; margin-bottom: 10px; font-size: 0.85em; text-align: center; color: #004578;">
