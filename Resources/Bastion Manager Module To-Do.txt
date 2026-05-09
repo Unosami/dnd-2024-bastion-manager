@@ -10,7 +10,7 @@ Bastion Module notes:
     - Allow for custom events?
 
 - Bastion Features:
-    - Closets (mmight not need to be included)
+    - Closets (might not need to be included)
     - Corridors, Ramps, Staircases
     - Defensive walls (each 5-foot segement has a time and gold cost)
     - Doors and Windows
@@ -18,5 +18,8 @@ Bastion Module notes:
 - UI Improvements
     - Show all input options in the same dialog rather than clicking through all of the options when creating a facility or advacing a turn.
     - the ability to layout your bastion on a grid.
+
+- Homebrew (not hardcoded, I want them to be like submodules?):
+    - Veteran Hirelings: After a certain length of service/special event/the hireling is attained in a special way the hireling should give bonuses to the facility they work.
 
 - At the end, add a README button in the module settings to walk through the module and address any systems that may be confusing for a user.

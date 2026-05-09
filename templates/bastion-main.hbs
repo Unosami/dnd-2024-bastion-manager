@@ -1,10 +1,17 @@
 <div class="bastion-manager-container" style="display: flex; gap: 15px; height: 100%;">
     <div class="bastion-sidebar" style="flex: 0 0 380px; overflow-y: auto; padding-right: 10px; border-right: 1px solid #ccc; display: flex; flex-direction: column;">
-    <div class="bastion-header" style="text-align: center; margin-bottom: 10px;">
-        <h2>{{actor.name}}'s Bastion</h2>
+    <div class="bastion-header" style="text-align: center; margin-bottom: 5px;">
+        <h2 style="margin-bottom: 5px; line-height: 1.2;">{{actor.name}}'s Bastion</h2>
         <div style="font-size: 1em; display: flex; align-items: center; justify-content: center; gap: 15px; flex-wrap: wrap;">
             <span><b>Total Turns:</b> {{turnCount}}</span>
             <span><b>Total Defenders:</b> {{totalDefenders}}</span>
+
+            {{#if (ne actor.type "group")}}
+                <button type="button" data-action="toggleCombine" style="width: auto; padding: 2px 8px; font-size: 0.75em; {{#if combinedGroup}}color: green; font-weight: bold;{{/if}}" 
+                    title="{{#if combinedGroup}}Combined with {{combinedGroup.name}}{{else}}Combine this Bastion with a shared Group Bastion{{/if}}">
+                    <i class="fa-solid fa-people-group"></i> {{#if combinedGroup}}Combined{{else}}Combine{{/if}}
+                </button>
+            {{/if}}
 
             <div style="display: flex; gap: 5px; align-items: center; border: 1px solid #ccc; padding: 4px; border-radius: 4px; background: rgba(0,0,0,0.05);">
                 <button type="button" data-action="maintainAll" style="width: auto; padding: 2px 8px; font-size: 0.75em;" title="Set all facilities to Maintain">
@@ -28,9 +35,9 @@
         {{/if}}
     </div>
 
-    <hr>
+    <hr style="margin: 5px 0;">
 
-    <div class="bastion-build-section" style="margin-bottom: 10px; display: flex; gap: 5px;">
+    <div class="bastion-build-section" style="margin-bottom: 8px; display: flex; gap: 5px;">
         <select name="compendium-facility" style="flex-grow: 1;">
             <option value="">-- Select Facility to Build --</option>
             {{#each specialFacilities}}
@@ -57,13 +64,23 @@
         </button>
     </div>
 
-    <h3 style="border-bottom: 1px solid #ccc; margin-bottom: 5px; font-size: 1.1em;">Special Facilities</h3>
+    {{#if combinedGroup}}
+        <div style="background: rgba(163,42,34,0.1); border: 1px solid #a32a22; padding: 6px; border-radius: 4px; margin-bottom: 10px; font-size: 0.85em; text-align: center;">
+            <i class="fa-solid fa-link"></i> Linked to <b>{{combinedGroup.name}}</b>
+        </div>
+    {{/if}}
+
+    <details open>
+        <summary style="cursor: pointer; border-bottom: 1px solid #ccc; margin-bottom: 5px;">
+            <h3 style="display: inline; font-size: 1.1em;">Special Facilities ({{specialFacilitiesBuilt.length}})</h3>
+        </summary>
     <ul style="list-style: none; padding: 0; margin: 0;">
         {{#each specialFacilitiesBuilt}}
-            <li class="facility-item {{#if this.isLayoutActive}}active-layout{{/if}}" style="margin-bottom: 4px; padding: 3px; background: {{#if this.isLayoutActive}}rgba(0,0,0,0.12){{else}}rgba(0,0,0,0.02){{/if}}; border-radius: 3px; border-left: 4px solid {{this.facColor}}; {{#if this.isUnderConstruction}}opacity: 0.7;{{/if}}">
+            <li class="facility-item {{#if this.isLayoutActive}}active-layout{{/if}}" style="margin-bottom: 4px; padding: 3px; background: {{#if this.isLayoutActive}}rgba(0,0,0,0.12){{else}}rgba(0,0,0,0.02){{/if}}; border-radius: 3px; border-left: 4px solid {{this.facColor}}; {{#if this.isUnderConstruction}}opacity: 0.7;{{/if}}; display: flex; align-items: flex-start; justify-content: space-between; gap: 5px;">
+                <div style="display: flex; gap: 6px; flex: 1;">
                 <img src="{{this.img}}" width="24" height="24" style="border: none; border-radius: 3px; vertical-align: middle; {{#if this.isUnderConstruction}}filter: grayscale(1);{{/if}}">
                 
-                <div style="display: inline-block; vertical-align: middle; width: calc(100% - 80px);">
+                    <div style="flex: 1;">
                     <b style="font-size: 0.95em;">{{this.name}}</b> 
                     
                     <span style="font-size: 0.7em; background: {{#if (eq this.size "Construction")}}#a32a22; color: white;{{else}}#ddd; color: #333;{{/if}} padding: 1px 4px; border-radius: 3px; margin-left: 4px; vertical-align: middle;">{{this.size}}</span>
@@ -173,33 +190,31 @@
                         </div>
                     {{/if}}
                 </div>
+                </div>
                 
-                <div style="float: right; display: flex; gap: 4px; align-items: center;">
-                    {{#if this.isInherited}}
-                        <button type="button" disabled style="width: auto; padding: 4px 8px; color: gray;" title="Belongs to member">
-                            <i class="fa-solid fa-lock"></i>
+                <div style="display: flex; gap: 2px; align-items: center; flex-shrink: 0;">
+                    {{#if this.isEnlargeable}}
+                        <button type="button" data-action="upgradeFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 6px; color: darkgoldenrod;" title="Enlarge Facility">
+                            <i class="fa-solid fa-arrow-up-right-dots"></i>
                         </button>
-                    {{else}}
-                        {{#if this.isEnlargeable}}
-                            <button type="button" data-action="upgradeFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 4px 8px; color: darkgoldenrod;" title="Enlarge Facility">
-                                <i class="fa-solid fa-arrow-up-right-dots"></i>
-                            </button>
-                        {{/if}}
+                    {{/if}}
                     <button type="button" data-action="selectFacilityLayout" data-item-id="{{this.id}}" 
-                        style="width: auto; padding: 4px 8px; {{#if this.isLayoutActive}}background: #444; color: white;{{else}}color: #444;{{/if}}" 
+                        style="width: auto; padding: 2px 6px; {{#if this.isLayoutActive}}background: #444; color: white;{{else}}color: #444;{{/if}}" 
                         title="Select to layout squares on grid">
                         <i class="fa-solid fa-pen-ruler"></i>
                     </button>
-                        <button type="button" data-action="deleteFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 4px 8px; color: darkred;" title="Demolish">
-                            <i class="fa-solid fa-trash"></i>
-                        </button>
-                    {{/if}}
+                    {{#unless this.isInherited}}
+                    <button type="button" data-action="deleteFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 6px; color: darkred;" title="Demolish">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                    {{/unless}}
                 </div>
             </li>
         {{/each}}
     </ul>
+    </details>
 
-    <details style="margin-top: 10px; border-top: 1px solid #ccc; padding-top: 5px;">
+    <details style="margin-top: 5px; border-top: 1px solid #ccc; padding-top: 5px;">
         <summary style="cursor: pointer; font-weight: bold; font-size: 1em; color: #444; margin-bottom: 5px;">
             <i class="fa-solid fa-house"></i> Basic Facilities ({{basicFacilitiesBuilt.length}})
         </summary>
@@ -217,7 +232,9 @@
                                 <button type="button" data-action="upgradeFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="padding: 2px 4px; font-size: 0.7em; color: darkgoldenrod;" title="Enlarge"><i class="fa-solid fa-arrow-up-right-dots"></i></button>
                             {{/if}}
                             <button type="button" data-action="selectFacilityLayout" data-item-id="{{this.id}}" style="padding: 2px 4px; font-size: 0.7em; {{#if this.isLayoutActive}}background: #444; color: white;{{/if}}" title="Layout"><i class="fa-solid fa-pen-ruler"></i></button>
-                            <button type="button" data-action="deleteFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="padding: 2px 4px; font-size: 0.7em; color: darkred;" title="Demolish"><i class="fa-solid fa-trash"></i></button>
+                            {{#unless this.isInherited}}
+                                <button type="button" data-action="deleteFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="padding: 2px 4px; font-size: 0.7em; color: darkred;" title="Demolish"><i class="fa-solid fa-trash"></i></button>
+                            {{/unless}}
                         </div>
                     </div>
                     <div style="font-size: 0.6em; padding-left: 26px; color: #777;">
@@ -231,36 +248,56 @@
 
     <div class="bastion-layout-designer" style="flex: 1; display: flex; flex-direction: column;">
         <div style="background: rgba(0,0,0,0.05); padding: 8px; border-radius: 4px; margin-bottom: 10px; border: 1px solid #ccc;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
                 <h3 style="margin: 0; font-size: 1.1em;"><i class="fa-solid fa-grid-2"></i> Layout Designer</h3>
                 <div style="display: flex; gap: 5px;">
-                    <button type="button" data-action="buildDefensiveWall" style="width: auto; padding: 3px 10px; font-size: 0.75em; border: 1px solid #777;" title="Build 5ft wall squares (250 GP, 10 Days)">
-                        <i class="fa-solid fa-wall-brick"></i> Build Walls
-                    </button>
+                    <select data-action="changeBackground" style="font-size: 0.75em; height: 24px; width: 100px;">
+                        <option value="none" {{#if (eq gridBackground "none")}}selected{{/if}}>Plain Grid</option>
+                        <option value="grass" {{#if (eq gridBackground "grass")}}selected{{/if}}>Grass</option>
+                        <option value="stone" {{#if (eq gridBackground "stone")}}selected{{/if}}>Stone</option>
+                        <option value="parchment" {{#if (eq gridBackground "parchment")}}selected{{/if}}>Parchment</option>
+                    </select>
                     <button type="button" data-action="saveLayout" style="width: auto; padding: 3px 10px; font-size: 0.75em; background: rgba(0,120,0,0.15); border: 1px solid green;" title="Save current changes to database">
                         <i class="fa-solid fa-floppy-disk"></i> Save Layout
                     </button>
-                    <button type="button" data-action="clearLayout" style="width: auto; padding: 3px 8px; font-size: 0.75em; border: 1px solid #999;" title="Reset grid locally">
-                        <i class="fa-solid fa-eraser"></i> Clear Grid
+                    <button type="button" data-action="clearLayout" style="width: auto; padding: 3px 8px; font-size: 0.75em; border: 1px solid #999;" title="Remove only your facilities from the local grid">
+                        <i class="fa-solid fa-eraser"></i> Clear My Layout
                     </button>
                 </div>
             </div>
             <div style="display: flex; justify-content: space-between; font-size: 0.85em;">
-                <span><b>Walls:</b> {{wallCount}} sq {{#if wallDays}}<span style="color: darkgoldenrod;">({{wallDays}}d pending)</span>{{/if}}</span>
-                {{#if selectedId}}
-                    <span style="color: #a32a22; font-weight: bold;">Placing: {{#each specialFacilitiesBuilt}}{{#if (eq this.id ../selectedId)}}{{this.name}}{{/if}}{{/each}}{{#each basicFacilitiesBuilt}}{{#if (eq this.id ../selectedId)}}{{this.name}}{{/if}}{{/each}}</span>
-                {{else}}
-                    <span style="font-style: italic; color: #666;">Select a facility on the left to begin...</span>
-                {{/if}}
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button type="button" data-action="buildDefensiveWall" style="width: auto; padding: 2px 6px; font-size: 0.85em;" title="Purchase Walls">
+                        <i class="fa-solid fa-plus"></i> Buy Walls
+                    </button>
+                    <button type="button" data-action="selectFacilityLayout" data-item-id="{{wallId}}" 
+                        style="width: auto; padding: 2px 8px; font-size: 0.85em; {{#if (eq selectedId wallId)}}background: #444; color: white;{{/if}}" title="Draw walls on grid">
+                        <i class="fa-solid fa-wall-brick"></i> Place Walls: {{placedWallSquares}} / {{totalWallSquaresAllowed}}
+                    </button>
+                </div>
+                <div style="text-align: right;">
+                    {{#if selectedId}}
+                        <span style="color: #a32a22; font-weight: bold;">{{#if (eq selectedId wallId)}}Drawing Walls{{else}}Placing: {{#each specialFacilitiesBuilt}}{{#if (eq this.id ../selectedId)}}{{this.name}}{{/if}}{{/each}}{{#each basicFacilitiesBuilt}}{{#if (eq this.id ../selectedId)}}{{this.name}}{{/if}}{{/each}}{{/if}}</span>
+                    {{else}}
+                        <span style="font-style: italic; color: #666;">Select an item to begin...</span>
+                    {{/if}}
+                </div>
             </div>
         </div>
         
-        <div class="bastion-grid" style="display: grid; grid-template-columns: repeat(20, 1fr); grid-template-rows: repeat(20, 1fr); gap: 1px; background: #999; border: 1px solid #666; aspect-ratio: 1/1; width: 100%; max-width: 420px; cursor: crosshair;">
+        <div class="bastion-grid" style="display: grid; grid-template-columns: repeat({{gridSize}}, 1fr); grid-template-rows: repeat({{gridSize}}, 1fr); gap: 1px; background: #666; border: 1px solid #333; aspect-ratio: 1/1; width: 100%; max-width: 440px; cursor: crosshair;
+            {{#if (eq gridBackground "grass")}}background-image: url('ui/denim.png'), linear-gradient(rgba(34,139,34,0.7), rgba(34,139,34,0.7)); background-color: #2e7d32;{{/if}}
+            {{#if (eq gridBackground "stone")}}background-image: url('ui/parchment.jpg'); filter: grayscale(1) brightness(0.5);{{/if}}
+            {{#if (eq gridBackground "parchment")}}background-image: url('ui/parchment.jpg'); background-size: cover;{{/if}}">
             {{#each grid}}
                 <div class="bastion-grid-square" 
                     data-coord="{{this.coord}}" 
                     title="{{#if this.name}}{{this.name}}{{else}}{{this.coord}}{{/if}}"
-                    style="background: {{#if this.name}}{{this.color}}{{else}}#eee{{/if}}; border-radius: 1px;">
+                    style="background: {{#if this.name}}{{this.color}}{{else}}rgba(255,255,255,0.1){{/if}}; border-radius: 1px; position: relative; display: flex; align-items: center; justify-content: center;
+                    {{#if this.isScaffolding}}background-image: repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.2) 5px, rgba(255,255,255,0.2) 10px); opacity: 0.6;{{/if}}">
+                    {{#if this.label}}
+                        <span style="position: absolute; pointer-events: none; font-size: 9px; font-weight: bold; color: white; text-shadow: 0 0 2px black, 0 0 2px black; white-space: nowrap; z-index: 5; text-align: center;">{{this.label}}</span>
+                    {{/if}}
                 </div>
             {{/each}}
         </div>

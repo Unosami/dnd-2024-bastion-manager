@@ -31,24 +31,41 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             buildDefensiveWall: BastionManager.onBuildDefensiveWall,
             selectFacilityLayout: BastionManager.onSelectFacilityLayout,
             clearLayout: BastionManager.onClearLayout,
-            saveLayout: BastionManager.onSaveLayout
+            saveLayout: BastionManager.onSaveLayout,
+            toggleCombine: BastionManager.onToggleCombine,
+            changeBackground: BastionManager.onChangeBackground
         }
     };
     static PARTS = { main: { template: "modules/dnd-2024-bastion-manager/templates/bastion-main.hbs" } };
 
     _getUnifiedFacilities() {
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        const combinedGroupId = this.actor.getFlag(MODULE_ID, "combinedGroupId");
+        const combinedGroup = combinedGroupId ? game.actors.get(combinedGroupId) : null;
+        
+        // If we are a character combined with a group, we need the Group's unified view 
+        // to render the shared layout grid, but we must preserve our own ownership.
+        const effectiveActor = (this.actor.type !== "group" && combinedGroup) ? combinedGroup : this.actor;
+
         let rawFacilities = [];
-        this.actor.items.filter(item => item.type === "facility").forEach(item => { rawFacilities.push({ sourceDoc: item, isInherited: false, isFlag: false, name: item.name, id: item.id }); });
-        if (this.actor.type === "group") {
-            const flagFacilities = this.actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
+        effectiveActor.items.filter(item => item.type === "facility").forEach(item => { 
+            const isMine = item.parent.id === this.actor.id;
+            rawFacilities.push({ sourceDoc: item, isInherited: !isMine, isFlag: false, name: item.name, id: item.id }); 
+        });
+
+        if (effectiveActor.type === "group") {
+            const flagFacilities = effectiveActor.getFlag(MODULE_ID, "groupFacilities") || [];
             flagFacilities.forEach(f => { rawFacilities.push({ sourceDoc: f, isInherited: false, isFlag: true, name: f.name, id: f._id }); });
-        }
-        if (this.actor.type === "group" && game.settings.get("dnd-2024-bastion-manager", "groupInheritsFacilities")) {
-            const members = this.actor.system.members || [];
-            for (const member of members) {
-                const memberActor = member.actor || member; 
-                if (memberActor && memberActor.items) {
-                    memberActor.items.filter(item => item.type === "facility").forEach(item => { rawFacilities.push({ sourceDoc: item, isInherited: true, isFlag: false, name: item.name, ownerName: memberActor.name, id: item.id, memberActor: memberActor }); });
+
+            if (game.settings.get(MODULE_ID, "groupInheritsFacilities")) {
+                for (const member of (effectiveActor.system.members || [])) {
+                    const mActor = member.actor || member;
+                    if (mActor && mActor.id !== effectiveActor.id) {
+                        mActor.items.filter(i => i.type === "facility").forEach(item => {
+                            const isMine = item.parent.id === this.actor.id;
+                            rawFacilities.push({ sourceDoc: item, isInherited: !isMine, isFlag: false, name: item.name, ownerName: mActor.name, id: item.id, memberActor: mActor });
+                        });
+                    }
                 }
             }
         }
@@ -65,13 +82,25 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const mapSceneId = this.actor.getFlag(MODULE_ID, "mapSceneId");
         const hasMap = !!game.scenes.get(mapSceneId);
         
-        // Initialize local layout from flags if not already present
+        const combinedGroupId = this.actor.getFlag(MODULE_ID, "combinedGroupId");
+        const combinedGroup = combinedGroupId ? game.actors.get(combinedGroupId) : null;
+        const layoutActor = combinedGroup || this.actor;
+        const isGroupMode = this.actor.type === "group" || !!combinedGroup;
+
         if (this._localLayout === undefined) {
-            this._localLayout = foundry.utils.deepClone(this.actor.getFlag(MODULE_ID, "layout") || {});
+            this._localLayout = foundry.utils.deepClone(layoutActor.getFlag(MODULE_ID, "layout") || {});
         }
+
         const layoutData = this._localLayout;
         const selectedId = this._selectedFacilityId;
         
+        // Determine Wall placement stats
+        const wallId = "defensive-wall-id";
+        const totalWallSquaresAllowed = wallCount + Math.floor(wallDays / 10);
+        const placedWallSquares = Object.values(layoutData).filter(id => id === wallId).length;
+
+        const gridBackground = this.actor.getFlag(MODULE_ID, "gridBackground") || "none";
+
         let totalDefenders = 0;
         let allDefenderNames = [];
 
@@ -210,6 +239,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 isEnlargeable: isEnlargeable,
                 maxSquares,
                 placedSquares,
+                isBuilding,
                 isLayoutActive,
                 facColor
             };
@@ -316,17 +346,48 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const requiredRole = parseInt(game.settings.get("dnd-2024-bastion-manager", "advancePermission")) || 4;
         const canAdvanceTurn = game.user.role >= requiredRole;
 
-        // Generate Grid for Template
+        // Calculate Centroids for labels
+        const centers = {};
+        const footprints = {};
+        for (const [coord, id] of Object.entries(layoutData)) {
+            if (!footprints[id]) footprints[id] = [];
+            footprints[id].push(coord.split(',').map(Number));
+        }
+
+        for (const [id, points] of Object.entries(footprints)) {
+            const avgX = points.reduce((s, p) => s + p[0], 0) / points.length;
+            const avgY = points.reduce((s, p) => s + p[1], 0) / points.length;
+            
+            let bestCoord = "";
+            let minDist = Infinity;
+            for (const [px, py] of points) {
+                const dist = Math.hypot(px - avgX, py - avgY);
+                if (dist < minDist) {
+                    minDist = dist;
+                    bestCoord = `${px},${py}`;
+                }
+            }
+            const fac = facilities.find(f => f.id === id);
+            if (fac) centers[bestCoord] = fac.name;
+        }
+
+        const gridSize = isGroupMode ? 40 : 20;
         const grid = [];
-        for (let y = 0; y < 20; y++) {
-            for (let x = 0; x < 20; x++) {
+        for (let y = 0; y < gridSize; y++) {
+            for (let x = 0; x < gridSize; x++) {
                 const coord = `${x},${y}`;
                 const facId = layoutData[coord];
-                const fac = facilities.find(f => f.id === facId);
+                const isWall = facId === wallId;
+                const fac = isWall ? { name: "Defensive Wall", facColor: "#555", isBuilding: false } : facilities.find(f => f.id === facId);
+                
+                // Wall specific scaffolding check
+                const isScaffolding = fac?.isBuilding || (isWall && (Object.values(layoutData).slice(0, Object.keys(layoutData).indexOf(coord)).filter(id => id === wallId).length >= wallCount));
+
                 grid.push({
                     x, y, coord,
-                    color: fac ? fac.facColor : "transparent",
-                    name: fac ? fac.name : ""
+                    color: fac ? fac.facColor : "transparent", isScaffolding,
+                    name: fac ? fac.name : "",
+                    label: centers[coord] || ""
                 });
             }
         }
@@ -337,10 +398,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         return { 
             actor: this.actor, turnCount: globalTurnCount, 
             totalDefenders, defenderNames: allDefenderNames.join(", "), 
-            specialFacilitiesBuilt, basicFacilitiesBuilt, specialFacilities, basicFacilities,
-            canAdvanceTurn, grid,
+            facilities, specialFacilitiesBuilt, basicFacilitiesBuilt, specialFacilities, basicFacilities,
+            canAdvanceTurn, grid, gridSize,
             wallCount, wallDays, hasMap,
-            selectedId
+            selectedId, combinedGroup,
+            totalWallSquaresAllowed, placedWallSquares, wallId,
+            gridBackground
         };
     }
 
@@ -495,25 +558,82 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
         // Grid Square Listeners
         const squares = this.element.querySelectorAll('.bastion-grid-square');
-        squares.forEach(sq => {
-            sq.addEventListener('click', (ev) => {
-                if (!this._selectedFacilityId) return ui.notifications.warn("Select a facility from the list first to place squares.");
-                
-                const coord = ev.currentTarget.dataset.coord;
-                const fac = context.facilities.find(f => f.id === this._selectedFacilityId);
-                
+
+        const performLayoutAction = (coord, action) => {
+            if (!this._selectedFacilityId) {
+                ui.notifications.warn("Select a facility from the list first to place squares.");
+                return false; // No change
+            }
+
+            if (this._selectedFacilityId === "defensive-wall-id") {
+                if (action === 'place') {
+                    const allowed = context.totalWallSquaresAllowed;
+                    const current = Object.values(this._localLayout).filter(id => id === "defensive-wall-id").length;
+                    if (current >= allowed) return ui.notifications.warn("You cannot place more wall squares than you have purchased/pending.");
+                    if (this._localLayout[coord]) return false;
+                    this._localLayout[coord] = "defensive-wall-id";
+                    return true;
+                } else {
+                    if (this._localLayout[coord] === "defensive-wall-id") { delete this._localLayout[coord]; return true; }
+                    return false;
+                }
+            }
+
+            const fac = context.facilities.find(f => f.id === this._selectedFacilityId);
+            if (!fac || fac.isInherited) {
+                if (fac?.isInherited && action !== null) ui.notifications.warn("You cannot modify the layout of a facility owned by another player.");
+                return false;
+            }
+
+            if (action === 'remove') {
                 if (this._localLayout[coord] === this._selectedFacilityId) {
                     delete this._localLayout[coord];
-                } else {
-                    const currentlyPlaced = Object.values(this._localLayout).filter(id => id === this._selectedFacilityId).length;
-                    if (currentlyPlaced >= fac.maxSquares) {
-                        return ui.notifications.warn(`${fac.name} has already reached its maximum area of ${fac.maxSquares} squares.`);
-                    }
-                    this._localLayout[coord] = this._selectedFacilityId;
+                    return true;
                 }
-                this.render();
+            } else if (action === 'place') {
+                if (this._localLayout[coord]) return false;
+                const currentlyPlaced = Object.values(this._localLayout).filter(id => id === this._selectedFacilityId).length;
+                if (currentlyPlaced >= fac.maxSquares) {
+                    ui.notifications.warn(`${fac.name} has already reached its maximum area of ${fac.maxSquares} squares.`);
+                    return false;
+                }
+                this._localLayout[coord] = this._selectedFacilityId;
+                return true;
+            }
+            return false;
+        };
+        
+        squares.forEach(sq => {
+            sq.addEventListener('mousedown', (ev) => {
+                const coord = ev.currentTarget.dataset.coord;
+                if (ev.button === 0) { // Left
+                    this._isDragging = true;
+                    this._dragAction = this._localLayout[coord] === this._selectedFacilityId ? 'remove' : 'place';
+                    if (performLayoutAction(coord, this._dragAction)) sq.style.opacity = "0.5"; 
+                } else if (ev.button === 2) { // Right
+                    ev.preventDefault();
+                    this._isDragging = true;
+                    this._dragAction = 'remove';
+                    if (performLayoutAction(coord, this._dragAction)) sq.style.opacity = "0.5";
+                }
+            });
+
+            sq.addEventListener('mouseenter', (ev) => {
+                if (this._isDragging) {
+                    const coord = ev.currentTarget.dataset.coord;
+                    if (performLayoutAction(coord, this._dragAction)) sq.style.opacity = "0.5";
+                }
             });
         });
+        const stopDragging = () => {
+            if (this._isDragging) {
+                this._isDragging = false;
+                this._dragAction = null;
+                this.render(); 
+            }
+        };
+        document.addEventListener('mouseup', stopDragging);
+        this.element.addEventListener('remove', () => document.removeEventListener('mouseup', stopDragging));
     }
 
     static onSelectFacilityLayout(event, target) {
@@ -522,19 +642,114 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         this.render();
     }
 
+    static async onChangeBackground(event, target) {
+        const bg = target.value;
+        await this.actor.setFlag("dnd-2024-bastion-manager", "gridBackground", bg);
+        this.render();
+    }
+
     static onClearLayout(event, target) {
-        this._localLayout = {};
+        const unified = this._getUnifiedFacilities();
+        const myIds = new Set(unified.filter(f => !f.isInherited).map(f => f.id));
+        
+        for (const [coord, id] of Object.entries(this._localLayout)) {
+            if (myIds.has(id)) delete this._localLayout[coord];
+        }
+        
+        this.render();
+    }
+
+    static async onToggleCombine(event, target) {
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        if (this.actor.getFlag(MODULE_ID, "combinedGroupId")) {
+            await this.actor.unsetFlag(MODULE_ID, "combinedGroupId");
+            this._localLayout = undefined; // Force layout refresh
+            return this.render();
+        }
+
+        const groups = game.actors.filter(a => a.type === "group" && a.testUserPermission(game.user, "OWNER"));
+        if (!groups.length) return ui.notifications.warn("You must have ownership of at least one Group actor to combine Bastions.");
+
+        const options = groups.map(g => `<option value="${g.id}">${g.name}</option>`).join("");
+        const groupId = await DialogV2.prompt({
+            window: { title: "Combine Bastion" },
+            content: `<p>Select a Group to combine <b>${this.actor.name}'s</b> Bastion with:</p><select name="group">${options}</select>`,
+            ok: { callback: (event, button) => button.form.elements.group.value }
+        });
+
+        if (groupId) {
+            await this.actor.setFlag(MODULE_ID, "combinedGroupId", groupId);
+            this._localLayout = undefined; // Force layout refresh
+        }
         this.render();
     }
 
     static async onSaveLayout(event, target) {
         const MODULE_ID = "dnd-2024-bastion-manager";
+        const unifiedFacilities = this._getUnifiedFacilities();
+        
+        const combinedGroupId = this.actor.getFlag(MODULE_ID, "combinedGroupId");
+        const combinedGroup = combinedGroupId ? game.actors.get(combinedGroupId) : null;
+        const layoutActor = combinedGroup || this.actor;
+
+        // Validation: Contiguity Check
+        const facIds = new Set(Object.values(this._localLayout));
+        for (const id of facIds) {
+            const coordsList = Object.entries(this._localLayout).filter(([c, val]) => val === id && !c.startsWith("-=")).map(([c]) => c);
+            if (coordsList.length <= 1) continue;
+
+            const coordsSet = new Set(coordsList);
+            const visited = new Set();
+            const queue = [coordsList[0]];
+            visited.add(coordsList[0]);
+
+            while (queue.length > 0) {
+                const [x, y] = queue.shift().split(',').map(Number);
+                const neighbors = [
+                    `${x+1},${y}`, `${x-1},${y}`, `${x},${y+1}`, `${x},${y-1}`, // Cardinal
+                    `${x+1},${y+1}`, `${x-1},${y-1}`, `${x+1},${y-1}`, `${x-1},${y+1}` // Diagonal
+                ];
+                for (const n of neighbors) {
+                    if (coordsSet.has(n) && !visited.has(n)) {
+                        visited.add(n);
+                        queue.push(n);
+                    }
+                }
+            }
+
+            if (visited.size !== coordsList.length) {
+                return ui.notifications.error("Layout Error: One or more facilities have disconnected parts. All squares for a single facility must be contiguous (touching).");
+            }
+
+            // Validation: Completeness Check
+            const facSource = unifiedFacilities.find(f => f.id === id);
+            if (facSource) {
+                const facSize = facSource.isFlag ? (facSource.sourceDoc.flags?.[MODULE_ID]?.size || "Roomy") : (facSource.sourceDoc.getFlag(MODULE_ID, "size") || "Roomy");
+                const maxSquares = facSize === "Vast" ? 36 : (facSize === "Cramped" ? 4 : 16);
+                if (coordsList.length !== maxSquares) {
+                    return ui.notifications.error(`Layout Error: ${facSource.name} is ${facSize} and requires exactly ${maxSquares} squares. You have placed ${coordsList.length}.`);
+                }
+            }
+        }
+
         const confirm = await DialogV2.confirm({
             window: { title: "Save Layout" },
             content: "<p>Save the current grid layout to the Bastion?</p>"
         });
         if (confirm) {
-            await this.actor.setFlag(MODULE_ID, "layout", this._localLayout);
+            const currentLayout = layoutActor.getFlag(MODULE_ID, "layout") || {};
+            const updateData = foundry.utils.deepClone(this._localLayout);
+
+            // Foundry's setFlag merges by default. 
+            // To remove keys that exist in the DB but NOT in our local state, 
+            // we must explicitly set them to null with the -= prefix.
+            for (const coord of Object.keys(currentLayout)) {
+                if (!(coord in updateData)) {
+                    updateData[`-=${coord}`] = null;
+                }
+            }
+
+            await layoutActor.setFlag(MODULE_ID, "layout", updateData);
             ui.notifications.info("Bastion layout saved.");
             this.render();
         }
