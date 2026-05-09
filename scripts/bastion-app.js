@@ -33,7 +33,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             clearLayout: BastionManager.onClearLayout,
             saveLayout: BastionManager.onSaveLayout,
             toggleCombine: BastionManager.onToggleCombine,
-            changeBackground: BastionManager.onChangeBackground
+            changeBackground: function(event, target) { this.onChangeBackground(event, target); },
+            initializeBastion: BastionManager.onInitializeBastion,
+            toggleBarrackNaming: BastionManager.onToggleBarrackNaming
         }
     };
     static PARTS = { main: { template: "modules/dnd-2024-bastion-manager/templates/bastion-main.hbs" } };
@@ -47,28 +49,33 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         // to render the shared layout grid, but we must preserve our own ownership.
         const effectiveActor = (this.actor.type !== "group" && combinedGroup) ? combinedGroup : this.actor;
 
+        if (!effectiveActor) return [];
+
         let rawFacilities = [];
-        effectiveActor.items.filter(item => item.type === "facility").forEach(item => { 
-            const isMine = item.parent.id === this.actor.id;
-            rawFacilities.push({ sourceDoc: item, isInherited: !isMine, isFlag: false, name: item.name, id: item.id }); 
-        });
-
-        if (effectiveActor.type === "group") {
-            const flagFacilities = effectiveActor.getFlag(MODULE_ID, "groupFacilities") || [];
-            flagFacilities.forEach(f => { rawFacilities.push({ sourceDoc: f, isInherited: false, isFlag: true, name: f.name, id: f._id }); });
-
-            if (game.settings.get(MODULE_ID, "groupInheritsFacilities")) {
-                for (const member of (effectiveActor.system.members || [])) {
-                    const mActor = member.actor || member;
-                    if (mActor && mActor.id !== effectiveActor.id) {
-                        mActor.items.filter(i => i.type === "facility").forEach(item => {
-                            const isMine = item.parent.id === this.actor.id;
-                            rawFacilities.push({ sourceDoc: item, isInherited: !isMine, isFlag: false, name: item.name, ownerName: mActor.name, id: item.id, memberActor: mActor });
-                        });
-                    }
-                }
+        const actorsToCheck = [effectiveActor];
+        if (effectiveActor.type === "group" && game.settings.get(MODULE_ID, "groupInheritsFacilities")) {
+            for (const m of (effectiveActor.system.members || [])) {
+                const mActor = m.actor || m;
+                if (mActor && mActor.id !== effectiveActor.id) actorsToCheck.push(mActor);
             }
         }
+
+        for (const act of actorsToCheck) {
+            const isMine = act.id === this.actor.id || (this.actor.type === "group" && act.id === this.actor.id);
+            const inherited = !isMine;
+
+            // Get Items
+            act.items.filter(i => i.type === "facility").forEach(item => {
+                rawFacilities.push({ sourceDoc: item, isInherited: inherited, isFlag: false, name: item.name, id: item.id, ownerName: act.name, memberActor: act });
+            });
+
+            // Get Flags (Facilities under construction)
+            const flags = act.getFlag(MODULE_ID, "groupFacilities") || [];
+            flags.forEach(f => {
+                rawFacilities.push({ sourceDoc: f, isInherited: inherited, isFlag: true, name: f.name, id: f._id, ownerName: act.name, memberActor: act });
+            });
+        }
+
         return rawFacilities;
     }
 
@@ -95,9 +102,21 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const selectedId = this._selectedFacilityId;
         
         // Determine Wall placement stats
-        const wallId = "defensive-wall-id";
-        const totalWallSquaresAllowed = wallCount + Math.floor(wallDays / 10);
-        const placedWallSquares = Object.values(layoutData).filter(id => id === wallId).length;
+        const globalCostMult = game.settings.get(MODULE_ID, "globalCostMultiplier") ?? 100;
+        const globalTimeMult = game.settings.get(MODULE_ID, "globalTimeMultiplier") ?? 100;
+        const wallCost = Math.floor(250 * (globalCostMult / 100));
+        const wallTime = Math.floor(10 * (globalTimeMult / 100));
+
+        const STRUCT_IDS = {
+            wall: "defensive-wall-id",
+            closet: "structural-closet",
+            path: "structural-path",
+            pathPending: "structural-path-pending",
+            opening: this._selectedOpeningType || "Door"
+        };
+
+        const totalWallSquaresAllowed = wallCount + Math.floor(wallDays / (wallTime || 1));
+        const placedWallSquares = Object.values(layoutData).filter(id => id === STRUCT_IDS.wall).length;
 
         const gridBackground = this.actor.getFlag(MODULE_ID, "gridBackground") || "none";
 
@@ -171,8 +190,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const progress = fac.isFlag ? (fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.progress || 0) : (fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "progress") || 0);
 
             // Determine Enlargeability for UI
-            const basicNames = ["Bedroom", "Dining Room", "Parlor", "Courtyard", "Kitchen", "Storage"];
-            const isBasic = basicNames.some(bn => fac.name.includes(bn));
+            const isBasic = fac.sourceDoc.system?.type?.value?.toLowerCase() === "basic";
             const enlargeableSpecials = ["Archive", "Barrack", "Garden", "Pub", "Stable", "Workshop"];
             const isEnlargeableSpecial = enlargeableSpecials.some(sn => fac.name.includes(sn));
             const isEnlargeable = (isBasic && facSize !== "Vast") || (isEnlargeableSpecial && facSize === "Roomy");
@@ -182,6 +200,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const isUnderConstruction = upgradeTurns > 0;
             const isBuilding = isUnderConstruction && !facSize;
             const isOrderLocked = progress > 0 || isBuilding;
+
+            // Barrack Naming Toggle
+            const isBarrack = fac.name.includes("Barrack");
+            const promptNames = isBarrack ? (fac.isFlag ? (fac.sourceDoc.flags?.[MODULE_ID]?.promptNames ?? true) 
+                                                       : (fac.sourceDoc.getFlag(MODULE_ID, "promptNames") ?? true)) : false;
 
             // Layout Logic
             const maxSquares = facSize === "Vast" ? 36 : (facSize === "Cramped" ? 4 : 16);
@@ -236,12 +259,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 upgradeProgress: upgradeProgress,
                 upgradeTurns: upgradeTurns,
                 upgradeProgressPct: Math.round((Math.min(upgradeProgress, upgradeTurns) / (upgradeTurns || 1)) * 100),
+                isBasic: isBasic,
                 isEnlargeable: isEnlargeable,
                 maxSquares,
                 placedSquares,
                 isBuilding,
                 isLayoutActive,
-                facColor
+                facColor,
+                promptNames
             };
         });
 
@@ -275,11 +300,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 if (excludedSources.includes(source.trim())) continue;
 
                 // Try multiple places a level might be stored depending on the exact 5e system schema version
-                let reqLevel = item.system?.prerequisites?.level || item.system?.requirements?.level;
+                let reqLevel = item.system?.prerequisites?.level || item.system?.requirements?.level || 0;
                 const desc = item.system?.description?.value || "";
                 
                 // If not found in a clean integer field, try parsing the description for "Level X"
-                if (reqLevel === undefined || reqLevel === null || reqLevel === 0) {
+                if (!reqLevel) {
                     // Look for "Level X" in the description, ignoring HTML tags
                     const levelMatch = desc.replace(/<[^>]*>/g, '').match(/Level\s+(\d+)/i);
                     if (levelMatch) {
@@ -313,9 +338,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 };
 
                 // Sort into Basic vs Special facilities. 
-                // We'll define Basic as explicitly named "Basic Facility" or having "Basic" in the name/type
-                const isBasic = item.name.toLowerCase().includes("basic") || 
-                                (item.system?.type?.value && item.system.type.value.toLowerCase().includes("basic"));
+                const isBasic = item.system?.type?.value === "basic";
 
                 if (isBasic) {
                     basicFacilities.push(facData);
@@ -350,25 +373,31 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const centers = {};
         const footprints = {};
         for (const [coord, id] of Object.entries(layoutData)) {
+            if (id.startsWith("structural-") || id.includes("wall") || id.startsWith("opening-")) continue;
             if (!footprints[id]) footprints[id] = [];
             footprints[id].push(coord.split(',').map(Number));
         }
 
         for (const [id, points] of Object.entries(footprints)) {
+            const fac = facilities.find(f => f.id === id);
+            if (!fac) continue;
             const avgX = points.reduce((s, p) => s + p[0], 0) / points.length;
             const avgY = points.reduce((s, p) => s + p[1], 0) / points.length;
-            
-            let bestCoord = "";
-            let minDist = Infinity;
+            let bestCoord = ""; let minDist = Infinity;
             for (const [px, py] of points) {
                 const dist = Math.hypot(px - avgX, py - avgY);
-                if (dist < minDist) {
-                    minDist = dist;
-                    bestCoord = `${px},${py}`;
-                }
+                if (dist < minDist) { minDist = dist; bestCoord = `${px},${py}`; }
             }
-            const fac = facilities.find(f => f.id === id);
-            if (fac) centers[bestCoord] = fac.name;
+            centers[bestCoord] = fac.name;
+        }
+
+        // Add simple labels for structural items
+        for (const [coord, id] of Object.entries(layoutData)) {
+            if (id === STRUCT_IDS.closet) centers[coord] = "Cl";
+            else if (id === STRUCT_IDS.path || id === STRUCT_IDS.pathPending) centers[coord] = ""; // Paths will have a texture, no label
+            else if (id.startsWith("opening-")) { // Openings don't need a label, they have a visual representation
+                centers[coord] = "";
+            }
         }
 
         const gridSize = isGroupMode ? 40 : 20;
@@ -377,15 +406,23 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             for (let x = 0; x < gridSize; x++) {
                 const coord = `${x},${y}`;
                 const facId = layoutData[coord];
-                const isWall = facId === wallId;
-                const fac = isWall ? { name: "Defensive Wall", facColor: "#555", isBuilding: false } : facilities.find(f => f.id === facId);
+                const isWall = facId === STRUCT_IDS.wall;
+                const isOpening = !!facId?.startsWith("opening-");
+                const isPath = facId === STRUCT_IDS.path || facId === STRUCT_IDS.pathPending;
+                const isStruct = facId?.startsWith("structural-") || isOpening || isPath;
+                
+                const fac = isWall ? { name: "Defensive Wall", facColor: "#666", isBuilding: false } 
+                          : (isPath ? { name: "Path", facColor: "#8B4513", isBuilding: facId.includes("pending") }
+                          : (isOpening ? { name: "Opening", facColor: "#333", isBuilding: false }
+                          : (facId?.startsWith("structural-") ? { name: "Structure", facColor: "#777", isBuilding: facId.includes("pending") }
+                          : facilities.find(f => f.id === facId))));
                 
                 // Wall specific scaffolding check
-                const isScaffolding = fac?.isBuilding || (isWall && (Object.values(layoutData).slice(0, Object.keys(layoutData).indexOf(coord)).filter(id => id === wallId).length >= wallCount));
+                const isScaffolding = fac?.isBuilding || (isWall && (Object.values(layoutData).slice(0, Object.keys(layoutData).indexOf(coord)).filter(id => id === STRUCT_IDS.wall).length >= wallCount));
 
                 grid.push({
                     x, y, coord,
-                    color: fac ? fac.facColor : "transparent", isScaffolding,
+                    color: fac ? fac.facColor : "transparent", isScaffolding, isStruct, isOpening, isPath,
                     name: fac ? fac.name : "",
                     label: centers[coord] || ""
                 });
@@ -394,21 +431,52 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
         const specialFacilitiesBuilt = facilities.filter(f => !f.isBasic);
         const basicFacilitiesBuilt = facilities.filter(f => f.isBasic);
+        const isNewBastion = this.actor.type !== "group" && facilities.filter(f => !f.isInherited).length === 0;
 
+        // Persist section states
+        if (this._sectionStates === undefined) this._sectionStates = { special: true, basic: false };
+        
         return { 
             actor: this.actor, turnCount: globalTurnCount, 
             totalDefenders, defenderNames: allDefenderNames.join(", "), 
             facilities, specialFacilitiesBuilt, basicFacilitiesBuilt, specialFacilities, basicFacilities,
-            canAdvanceTurn, grid, gridSize,
+            canAdvanceTurn, grid, gridSize, isNewBastion,
             wallCount, wallDays, hasMap,
-            selectedId, combinedGroup,
-            totalWallSquaresAllowed, placedWallSquares, wallId,
-            gridBackground
+            selectedId, combinedGroup, wallCost, wallTime,
+            totalWallSquaresAllowed, placedWallSquares, structIds: STRUCT_IDS,
+            gridBackground, selectedOpening: this._selectedOpeningType || "Door",
+            sectionStates: this._sectionStates
         };
     }
 
     _onRender(context, options) {
         super._onRender(context, options);
+
+        // Restore scroll position
+        const sidebar = this.element.querySelector('.bastion-sidebar');
+        if (sidebar && this._scrollTop !== undefined) sidebar.scrollTop = this._scrollTop;
+
+        // Add scroll listener to track position for future re-renders
+        sidebar?.addEventListener('scroll', () => this._scrollTop = sidebar.scrollTop);
+
+        // Section State Listeners
+        this.element.querySelectorAll('details[data-section]').forEach(details => {
+            details.addEventListener('toggle', (ev) => {
+                const section = ev.currentTarget.dataset.section;
+                this._sectionStates[section] = ev.currentTarget.open;
+            });
+        });
+
+        this.element.querySelector('select[name="opening-type"]')?.addEventListener('change', (ev) => {
+            this._selectedOpeningType = ev.target.value;
+            this.render();
+        });
+        
+        const bgSelect = this.element.querySelector('select[data-action="changeBackground"]');
+        if (bgSelect) {
+            bgSelect.addEventListener('change', (ev) => this.onChangeBackground(ev, ev.currentTarget));
+        }
+
         const selects = this.element.querySelectorAll('.facility-order-select');
         for ( const select of selects ) {
             select.addEventListener('change', async (event) => {
@@ -560,28 +628,76 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const squares = this.element.querySelectorAll('.bastion-grid-square');
 
         const performLayoutAction = (coord, action) => {
+            const now = Date.now();
+            const warningDelay = 200;
+
             if (!this._selectedFacilityId) {
-                ui.notifications.warn("Select a facility from the list first to place squares.");
+                if (!this._lastWarningTime || (now - this._lastWarningTime > warningDelay)) {
+                    ui.notifications.warn("Select a facility from the list first to place squares.");
+                }
+                this._lastWarningTime = now;
                 return false; // No change
             }
 
-            if (this._selectedFacilityId === "defensive-wall-id") {
+            const sId = this._selectedFacilityId;
+            const existing = this._localLayout[coord];
+
+            if (sId === context.structIds.wall || sId.startsWith("structural-") || sId.startsWith("opening-")) {
                 if (action === 'place') {
-                    const allowed = context.totalWallSquaresAllowed;
-                    const current = Object.values(this._localLayout).filter(id => id === "defensive-wall-id").length;
-                    if (current >= allowed) return ui.notifications.warn("You cannot place more wall squares than you have purchased/pending.");
-                    if (this._localLayout[coord]) return false;
-                    this._localLayout[coord] = "defensive-wall-id";
+                    if (existing) return false;
+                    
+                    if (sId === context.structIds.wall) {
+                        if (existing) return false;
+                        const allowed = context.totalWallSquaresAllowed;
+                        const current = Object.values(this._localLayout).filter(id => id === context.structIds.wall).length;
+                        if (current >= allowed) {
+                            if (!this._lastWarningTime || (now - this._lastWarningTime > warningDelay)) {
+                                ui.notifications.warn("You cannot place more wall squares than you have purchased/pending.");
+                            }
+                            this._lastWarningTime = now;
+                            return false;
+                        }
+                        this._localLayout[coord] = context.structIds.wall;
+                    } else if (sId === context.structIds.path) {
+                        this._localLayout[coord] = context.structIds.pathPending;
+                    } else {
+                        const targetId = existing;
+                        if (!targetId || targetId.startsWith("structural-") || targetId === context.structIds.wall || targetId.startsWith("opening-")) {
+                            if (!this._lastWarningTime || (now - this._lastWarningTime > warningDelay)) {
+                                ui.notifications.warn("Closets and Openings must be placed on an existing facility square.");
+                            }
+                            this._lastWarningTime = now;
+                            return false;
+                        }
+                        const underlyingFac = context.facilities.find(f => f.id === targetId);
+                        if (underlyingFac?.isInherited) {
+                            if (!this._lastWarningTime || (now - this._lastWarningTime > warningDelay)) {
+                                ui.notifications.warn("You cannot place structures on a facility owned by another player.");
+                            }
+                            this._lastWarningTime = now;
+                            return false;
+                        }
+                        this._localLayout[coord] = sId.startsWith("structural-") ? sId : `opening-${sId}`;
+                    }
                     return true;
                 } else {
-                    if (this._localLayout[coord] === "defensive-wall-id") { delete this._localLayout[coord]; return true; }
+                    const target = this._localLayout[coord];
+                    if (target === sId || (sId === context.structIds.path && target === context.structIds.pathPending)) {
+                        delete this._localLayout[coord];
+                        return true;
+                    }
                     return false;
                 }
             }
 
             const fac = context.facilities.find(f => f.id === this._selectedFacilityId);
             if (!fac || fac.isInherited) {
-                if (fac?.isInherited && action !== null) ui.notifications.warn("You cannot modify the layout of a facility owned by another player.");
+                if (fac?.isInherited && action !== null) {
+                    if (!this._lastWarningTime || (now - this._lastWarningTime > warningDelay)) {
+                        ui.notifications.warn("You cannot modify the layout of a facility owned by another player.");
+                    }
+                    this._lastWarningTime = now;
+                }
                 return false;
             }
 
@@ -594,7 +710,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 if (this._localLayout[coord]) return false;
                 const currentlyPlaced = Object.values(this._localLayout).filter(id => id === this._selectedFacilityId).length;
                 if (currentlyPlaced >= fac.maxSquares) {
-                    ui.notifications.warn(`${fac.name} has already reached its maximum area of ${fac.maxSquares} squares.`);
+                    if (!this._lastWarningTime || (now - this._lastWarningTime > warningDelay)) ui.notifications.warn(`${fac.name} has already reached its maximum area of ${fac.maxSquares} squares.`);
+                    this._lastWarningTime = now;
                     return false;
                 }
                 this._localLayout[coord] = this._selectedFacilityId;
@@ -642,9 +759,31 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         this.render();
     }
 
-    static async onChangeBackground(event, target) {
+    static async onToggleBarrackNaming(event, target) {
+        const ds = target.dataset;
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        
+        let current;
+        if (ds.isFlag === "true") {
+            const groupFacilities = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+            const fac = groupFacilities.find(f => f._id === ds.itemId);
+            if (!fac) return;
+            current = fac.flags?.[MODULE_ID]?.promptNames ?? true;
+            foundry.utils.setProperty(fac, `flags.${MODULE_ID}.promptNames`, !current);
+            await this.actor.setFlag(MODULE_ID, "groupFacilities", groupFacilities);
+        } else {
+            const item = this.actor.items.get(ds.itemId);
+            if (!item) return;
+            current = item.getFlag(MODULE_ID, "promptNames") ?? true;
+            await item.setFlag(MODULE_ID, "promptNames", !current);
+        }
+        this.render();
+    }
+
+    async onChangeBackground(event, target) {
+        const MODULE_ID = "dnd-2024-bastion-manager";
         const bg = target.value;
-        await this.actor.setFlag("dnd-2024-bastion-manager", "gridBackground", bg);
+        await this.actor.setFlag(MODULE_ID, "gridBackground", bg);
         this.render();
     }
 
@@ -671,9 +810,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (!groups.length) return ui.notifications.warn("You must have ownership of at least one Group actor to combine Bastions.");
 
         const options = groups.map(g => `<option value="${g.id}">${g.name}</option>`).join("");
+        // Filter groups to only those where the current actor is a member
+        const validGroups = groups.filter(g => (g.system.members || []).some(m => m.actorId === this.actor.id));
+        if (!validGroups.length) return ui.notifications.warn(`You must be a member of a Group to combine your Bastion. Add ${this.actor.name} to a Group Actor first.`);
+        const validOptions = validGroups.map(g => `<option value="${g.id}">${g.name}</option>`).join("");
+
         const groupId = await DialogV2.prompt({
             window: { title: "Combine Bastion" },
-            content: `<p>Select a Group to combine <b>${this.actor.name}'s</b> Bastion with:</p><select name="group">${options}</select>`,
+            content: `<p>Select a Group to combine <b>${this.actor.name}'s</b> Bastion with:</p><select name="group">${validOptions}</select>`,
             ok: { callback: (event, button) => button.form.elements.group.value }
         });
 
@@ -681,6 +825,132 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             await this.actor.setFlag(MODULE_ID, "combinedGroupId", groupId);
             this._localLayout = undefined; // Force layout refresh
         }
+        this.render();
+    }
+
+    static async onInitializeBastion(event, target) {
+        const ctx = await this._prepareContext();
+        
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        const pack = game.packs.get("dnd-2024-bastion-manager.bastion-facilities");
+        const allDocs = await pack.getDocuments();
+        
+        const getHCount = (doc) => {
+            const hData = doc.system?.hireling || doc.system?.hirelings || doc.system?.details?.hireling || doc.system?.details?.hirelings;
+            let count = typeof hData === "number" ? hData : (parseInt(hData?.max || hData?.value || hData) || 0);
+            if (!count) {
+                const desc = doc.system?.description?.value || "";
+                const hMatch = desc.replace(/<[^>]*>/g, '').match(/Hirelings:\s*(\d+)/i);
+                if (hMatch) count = parseInt(hMatch[1]);
+            }
+            return count || 0;
+        };
+
+        const specList = allDocs.filter(d => {
+            const isBasic = d.system?.type?.value === "basic";
+            let lvl = d.system?.prerequisites?.level || d.system?.requirements?.level || 0;
+            if ( !lvl ) {
+                const desc = d.system?.description?.value || "";
+                const levelMatch = desc.replace(/<[^>]*>/g, '').match(/Level\s+(\d+)/i);
+                if (levelMatch) {
+                    lvl = parseInt(levelMatch[1]);
+                } else {
+                    lvl = 5; 
+                }
+            }
+            return !isBasic && lvl <= 5;
+        }).map(d => ({ id: d.id, name: d.name, hirelings: getHCount(d) }));
+
+        const basicList = ctx.basicFacilities;
+        const namingEnabled = game.settings.get(MODULE_ID, "nameHirelings");
+
+        const initContent = `
+            <p style="margin-bottom: 10px;">Establish your Bastion <b>instantly and for free</b>. Select two Special Facilities and two Basic Facilities.</p>
+            <div class="form-group"><label>Special Facility 1</label><select name="spec1" class="spec-init" data-slot="1" style="flex: 2;">${specList.map(f => `<option value="${f.id}" data-h="${f.hirelings}">${f.name}</option>`).join("")}</select></div>
+            <div id="names-slot-1" style="margin-bottom: 10px; padding-left: 20px;"></div>
+            
+            <div class="form-group"><label>Special Facility 2</label><select name="spec2" class="spec-init" data-slot="2" style="flex: 2;">${specList.map(f => `<option value="${f.id}" data-h="${f.hirelings}">${f.name}</option>`).join("")}</select></div>
+            <div id="names-slot-2" style="margin-bottom: 10px; padding-left: 20px;"></div>
+            
+            <hr>
+            <div class="form-group"><label>Basic Facility 1</label>
+                <select name="basic1" style="flex: 2;">${basicList.map(f => `<option value="${f._id}">${f.name}</option>`).join("")}</select>
+                <select name="size1" style="flex: 1;"><option value="Cramped">Cramped</option><option value="Roomy" selected>Roomy</option></select>
+            </div>
+            <div class="form-group"><label>Basic Facility 2</label> 
+                <select name="basic2" style="flex: 2;">${basicList.map(f => `<option value="${f._id}">${f.name}</option>`).join("")}</select>
+                <select name="size2" style="flex: 1;"><option value="Cramped" selected>Cramped</option><option value="Roomy">Roomy</option></select>
+            </div>
+        `;
+
+        const selections = await DialogV2.prompt({
+            window: { title: "Founding Your Bastion", icon: "fa-solid fa-sparkles", classes: ["bastion-app"] },
+            content: initContent,
+            ok: { label: "Establish Bastion", callback: (event, button) => new foundry.applications.ux.FormDataExtended(button.form).object },
+            render: function(event) {
+                const html = event.target.element;
+                const updateNames = (select) => {
+                    if (!namingEnabled) return;
+                    const slot = select.dataset.slot;
+                    const facility = specList.find(s => s.id === select.value);
+                    const count = facility ? facility.hirelings : 0;
+                    const container = html.querySelector('#names-slot-' + slot);
+                    if (!container) return;
+                    let inputs = '';
+                    for(let i=0; i<count; i++) {
+                        inputs += `<div class="form-group" style="margin: 2px 0;"><label style="font-size: 0.85em; color: #666;">Hireling ${i+1}:</label><input type="text" name="name_spec${slot}_${i}" placeholder="Auto-generate if blank" style="height: 22px;"></div>`;
+                    }
+                    container.innerHTML = inputs;
+                };
+                html.querySelectorAll('.spec-init').forEach(s => {
+                    s.addEventListener('change', e => updateNames(e.target));
+                    updateNames(s);
+                });
+            },
+            rejectClose: false
+        });
+
+        if (!selections) return;
+
+        const createInitFac = async (id, size, slotNum = null) => {
+            const doc = await pack.getDocument(id);
+            const data = doc.toObject();
+            const MODULE_ID = "dnd-2024-bastion-manager";
+            foundry.utils.setProperty(data, `flags.${MODULE_ID}.size`, size);
+
+            const hCount = getHCount(doc);
+            if (slotNum && hCount > 0 && game.settings.get(MODULE_ID, "nameHirelings")) {
+                const autoGen = game.settings.get(MODULE_ID, "autoNameHirelings");
+                let names = [];
+                for (let i = 0; i < hCount; i++) {
+                    const key = `name_spec${slotNum}_${i}`;
+                    let val = selections[key]?.trim();
+                    if (!val && autoGen) val = BastionManager._generateRandomName();
+                    if (val) names.push(val);
+                }
+
+                if (names.length > 0) {
+                    foundry.utils.setProperty(data, `flags.${MODULE_ID}.hirelings`, names);
+                    let prof = BastionManager._getHirelingProfession(doc.name, null);
+                    names.forEach(n => BastionManager._createHirelingActor(n, prof, this.actor.name, doc.name, false));
+                }
+            }
+            
+            if (this.actor.type === "group") {
+                const gf = this.actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
+                data._id = foundry.utils.randomID();
+                gf.push(data);
+                await this.actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", gf);
+            } else {
+                await Item.create(data, { parent: this.actor });
+            }
+        };
+
+        ui.notifications.info(`Founding ${this.actor.name}'s Bastion...`);
+        await createInitFac(selections.spec1, "Roomy", 1);
+        await createInitFac(selections.spec2, "Roomy", 2);
+        await createInitFac(selections.basic1, selections.size1);
+        await createInitFac(selections.basic2, selections.size2);
         this.render();
     }
 
@@ -789,8 +1059,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (flags?.upgradeTurns > 0) return ui.notifications.warn("This facility is already being enlarged.");
 
         // Determine if basic or special and next size costs
-        const basicNames = ["Bedroom", "Dining Room", "Parlor", "Courtyard", "Kitchen", "Storage"];
-        const isBasic = basicNames.some(bn => name.includes(bn));
+        const isBasic = fac.system?.type?.value === "basic";
         const enlargeableSpecials = ["Archive", "Barrack", "Garden", "Pub", "Stable", "Workshop"];
         const isEnlargeableSpecial = enlargeableSpecials.some(sn => name.includes(sn));
 
@@ -955,6 +1224,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             } else {
                 const item = this.actor.items.get(ds.itemId); if (item) await item.delete();
             }
+
+            // Clear squares occupied by this facility from the local layout cache
+            if (this._localLayout) {
+                for (const [coord, id] of Object.entries(this._localLayout)) {
+                    if (id === ds.itemId) delete this._localLayout[coord];
+                }
+            }
+
             this.render();
         }
     }
@@ -969,8 +1246,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const MODULE_ID = "dnd-2024-bastion-manager";
 
         // Identify Basic vs Special
-        const basicNames = ["Bedroom", "Dining Room", "Parlor", "Courtyard", "Kitchen", "Storage"];
-        const isBasic = basicNames.some(bn => itemDoc.name.includes(bn));
+        let turns = 0;
+        const isBasic = itemDoc.system?.type?.value === "basic";
 
         // Cost Calculation Helper
         const getVal = (key, base, isTime = false) => {
@@ -1053,7 +1330,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             for (let i = 0; i < expectedHirelings; i++) {
                 promptContent += `<div style="margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
                                     <label style="width: 80px;">Hireling ${i+1}:</label>
-                                    <input type="text" name="hireling_${i}" value="" style="flex-grow: 1;">
+                                    <input type="text" name="hireling_${i}" value="" style="flex-grow: 1;" placeholder="Auto-generate if blank">
                                 </div>`;
             }
         }
@@ -1083,8 +1360,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
                     if (expectedHirelings > 0) {
                         let names = [];
+                        const autoGen = game.settings.get(MODULE_ID, "autoNameHirelings");
                         for(let i = 0; i < expectedHirelings; i++) {
-                            let val = button.form.elements[`hireling_${i}`].value.trim();
+                            let val = button.form.elements[`hireling_${i}`]?.value?.trim();
+                            if (!val && autoGen) val = BastionManager._generateRandomName();
                             if (val) names.push(val);
                         }
                         data.hirelings = names;
@@ -1096,8 +1375,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (formData && formData !== "cancel") {
                  // Handle Basic Facility Construction Costs and Flags
                  if (isBasic && formData.size) {
-                    const cost = sizeCosts[formData.size].cost;
-                    const turns = sizeCosts[formData.size].turns;
+                    let cost = sizeCosts[formData.size].cost;
+                    turns = sizeCosts[formData.size].turns;
                     const currentGP = this.actor.system.currency?.gp || 0;
                     
                     if (currentGP < cost) {
@@ -1110,8 +1389,15 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.upgradeTurns", turns);
                         foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.upgradeProgress", 0);
                         foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.targetSize", formData.size);
-                    } else {
-                        foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.size", formData.size);
+                        // Basic facilities under construction are stored as flags
+                        newFacData._id = foundry.utils.randomID(); 
+                        const groupFacilities = this.actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
+                        groupFacilities.push(newFacData);
+                        await this.actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacilities);
+                        this.render();
+                        return;
+                    } else { // Instant build
+                        foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.size", formData.size); 
                     }
                  }
 
@@ -1131,13 +1417,16 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             }
         }
 
-        if (this.actor.type === "group") {
-            const groupFacilities = this.actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
-            newFacData._id = foundry.utils.randomID(); 
-            groupFacilities.push(newFacData);
-            await this.actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacilities);
-        } else {
-            await Item.create(newFacData, { parent: this.actor });
+        // If it's a basic facility with 0 turns, or any special facility
+        if (!isBasic || (isBasic && turns === 0)) {
+            if (this.actor.type === "group") {
+                const groupFacilities = this.actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
+                newFacData._id = foundry.utils.randomID(); 
+                groupFacilities.push(newFacData);
+                await this.actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacilities);
+            } else {
+                await Item.create(newFacData, { parent: this.actor });
+            }
         }
         this.render(); 
     }
@@ -1176,11 +1465,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
     static async onBuildDefensiveWall(event, target) {
         const MODULE_ID = "dnd-2024-bastion-manager";
+        const globalCostMult = game.settings.get(MODULE_ID, "globalCostMultiplier") ?? 100;
+        const wallCost = Math.floor(250 * (globalCostMult / 100));
+
         const squares = await DialogV2.prompt({
             window: { title: "Build Defensive Walls" },
             content: `
                 <div class="form-group">
-                    <p>Each 5-foot square of wall costs <b>250 GP</b> and takes <b>10 days</b> to build.</p>
+                    <p>Each 5-foot square of wall costs <b>${wallCost} GP</b>.</p>
                     <label>Number of 5ft Squares:</label>
                     <input type="number" name="squares" value="1" min="1" step="1">
                 </div>
@@ -1192,21 +1484,23 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         });
 
         if (!squares) return;
-        
-        const cost = squares * 250;
+
+        const globalTimeMult = game.settings.get(MODULE_ID, "globalTimeMultiplier") ?? 100;
+        const wallTime = Math.floor(10 * (globalTimeMult / 100));
+        const cost = squares * wallCost;
         const currentGP = this.actor.system.currency?.gp || 0;
 
         if (currentGP < cost) return ui.notifications.warn(`Insufficient gold. Need ${cost} GP.`);
         
         const confirm = await DialogV2.confirm({
             window: { title: "Confirm Wall Construction" },
-            content: `<p>Spend <b>${cost} GP</b> to begin building <b>${squares}</b> squares of wall? (Total time: ${squares * 10} days)</p>`
+            content: `<p>Spend <b>${cost} GP</b> to begin building <b>${squares}</b> squares of wall? (Total time: ${squares * wallTime} days)</p>`
         });
 
         if (confirm) {
             await this.actor.update({ "system.currency.gp": currentGP - cost });
             const currentPending = this.actor.getFlag(MODULE_ID, "pendingWallDays") || 0;
-            await this.actor.setFlag(MODULE_ID, "pendingWallDays", currentPending + (squares * 10));
+            await this.actor.setFlag(MODULE_ID, "pendingWallDays", currentPending + (squares * wallTime));
             this.render();
         }
     }
@@ -1338,6 +1632,21 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         let items = [];
         const MODULE_ID = "dnd-2024-bastion-manager";
 
+        // Handle structural path completion
+        const combinedGroupId = actor.getFlag(MODULE_ID, "combinedGroupId");
+        const combinedGroup = combinedGroupId ? game.actors.get(combinedGroupId) : null;
+        const layoutActor = (actor.type !== "group" && combinedGroup) ? combinedGroup : actor;
+        const layout = layoutActor.getFlag(MODULE_ID, "layout") || {};
+        let layoutChanged = false;
+
+        for (const [coord, val] of Object.entries(layout)) {
+            if (val === "structural-path-pending") {
+                layout[coord] = "structural-path";
+                layoutChanged = true;
+            }
+        }
+        if (layoutChanged) await layoutActor.setFlag(MODULE_ID, "layout", layout);
+
         // Handle Defensive Wall Progress
         let wallDays = actor.getFlag(MODULE_ID, "pendingWallDays") || 0;
         if (wallDays > 0) {
@@ -1403,6 +1712,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 } else if (order === "Change Type") {
                     let pending = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.pendingSubType) : (fac.doc.getFlag("dnd-2024-bastion-manager", "pendingSubType"));
                     progress += 1;
+                    // If it's a Garden changing type, it takes 3 turns.
+                    // If it's a basic facility being built, it uses upgradeTurns.
+                    const totalTurns = fac.doc.name.includes("Garden") ? 3 : (fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.upgradeTurns || 0) : (fac.doc.getFlag("dnd-2024-bastion-manager", "upgradeTurns") || 0));
+
                     if (progress >= 3) { subType = pending || "Decorative"; progress = 0; order = "Maintain"; resultText = `Completed changing type to <b>[${subType}]</b>.`; } 
                     else { resultText = `Changing type to [${pending}] (Progress: ${progress}/3 turns).`; }
                 } else if (order === "Trade") {
@@ -1461,7 +1774,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 if (upgradeProgress >= upgradeTurns) {
                     facSize = targetSize;
                     if (targetSubType2) facSubType2 = targetSubType2;
-                    resultText += ` (Enlargement to <b>${facSize}</b> completed!)`;
+                    resultText += ` (${fac.doc.name} to <b>${facSize}</b> completed!)`;
                     targetSize = null; upgradeProgress = 0; upgradeTurns = 0; targetSubType2 = null;
                 } else {
                     resultText += ` (Enlarging to ${targetSize}: ${upgradeProgress}/${upgradeTurns} turns)`;
@@ -1640,6 +1953,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
         const recruitMode = game.settings.get("dnd-2024-bastion-manager", "recruitMode");
         let newlyRecruited = 0;
+        const MODULE_ID = "dnd-2024-bastion-manager";
 
         if (recruitMode === "max") {
             newlyRecruited = Math.min(4, maxDefenders - facDefendersCount);
@@ -1656,40 +1970,47 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         }
 
         if (newlyRecruited > 0) {
-            facDefendersCount += newlyRecruited;
+            const promptNames = fac.isFlag ? (fac.doc.flags?.[MODULE_ID]?.promptNames ?? true) 
+                                           : (fac.doc.getFlag(MODULE_ID, "promptNames") ?? true);
+
             let newNames = [];
-            
-            if (game.settings.get("dnd-2024-bastion-manager", "nameHirelings")) {
-                const autoName = game.settings.get("dnd-2024-bastion-manager", "autoNameDefenders");
-                const firstNames = ["Tordek", "Mialee", "Jozan", "Lidda", "Aramil", "Eberk", "Vadania", "Gimble", "Hennet", "Krusk", "Nebin", "Soveliss", "Alhandra", "Devis", "Regdar"];
-                const lastNames = ["Ironfist", "Moonwhisper", "Brightwood", "Nimblefingers", "Starbreeze", "Frostbeard", "Greenleaf", "Timbers", "Tanglehair", "Bonecrusher", "Gemsnatcher", "Sunrunner", "Swiftstep", "Fairweather", "Broadblade"];
-                
-                const DialogV2 = foundry.applications.api.DialogV2;
+            const firstNames = ["Tordek", "Mialee", "Jozan", "Lidda", "Aramil", "Eberk", "Vadania", "Gimble", "Hennet", "Krusk", "Nebin", "Soveliss", "Alhandra", "Devis", "Regdar"];
+            const lastNames = ["Ironfist", "Moonwhisper", "Brightwood", "Nimblefingers", "Starbreeze", "Frostbeard", "Greenleaf", "Timbers", "Tanglehair", "Bonecrusher", "Gemsnatcher", "Sunrunner", "Swiftstep", "Fairweather", "Broadblade"];
+
+            const generateFullName = () => {
+                const first = firstNames[Math.floor(Math.random() * firstNames.length)];
+                const last = lastNames[Math.floor(Math.random() * lastNames.length)];
+                return `${first} ${last}`;
+            };
+
+            if (game.settings.get(MODULE_ID, "nameHirelings") && promptNames) {
+                let namingContent = `<p>You have recruited <b>${newlyRecruited}</b> defenders. Please name them:</p>`;
                 for (let d = 0; d < newlyRecruited; d++) {
-                    let dName = "";
-                    if (autoName) {
-                        let unique = false;
-                        let attempts = 0;
-                        while (!unique && attempts < 50) {
-                            const first = firstNames[Math.floor(Math.random() * firstNames.length)];
-                            const last = lastNames[Math.floor(Math.random() * lastNames.length)];
-                            const testName = `${first} ${last}`;
-                            if (!facDefenderNames.includes(testName) && !newNames.includes(testName)) {
-                                dName = testName;
-                                unique = true;
-                            }
-                            attempts++;
-                        }
-                        if (!dName) dName = `Defender ${facDefendersCount - newlyRecruited + d + 1}`; // absolute fallback
-                        newNames.push(dName);
-                    } else {
-                        dName = await DialogV2.prompt({
-                            window: { title: `Name Defender (${fac.name})` },
-                            content: `<p>Name of recruited Defender #${d + 1}:</p><input type="text" name="defName" value="Defender ${facDefendersCount - newlyRecruited + d + 1}" autofocus>`,
-                            ok: { callback: (event, button) => button.form.elements.defName.value }
-                        });
-                        if (dName) newNames.push(dName);
-                    }
+                    namingContent += `<div class="form-group"><label>Defender ${d+1}:</label><input type="text" name="name_${d}" placeholder="Auto-generate if blank" value=""></div>`;
+                }
+
+                const nameData = await DialogV2.prompt({
+                    window: { title: `Founding Defenders: ${fac.name}` },
+                    content: namingContent,
+                    ok: { label: "Establish Names", callback: (event, button) => new foundry.applications.ux.FormDataExtended(button.form).object }
+                });
+
+                for (let d = 0; d < newlyRecruited; d++) {
+                    let dName = nameData?.[`name_${d}`]?.trim();
+                    if (!dName) dName = generateFullName();
+                    newNames.push(dName);
+                }
+            } else {
+                // Background auto-generation if prompting is off but names are enabled globally
+                const autoName = game.settings.get(MODULE_ID, "autoNameDefenders");
+                for (let d = 0; d < newlyRecruited; d++) {
+                    newNames.push(autoName ? generateFullName() : `Defender ${facDefendersCount + d + 1}`);
+                }
+            }
+
+            facDefendersCount += newlyRecruited;
+            if (newNames.length > 0) {
+                for (const dName of newNames) {
                     if (dName) {
                         BastionManager._createHirelingActor(dName, "Defender", actor.name, fac.name, true);
                     }
@@ -1772,6 +2093,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (toUpdate.length > 0) await actor.updateEmbeddedDocuments("Item", toUpdate);
     }
 
+    static _generateRandomName() {
+        const names = ["Adrik", "Alberich", "Baern", "Barendd", "Brottor", "Bruenor", "Dain", "Darrak", "Delg", "Eberk", "Einkil", "Fargrim", "Flint", "Gardain", "Harbek", "Kildrak", "Oskar", "Rangrim", "Rurik", "Thoradin", "Thorin", "Tordek", "Traubon", "Travok", "Ulfgar", "Veit", "Vondal", "Amber", "Artin", "Audhild", "Bardryn", "Dagnal", "Diesa", "Eldeth", "Falkrunn", "Finellen", "Gunnloda", "Gurdis", "Helja", "Hlin", "Kathra", "Kristryd", "Ilde", "Liftrasa", "Mardred", "Riswynn", "Sannl", "Torbera", "Torgga", "Vistra", "Aseir", "Bardeid", "Haseid", "Khemed", "Mehmen", "Sudeiman", "Zasheir", "Atala", "Ceidil", "Hama", "Jasmal", "Meilil", "Seipora", "Yasheira", "Zasheida", "Bor", "Fodel", "Glar", "Grigor", "Igan", "Ivor", "Kosef", "Mival", "Orel", "Pavel", "Sergor", "Alethra", "Kara", "Katernin", "Mara", "Natali", "Olma", "Tana", "Zora", "Ander", "Blath", "Bran", "Frath", "Geth", "Lander", "Luth", "Lucan", "Murn", "Muth", "Stedd", "Amafrey", "Betha", "Catelyn", "Ethani", "Ilda", "Lisvet", "Lura", "Madel", "Miri", "Nala", "Quara", "Selise", "Viana", "Anton", "Diero", "Falcone", "Federico", "Geno", "Luigi", "Marcello", "Nico", "Piero", "Tommaso", "Arveene", "Esvele", "Jhessail", "Kerri", "Lureene", "Miri", "Rowan", "Shandri", "Tessele", "Aoth", "Barakas", "Damakos", "Iados", "Kairon", "Leucis", "Melech", "Mordai", "Morthos", "Pelaios", "Skamos", "Therai", "Akta", "Anakis", "Bryseis", "Criella", "Damaia", "Ea", "Kallista", "Lerissa", "Makaria", "Nemeia", "Orianna", "Phelia", "Rieta"];
+        return names[Math.floor(Math.random() * names.length)];
+    }
+
     static _getHirelingProfession(facName, subType) {
         const name = facName.toLowerCase();
         if (name.includes("garden")) {
@@ -1814,7 +2140,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (actor) {
             const facs = BastionManager._getActorFacilities(actor);
             for (const fac of facs) {
-                const isBasic = fac.name.toLowerCase().includes("basic") || (fac.doc.system?.type?.value && fac.doc.system.type.value.toLowerCase().includes("basic"));
+                const isBasic = fac.doc.system?.type?.value === "basic";
                 if (!isBasic) specialFacilities.push(fac.name);
                 
                 const hirelings = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.hirelings) : (fac.doc.getFlag("dnd-2024-bastion-manager", "hirelings"));

@@ -253,10 +253,15 @@ class ConstructionConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
 class ResetBastionsApp extends ApplicationV2 {
     static DEFAULT_OPTIONS = {
         id: "reset-bastions-app",
-        window: { title: "Reset Global Bastion Turns" }
+        window: { title: "Reset Global Bastion Turns", frame: false },
+        position: { width: 400, height: "auto" }
     };
 
-    async _renderFrame(options) {
+    _renderHTML() { return ""; }
+    _replaceHTML() { }
+
+    async _onFirstRender(context, options) {
+        this.close();
         const confirm = await DialogV2.confirm({
             window: { title: "Reset All Bastion Turns" },
             content: "<p>Are you sure you want to instantly reset the Bastion Turn count to 0 for every character, NPC, and Group in the world?</p>",
@@ -372,6 +377,15 @@ Hooks.once("init", () => {
     game.settings.register(MODULE_ID, "nameHirelings", {
         name: "Prompt for Hireling/Defender Names",
         hint: "If enabled, the module will prompt you to name new hirelings when building facilities and new defenders when recruiting.",
+        scope: "world",
+        config: true,
+        type: Boolean,
+        default: true
+    });
+
+    game.settings.register(MODULE_ID, "autoNameHirelings", {
+        name: "Auto-Generate Hireling Names",
+        hint: "If enabled, leaving a hireling name field blank will result in a name being automatically generated.",
         scope: "world",
         config: true,
         type: Boolean,

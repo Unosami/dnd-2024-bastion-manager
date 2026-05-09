@@ -21,5 +21,10 @@ Bastion Module notes:
 
 - Homebrew (not hardcoded, I want them to be like submodules?):
     - Veteran Hirelings: After a certain length of service/special event/the hireling is attained in a special way the hireling should give bonuses to the facility they work.
+    - Specialized defenders: Mages, warriors, rogues. Each has a different benefit to the bastion.
 
 - At the end, add a README button in the module settings to walk through the module and address any systems that may be confusing for a user.
+
+---
+Known Bugs:
+- The Reset global Turns button opens a blank dialog in addition to the confirmation prompt.
