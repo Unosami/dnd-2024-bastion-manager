@@ -1,6 +1,6 @@
 Bastion Module notes:
 - Next I want to start fleshing out the other facility outputs.
-    - Most special facilities can only be built once per bastion.  
+    - ARCANE STUDY Get crafting magic items to work properly.
     - Specify what the garden/workshop/etc. should be producing.
     - Workshop requires 6 Artisan's Tools selections when built.
     - Make sure the enlarged facilites get their mechanical benefits.
@@ -27,4 +27,6 @@ Bastion Module notes:
 
 ---
 Known Bugs:
-- The Reset global Turns button opens a blank dialog in addition to the confirmation prompt.
+- 
+"I have also added the Magic Item craft options for the Smithy and Workshop facilities to the dropdowns, as these are the other level 5 facilities that gain these options at level 9+."
+

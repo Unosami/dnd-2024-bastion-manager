@@ -310,6 +310,26 @@ Hooks.once("init", () => {
         order: 1
     });
 
+    game.settings.register(MODULE_ID, "disableSpecialCap", {
+        name: "Disable Special Facility Cap",
+        hint: "If enabled, characters can build as many special facilities as they wish, ignoring the level-based capacity limits.",
+        scope: "world",
+        config: true,
+        type: Boolean,
+        default: false,
+        order: 1
+    });
+
+    game.settings.register(MODULE_ID, "disableDuplicateLimit", {
+        name: "Disable One-Per-Bastion Limit",
+        hint: "If enabled, characters can build multiple copies of any special facility, even those not normally allowed by the DMG 2024 rules.",
+        scope: "world",
+        config: true,
+        type: Boolean,
+        default: false,
+        order: 1
+    });
+
     game.settings.register(MODULE_ID, "globalCostMultiplier", { scope: "world", config: false, type: Number, default: 100 });
     game.settings.register(MODULE_ID, "globalTimeMultiplier", { scope: "world", config: false, type: Number, default: 100 });
 

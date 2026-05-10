@@ -146,6 +146,33 @@
                                 {{#if this.isLibraryResearching}}
                                     <input type="text" class="library-topic-input" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" value="{{this.libraryTopic}}" placeholder="Enter topic..." style="height: 20px; font-size: 0.85em; width: 120px;">
                                 {{/if}}
+                                {{#if this.isArcaneStudyCrafting}}
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
+                                        <select class="arcane-study-craft-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em;" {{#if this.isOrderLocked}}disabled{{/if}}>
+                                            <option value="">-- Select Craft --</option>
+                                            {{#each craftOptions}}
+                                                <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                                            {{/each}}
+                                        </select>
+                                        {{#if this.showArcanaTierSelect}}
+                                            <select class="arcane-study-tier-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em;" {{#if this.isOrderLocked}}disabled{{/if}}>
+                                                <option value="Common" {{#if (eq this.arcanaTier "Common")}}selected{{/if}}>Common (25 GP, 1 Turn)</option>
+                                                <option value="Uncommon" {{#if (eq this.arcanaTier "Uncommon")}}selected{{/if}}>Uncommon (250 GP, 8 Turns)</option>
+                                            </select>
+                                        {{/if}}
+                                        {{#if this.showArcaneFocusSelect}}
+                                            <select class="arcane-study-focus-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em;" {{#if this.isOrderLocked}}disabled{{/if}}>
+                                                <option value="">-- Select Focus Type --</option>
+                                                {{#each focusOptions}}
+                                                    <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                                                {{/each}}
+                                            </select>
+                                        {{/if}}
+                                    </div>
+                                {{/if}}
+                                {{#if (and this.isArcaneStudyCrafting this.progress)}}
+                                    <div style="font-size: 0.7em; color: purple; margin-top: 2px;">Progress: {{this.progress}} / {{this.maxCraftTurns}} turns</div>
+                                {{/if}}
                                 {{#if this.isGardenHarvesting}}
                                     <div style="width: 100%; display: flex; flex-direction: column; gap: 4px; margin-top: 5px;">
                                     {{#if this.harvestOptions.length}}
@@ -208,6 +235,13 @@
                                 {{/if}}
                             {{/if}}
                     {{/if}}
+                    
+                    {{#if (and (eq this.itemName "Arcane Study") (not this.isBuilding))}}
+                        <div style="font-size: 0.8em; color: purple; margin-top: 2px;">
+                            <i class="fa-solid fa-sparkles"></i> <b>Passive:</b> Gain <i>Identify</i> charm after Long Rest.
+                        </div>
+                    {{/if}}
+
                     {{#if this.isUnderConstruction}}
                         <div class="bastion-upgrade-bar" title="Construction progress: {{this.upgradeProgress}} / {{this.upgradeTurns}}" style="margin-top: 4px; height: 14px; background: rgba(0,0,0,0.1); border: 1px solid #7a7971; border-radius: 3px; position: relative; overflow: hidden; width: 100%;">
                             <div class="fill" style="width: {{this.upgradeProgressPct}}%; height: 100%; background: #f1c232; border-right: 1px solid #7a7971; transition: width 0.5s;"></div>
