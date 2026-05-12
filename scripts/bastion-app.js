@@ -1709,8 +1709,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const MODULE_ID = "dnd-2024-bastion-manager";
 
         // Identify Basic vs Special
-        let turns = 0;
         const isBasic = itemDoc.system?.type?.value === "basic";
+        const buildTimeEnabled = !isBasic && game.settings.get(MODULE_ID, "specialFacilitiesBuildTime");
+
 
         // Cost Calculation Helper
         const getVal = (key, base, isTime = false) => {
@@ -1724,63 +1725,26 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         };
 
         const sizeCosts = {
-            Cramped: { 
-                cost: getVal("buildCrampedCost", 500, false), 
-                turns: getVal("buildCrampedTime", 3, true) 
-            },
-            Roomy: { 
-                cost: getVal("buildRoomyCost", 1000, false), 
-                turns: getVal("buildRoomyTime", 7, true) 
-            },
-            Vast: { 
-                cost: getVal("buildVastCost", 3000, false), 
-                turns: getVal("buildVastTime", 18, true) 
-            }
+            Cramped: { cost: getVal("buildCrampedCost", 500, false), turns: getVal("buildCrampedTime", 3, true) },
+            Roomy: { cost: getVal("buildRoomyCost", 1000, false), turns: getVal("buildRoomyTime", 7, true) },
+            Vast: { cost: getVal("buildVastCost", 3000, false), turns: getVal("buildVastTime", 18, true) }
         };
 
-        // Default size for Specials is Roomy; Basic size is determined by user input
-        if (!isBasic) foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.size", "Roomy");
-
-        // Handle Special Facility Build Times
-        if (!isBasic && game.settings.get(MODULE_ID, "specialFacilitiesBuildTime")) {
-            const roomy = sizeCosts.Roomy;
-            const currentGP = this.actor.system.currency?.gp || 0;
-            if (currentGP < roomy.cost) return ui.notifications.warn(`Insufficient gold. Need ${roomy.cost} GP.`);
-            
-            const confirm = await DialogV2.confirm({
-                window: { title: `Build ${itemDoc.name}` },
-                content: `<p>Build a Roomy <b>${itemDoc.name}</b>? This requires <b>${roomy.cost} GP</b> and <b>${roomy.turns} Turns</b>.</p>`
-            });
-            
-            if (confirm) {
-                if (roomy.cost > 0) await this.actor.update({ "system.currency.gp": currentGP - roomy.cost });
-                foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.upgradeTurns`, roomy.turns);
-                foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.upgradeProgress`, 0);
-                foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.targetSize`, "Roomy");
-                foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.size`, null); // Clear size so engine knows it's a new build
-                
-                newFacData._id = foundry.utils.randomID();
-                const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
-                gf.push(newFacData);
-                await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
-                return this.render();
-            } else return;
-        }
-
-        let expectedHirelings = 0;
-        const hData = itemDoc.system?.hireling || itemDoc.system?.hirelings || itemDoc.system?.details?.hireling || itemDoc.system?.details?.hirelings;
-
-        if (typeof hData === "number") expectedHirelings = hData;
-        else if (typeof hData === "string") expectedHirelings = parseInt(hData) || 0;
-        else if (typeof hData === "object" && hData !== null) expectedHirelings = parseInt(hData.max) || parseInt(hData.value) || 0;
-        
-        const config = FACILITY_CONFIG[itemDoc.name];
+        // Prepare Prompt Content
         let promptContent = "";
+
+        if (buildTimeEnabled) {
+            const roomy = sizeCosts.Roomy;
+            promptContent += `<div style="background: rgba(0,0,0,0.05); padding: 8px; border-radius: 4px; border: 1px solid #ccc; margin-bottom: 10px;">
+                <p style="margin:0;"><b>Construction Plan:</b> Roomy ${itemDoc.name}</p>
+                <p style="margin:0; font-size: 0.9em; color: #555;">Requires <b>${roomy.cost} GP</b> and <b>${roomy.turns} Turns</b>.</p>
+            </div>`;
+        }
 
         if (isBasic) {
             promptContent += `
                 <div style="margin-bottom: 15px; border-bottom: 1px solid #ccc; padding-bottom: 10px;">
-                    <p>Select the size for your new <b>${itemDoc.name}</b>:</p>
+                    <p>Select the size for your <b>${itemDoc.name}</b>:</p>
                     <select name="size" style="width: 100%;">
                         <option value="Cramped">Cramped (${sizeCosts.Cramped.cost} GP, ${sizeCosts.Cramped.turns} Turns)</option>
                         <option value="Roomy" selected>Roomy (${sizeCosts.Roomy.cost} GP, ${sizeCosts.Roomy.turns} Turns)</option>
@@ -1790,11 +1754,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             `;
         }
 
-        if (itemDoc.name.includes("Garden")) {
+        const isGarden = itemDoc.name.includes("Garden");
+        const isGuild = itemDoc.name.includes("Guildhall");
+        if (isGarden || isGuild) {
             const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
             let specializationOptions = "";
             if (outPack?.folders) {
-                const root = outPack.folders.get("HYjssa08njsoKbTO") || outPack.folders.find(f => f.name.toLowerCase().trim() === "garden");
+                const root = isGarden ? (outPack.folders.get("HYjssa08njsoKbTO") || outPack.folders.find(f => f.name.toLowerCase().trim() === "garden"))
+                        : outPack.folders.find(f => f.name.toLowerCase().trim() === "guildhall");
                 if (root) {
                     specializationOptions = outPack.folders.filter(f => String(f.folder?.id || f.folder || f.parentId) === String(root.id))
                         .map(o => `<option value="${o.name}">${o.name}</option>`).join("");
@@ -1806,15 +1773,17 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     <select name="subType" style="width: 100%;">${specializationOptions}</select>
                 </div>
             `;
-        } else if (config?.type === "tools") {
-            const checkboxes = config.options.map(t => `
+         } else if (itemDoc.name.includes("Workshop")) {
+            const tools = ["Carpenter's Tools", "Cobbler's Tools", "Glassblower's Tools", "Jeweler's Tools", "Leatherworker's Tools", 
+                    "Mason's Tools", "Painter's Tools", "Potter's Tools", "Tinker's Tools", "Weaver's Tools", "Woodcarver's Tools"];
+            const checkboxes = tools.map(t => `
                 <label style="display: block; margin-bottom: 4px;">
                     <input type="checkbox" name="workshopTools" value="${t}"> ${t}
                 </label>
             `).join("");
             promptContent += `
                 <div style="margin-bottom: 10px;">
-                    <p>Select <b>6</b> Artisan's Tools for your Workshop:</p>
+                    <p>Select <b>6</b> Artisan's Tools:</p>
                     <div class="tool-selection-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 0.9em;">
                         ${checkboxes}
                     </div>
@@ -1822,110 +1791,104 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             `;
         }
 
+        let expectedHirelings = 0;
+        const hData = itemDoc.system?.hireling || itemDoc.system?.hirelings || itemDoc.system?.details?.hireling || itemDoc.system?.details?.hirelings;
+        if (typeof hData === "number") expectedHirelings = hData;
+        else if (typeof hData === "string") expectedHirelings = parseInt(hData) || 0;
+        else if (typeof hData === "object" && hData !== null) expectedHirelings = parseInt(hData.max) || parseInt(hData.value) || 0;
+
         if (expectedHirelings > 0 && game.settings.get("dnd-2024-bastion-manager", "nameHirelings")) {
-            promptContent += `<p>This facility requires <b>${expectedHirelings}</b> hireling(s). Please name them:</p>`;
+            promptContent += `<p>Name your <b>${expectedHirelings}</b> hireling(s):</p>`;
             for (let i = 0; i < expectedHirelings; i++) {
                 promptContent += `<div style="margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
                                     <label style="width: 80px;">Hireling ${i+1}:</label>
-                                    <input type="text" name="hireling_${i}" value="" style="flex-grow: 1;" placeholder="Auto-generate if blank">
+                                    <input type="text" name="hireling_${i}" style="flex-grow: 1;" placeholder="Auto-generate if blank">
                                 </div>`;
             }
+        }
+
+        if (!promptContent && buildTimeEnabled) {
+            const roomy = sizeCosts.Roomy;
+            promptContent = `<p>Establish a Roomy <b>${itemDoc.name}</b>? This requires <b>${roomy.cost} GP</b> and <b>${roomy.turns} Turns</b>.</p>`;
         }
 
         if (promptContent) {
             const formData = await DialogV2.wait({
                 window: { title: `Build Facility: ${itemDoc.name}` },
-                content: promptContent,
-                buttons: [{ action: "cancel", label: "Cancel", icon: "fas fa-times" }, { action: "ok", label: "Build", icon: "fas fa-hammer", default: true, callback: (event, button) => { 
-                    const data = {};
-                    const form = button.form;
-
-                    if (isBasic) {
-                        data.size = form.elements.size?.value;
-                    }
-                    
-                    if (config?.type === "specialization") {
-                        data.subType = form.elements.subType?.value;
-                    } else if (config?.type === "tools") {
+                content: `<div class="bastion-app">${promptContent}</div>`,
+                buttons: [
+                    { action: "cancel", label: "Cancel", icon: "fas fa-times" },
+                    { action: "ok", label: "Build", icon: "fas fa-hammer", default: true, callback: (event, button) => {
+                        const form = button.form;
+                        const data = new foundry.applications.ux.FormDataExtended(form).object;
+                        
+                        if (itemDoc.name.includes("Workshop")) {
                         const selected = Array.from(form.elements.workshopTools).filter(i => i.checked).map(i => i.value);
                         if (selected.length !== 6) {
                             ui.notifications.error("You must select exactly 6 tools for a Workshop.");
-                            return null; // Prevents dialog from closing
+                            return null; 
                         }
-                        data.tools = selected;
+                        data.workshopTools = selected;
                     }
 
                     if (expectedHirelings > 0) {
                         let names = [];
                         const autoGen = game.settings.get(MODULE_ID, "autoNameHirelings");
                         for(let i = 0; i < expectedHirelings; i++) {
-                            let val = button.form.elements[`hireling_${i}`]?.value?.trim();
+                            let val = form.elements[`hireling_${i}`]?.value?.trim();
                             if (!val && autoGen) val = BastionManager._generateRandomName();
                             if (val) names.push(val);
                         }
                         data.hirelings = names;
                     }
                     return data;
-                }}]
+                }}
+                ]
             });
             
-            if (formData && formData !== "cancel") {
-                 // Handle Basic Facility Construction Costs and Flags
-                 if (isBasic && formData.size) {
-                    let cost = sizeCosts[formData.size].cost;
-                    turns = sizeCosts[formData.size].turns;
-                    const currentGP = this.actor.system.currency?.gp || 0;
-                    
-                    if (currentGP < cost) {
-                        ui.notifications.warn(`Insufficient gold. Need ${cost} GP.`);
-                        return;
-                    }
-                    if (cost > 0) await this.actor.update({ "system.currency.gp": currentGP - cost });
+            if (!formData || formData === "cancel") return;
 
-                    if (turns > 0) {
-                        foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.upgradeTurns", turns);
-                        foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.upgradeProgress", 0);
-                        foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.targetSize", formData.size);
-                        // Basic facilities under construction are stored as flags
-                        newFacData._id = foundry.utils.randomID(); 
-                        const groupFacilities = this.actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
-                        groupFacilities.push(newFacData);
-                        await this.actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacilities);
-                        this.render();
-                        return;
-                    } else { // Instant build
-                        foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.size", formData.size); 
-                    }
-                 }
+            const size = isBasic ? formData.size : "Roomy";
+            const cost = sizeCosts[size].cost;
+            const turns = isBasic ? sizeCosts[size].turns : (buildTimeEnabled ? sizeCosts.Roomy.turns : 0);
+            const currentGP = this.actor.system.currency?.gp || 0;
 
-                 if (formData.subType) {
-                     foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.subType", formData.subType);
-                 }
-                 if (formData.tools) {
-                     foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.workshopTools", formData.tools);
-                 }
-                 if (formData.hirelings && formData.hirelings.length > 0) {
-                     foundry.utils.setProperty(newFacData, "flags.dnd-2024-bastion-manager.hirelings", formData.hirelings);
-                     let prof = BastionManager._getHirelingProfession(itemDoc.name, formData.subType);
-                     formData.hirelings.forEach(h => {
-                         BastionManager._createHirelingActor(h, prof, this.actor.name, itemDoc.name, false);
-                     });
-                 }
-            } else {
-                return; // Early return if prompt was cancelled
+            if (currentGP < cost) return ui.notifications.warn(`Insufficient gold. Need ${cost} GP.`);
+            if (cost > 0) await this.actor.update({ "system.currency.gp": currentGP - cost });
+
+            // Apply selections
+            if (formData.subType) foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.subType`, formData.subType);
+            if (formData.workshopTools) foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.workshopTools`, formData.workshopTools);
+            if (formData.hirelings) {
+                foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.hirelings`, formData.hirelings);
+                let prof = BastionManager._getHirelingProfession(itemDoc.name, formData.subType);
+                formData.hirelings.forEach(h => BastionManager._createHirelingActor(h, prof, this.actor.name, itemDoc.name, false));
             }
-        }
 
-        // If it's a basic facility with 0 turns, or any special facility
-        if (!isBasic || (isBasic && turns === 0)) {
-            if (this.actor.type === "group") {
-                const groupFacilities = this.actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
-                newFacData._id = foundry.utils.randomID(); 
-                groupFacilities.push(newFacData);
-                await this.actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacilities);
+            if (turns > 0) {
+                foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.upgradeTurns`, turns);
+                foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.upgradeProgress`, 0);
+                foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.targetSize`, size);
+                foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.size`, null);
+                
+                newFacData._id = foundry.utils.randomID();
+                const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+                gf.push(newFacData);
+                await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
             } else {
-                await Item.create(newFacData, { parent: this.actor });
+                foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.size`, size);
+                if (this.actor.type === "group") {
+                    const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+                    newFacData._id = foundry.utils.randomID();
+                    gf.push(newFacData);
+                    await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+                } else {
+                    await Item.create(newFacData, { parent: this.actor });
+                }
             }
+            } else {
+            // No prompt needed, instant build (happens if all options disabled and build times off)
+            await Item.create(newFacData, { parent: this.actor });
         }
         this.render(); 
     }
