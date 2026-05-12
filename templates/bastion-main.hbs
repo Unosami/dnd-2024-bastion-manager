@@ -156,9 +156,25 @@
                                         </select>
                                         {{#if this.showArcanaTierSelect}}
                                             <select class="arcane-study-tier-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em;" {{#if this.isOrderLocked}}disabled{{/if}}>
-                                                <option value="Common" {{#if (eq this.arcanaTier "Common")}}selected{{/if}}>Common (25 GP, 1 Turn)</option>
-                                                <option value="Uncommon" {{#if (eq this.arcanaTier "Uncommon")}}selected{{/if}}>Uncommon (250 GP, 8 Turns)</option>
+                                                {{#each arcanaTierOptions}}
+                                                    <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                                                {{/each}}
                                             </select>
+                                        {{/if}}
+                                        {{#if this.showArcanaItemSelect}}
+                                            <div style="display: flex; align-items: center; gap: 4px;">
+                                                <select class="arcane-study-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isOrderLocked}}disabled{{/if}}>
+                                                    <option value="">-- Select Magic Item --</option>
+                                                    {{#each magicItemOptions}}
+                                                        <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                                                    {{/each}}
+                                                </select>
+                                                {{#if this.magicItemUuid}}
+                                                    <a class="content-link" data-action="previewItem" data-uuid="{{this.magicItemUuid}}" draggable="true" style="font-size: 0.9em; height: 20px; display: flex; align-items: center; border: none; background: none;" title="View Item Details">
+                                                        <i class="fas fa-eye"></i>
+                                                    </a>
+                                                {{/if}}
+                                            </div>
                                         {{/if}}
                                         {{#if this.showArcaneFocusSelect}}
                                             <select class="arcane-study-focus-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em;" {{#if this.isOrderLocked}}disabled{{/if}}>
@@ -170,8 +186,33 @@
                                         {{/if}}
                                     </div>
                                 {{/if}}
+                                {{#if this.isSanctuaryCrafting}}
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
+                                        <select class="sanctuary-craft-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em;" {{#if this.isOrderLocked}}disabled{{/if}}>
+                                            <option value="">-- Select Craft --</option>
+                                            {{#each sanctuaryCraftOptions}}
+                                                <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                                            {{/each}}
+                                        </select>
+                                        {{#if this.showSacredFocusSelect}}
+                                            <div style="display: flex; align-items: center; gap: 4px;">
+                                                <select class="sanctuary-focus-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isOrderLocked}}disabled{{/if}}>
+                                                    <option value="">-- Select Focus Type --</option>
+                                                    {{#each sacredFocusOptions}}
+                                                        <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                                                    {{/each}}
+                                                </select>
+                                                {{#if this.sacredFocusUuid}}
+                                                    <a class="content-link" data-action="previewItem" data-uuid="{{this.sacredFocusUuid}}" draggable="true" style="font-size: 0.9em; height: 20px; display: flex; align-items: center; border: none; background: none;" title="View Item Details">
+                                                        <i class="fas fa-eye"></i>
+                                                    </a>
+                                                {{/if}}
+                                            </div>
+                                        {{/if}}
+                                    </div>
+                                {{/if}}
                                 {{#if (and this.isArcaneStudyCrafting this.progress)}}
-                                    <div style="font-size: 0.7em; color: purple; margin-top: 2px;">Progress: {{this.progress}} / {{this.maxCraftTurns}} turns</div>
+                                    <div style="font-size: 0.7em; color: purple; margin-top: 2px;">Progress: {{this.progress}} / {{this.maxCraftTurns}} {{this.progressLabel}}</div>
                                 {{/if}}
                                 {{#if this.isGardenHarvesting}}
                                     <div style="width: 100%; display: flex; flex-direction: column; gap: 4px; margin-top: 5px;">
@@ -239,6 +280,12 @@
                     {{#if (and (eq this.itemName "Arcane Study") (not this.isBuilding))}}
                         <div style="font-size: 0.8em; color: purple; margin-top: 2px;">
                             <i class="fa-solid fa-sparkles"></i> <b>Passive:</b> Gain <i>Identify</i> charm after Long Rest.
+                        </div>
+                    {{/if}}
+
+                    {{#if (and (eq this.itemName "Sanctuary") (not this.isBuilding))}}
+                        <div style="font-size: 0.8em; color: #a32a22; margin-top: 2px;">
+                            <i class="fa-solid fa-heart-pulse"></i> <b>Passive:</b> Gain <i>Healing Word</i> charm after Long Rest.
                         </div>
                     {{/if}}
 

@@ -16,8 +16,10 @@ Bastion Module notes:
     - Doors and Windows
 
 - UI Improvements
-    - Show all input options in the same dialog rather than clicking through all of the options when creating a facility or advacing a turn.
-    - the ability to layout your bastion on a grid.
+    - Show all input options in the same dialog rather than clicking through all of the options when creating a facility or advancing a turn.
+    - Change the grid layout to populate the squares with relevent furnishings. (ambitious)
+    - Change the grid layout of combined bastions to have each player be a color and their facilities be different shades of that color. (Or some way to distinguish who owns what without text)
+    - The option of Structure shapes/outlines? Tower, shrine, fortified keep, lodge vs village(current freeform)
 
 - Homebrew (not hardcoded, I want them to be like submodules?):
     - Veteran Hirelings: After a certain length of service/special event/the hireling is attained in a special way the hireling should give bonuses to the facility they work.

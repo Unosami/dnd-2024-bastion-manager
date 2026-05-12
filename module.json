@@ -35,6 +35,17 @@
       "system": "dnd5e"
     }
   ],
+  "packFolders": [
+        {
+            "name": "D&D Bastion Manager",
+            "color": "#111144",
+            "sorting": "m",
+            "packs": [
+                "bastion-facilities",
+                "bastion-output-items"
+            ]
+        }
+    ],
   "flags": {
     "canUpload": true
   },

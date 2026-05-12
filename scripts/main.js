@@ -425,6 +425,28 @@ Hooks.once("init", () => {
         default: true
     });
 
+    game.settings.register(MODULE_ID, "calculationMode", {
+        name: "Crafting Calculation Mode",
+        hint: "Choose whether multi-turn crafting progress is tracked by Bastion Turns or total Days.",
+        scope: "world",
+        config: true,
+        type: String,
+        default: "turns",
+        choices: {
+            "turns": "Simplified Bastion Turns",
+            "days": "Day-by-Day Tracking"
+        }
+    });
+
+    game.settings.register(MODULE_ID, "daysPerTurn", {
+        name: "Days per Bastion Turn",
+        hint: "Define how many in-game days are represented by a single Bastion Turn (Default 7).",
+        scope: "world",
+        config: true,
+        type: Number,
+        default: 7
+    });
+
     game.settings.register(MODULE_ID, "autoNameHirelings", {
         name: "Auto-Generate Hireling Names",
         hint: "If enabled, leaving a hireling name field blank will result in a name being automatically generated.",
