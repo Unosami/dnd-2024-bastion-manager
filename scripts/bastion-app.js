@@ -120,9 +120,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         let gardenRoot = null;
 
         if (outPack?.folders) {
-            gardenRoot = outPack.folders.get("HYjssa08njsoKbTO");
+            gardenRoot = outPack.folders.get("HYjssa08njsoKbTO") || outPack.folders.find(f => f.name.toLowerCase().trim() === "garden");
             if (gardenRoot) {
-                dynamicGardenTypes = outPack.folders.filter(f => String(f.folder) === String(gardenRoot.id))
+                dynamicGardenTypes = outPack.folders.filter(f => String(f.folder?.id || f.folder || f.parentId) === String(gardenRoot.id))
                     .map(f => ({ id: f.id, name: f.name }));
             }
         }
@@ -226,31 +226,31 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let craftOptions = [];
             if (isArcaneStudyCrafting) {
                 craftOptions = [
-                    { v: "Arcane Focus", l: "Arcane Focus (1 Turn, 0 GP)" },
-                    { v: "Book", l: "Blank Book (1 Turn, 10 GP)" }
+                    { value: "Arcane Focus", label: "Arcane Focus (1 Turn, 0 GP)" },
+                    { value: "Book", label: "Blank Book (1 Turn, 10 GP)" }
                 ];
                 if (actorLevel >= 9) {
-                    craftOptions.push({ v: "Magic Item (Arcana)", l: "Magic Item (Arcana) (Level 9+)" });
+                    craftOptions.push({ value: "Magic Item (Arcana)", label: "Magic Item (Arcana) (Level 9+)" });
                 }
             }
 
             const isSmithyCrafting = fac.name.includes("Smithy") && safeOrder === "Craft";
             if (isSmithyCrafting) {
                 craftOptions = [
-                    { v: "Smith's Tools", l: "Smith's Tools (PHB Rules)" }
+                    { value: "Smith's Tools", label: "Smith's Tools (PHB Rules)" }
                 ];
                 if (actorLevel >= 9) {
-                    craftOptions.push({ v: "Magic Item (Armament)", l: "Magic Item (Armament) (Level 9+)" });
+                    craftOptions.push({ value: "Magic Item (Armament)", label: "Magic Item (Armament) (Level 9+)" });
                 }
             }
 
             const isWorkshopCrafting = fac.name.includes("Workshop") && safeOrder === "Craft";
             if (isWorkshopCrafting) {
                 craftOptions = [
-                    { v: "Adventuring Gear", l: "Adventuring Gear (PHB Rules)" }
+                    { value: "Adventuring Gear", label: "Adventuring Gear (PHB Rules)" }
                 ];
                 if (actorLevel >= 9) {
-                    craftOptions.push({ v: "Magic Item (Implement)", l: "Magic Item (Implement) (Level 9+)" });
+                    craftOptions.push({ value: "Magic Item (Implement)", label: "Magic Item (Implement) (Level 9+)" });
                 }
             }
 
@@ -355,7 +355,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 
                 // Plot 1 Options
                 if (facSubType) {
-                    const typeFolder = dynamicGardenTypes.find(f => f.name === facSubType);
+                    const typeFolder = dynamicGardenTypes.find(f => f.name.toLowerCase().trim() === facSubType.toLowerCase().trim());
                     if (typeFolder) {
                         harvestOptions = index.filter(i => i.folder === typeFolder.id).map(i => ({
                             value: i.name, 
@@ -366,7 +366,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
                 // Plot 2 Options (Vast)
                 if (isVastGarden && facSubType2) {
-                    const typeFolder2 = dynamicGardenTypes.find(f => f.name === facSubType2);
+                    const typeFolder2 = dynamicGardenTypes.find(f => f.name.toLowerCase().trim() === facSubType2.toLowerCase().trim());
                     if (typeFolder2) {
                         harvestOptions2 = index.filter(i => i.folder === typeFolder2.id).map(i => ({
                             value: i.name, 
@@ -1566,9 +1566,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
             let gardenOptions = "";
             if (outPack?.folders) {
-                const root = outPack.folders.get("HYjssa08njsoKbTO");
+                const root = outPack.folders.get("HYjssa08njsoKbTO") || outPack.folders.find(f => f.name.toLowerCase().trim() === "garden");
                 if (root) {
-                    gardenOptions = outPack.folders.filter(f => String(f.folder) === String(root.id))
+                    gardenOptions = outPack.folders.filter(f => String(f.folder?.id || f.folder || f.parentId) === String(root.id))
                         .map(o => `<option value="${o.name}">${o.name}</option>`).join("");
                 }
             }
@@ -1790,13 +1790,13 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             `;
         }
 
-        if (config?.type === "specialization") {
+        if (itemDoc.name.includes("Garden")) {
             const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
             let specializationOptions = "";
             if (outPack?.folders) {
-                const root = outPack.folders.get("HYjssa08njsoKbTO");
+                const root = outPack.folders.get("HYjssa08njsoKbTO") || outPack.folders.find(f => f.name.toLowerCase().trim() === "garden");
                 if (root) {
-                    specializationOptions = outPack.folders.filter(f => String(f.folder) === String(root.id))
+                    specializationOptions = outPack.folders.filter(f => String(f.folder?.id || f.folder || f.parentId) === String(root.id))
                         .map(o => `<option value="${o.name}">${o.name}</option>`).join("");
                 }
             }
@@ -2769,8 +2769,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         
         let possible = [];
         if (isGarden && subType) {
-            const specFolder = outPack.folders.find(f => f.name === subType && String(f.folder) === String(rootFolder.id));
-            if (specFolder) possible = allDocs.filter(i => i.folder?.id === specFolder.id);
+            const specFolder = outPack.folders.find(f => f.name.toLowerCase().trim() === subType.toLowerCase().trim() && String(f.folder?.id || f.folder || f.parentId) === String(rootFolder.id));
+            if (specFolder) possible = allDocs.filter(i => String(i.folder?.id || i.folder) === String(specFolder.id));
             
             const flagKey = isSecondPlot ? "harvestChoice2" : "harvestChoice";
             const choice = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.[flagKey]) : (fac.doc.getFlag("dnd-2024-bastion-manager", flagKey));
