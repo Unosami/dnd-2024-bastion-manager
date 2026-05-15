@@ -139,6 +139,10 @@
                             <div style="font-size: 0.65em; color: #555; text-align: right;" title="Current Stock / Maximum Capacity">
                                 <i class="fa-solid fa-boxes-stacked"></i> <b>{{this.storedGp}} / {{this.storehouseLimit}} GP</b> (+{{this.storehouseMarkup}}%)
                             </div>
+                        {{else if this.craftQueue.length}}
+                            <div style="font-size: 0.65em; color: #555; text-align: right;" title="Project Queue Summary">
+                                <i class="fa-solid fa-list-ol"></i> <b>Queue:</b> {{this.queueTotalGold}}g, {{this.queueTotalTurns}}t
+                            </div>
                         {{/if}}
                     </div>
 
@@ -311,6 +315,9 @@
                                                    data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
                                                    style="width: 50px; height: 20px; font-size: 0.85em;" title="GP amount to trade">
                                             <span style="font-size: 0.8em;">GP</span>
+                                            {{#if this.isAutoTrade}}
+                                                <span style="font-size: 0.75em; color: #00897b; font-weight: bold; margin-left: 5px; white-space: nowrap; flex-shrink: 0;">[Next: {{this.autoNextAction}}]</span>
+                                            {{/if}}
                                         </div>
                                         {{#unless this.isInherited}}
                                             <button type="button" data-action="donateToStorehouse" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
@@ -638,7 +645,7 @@
                         {{#if expectedOutputs.length}}
                             <ul style="list-style: none; padding: 0; margin: 0;">
                                 {{#each expectedOutputs}}
-                                    <li style="background: rgba(255,255,255,0.7); color: #111; margin-bottom: 4px; padding: 6px; border-radius: 3px; border-left: 3px solid #2e7d32; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                                    <li style="background: rgba(255,255,255,0.7); color: #111; margin-bottom: 4px; padding: 6px; border-radius: 3px; border-left: 3px solid {{#if this.color}}{{this.color}}{{else}}#2e7d32{{/if}}; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
                                         <div style="font-size: 0.7em; color: #555; text-transform: uppercase; font-weight: bold;">{{this.facName}}</div>
                                         <div style="font-size: 0.9em; font-weight: bold;">{{this.label}}</div>
                                     </li>

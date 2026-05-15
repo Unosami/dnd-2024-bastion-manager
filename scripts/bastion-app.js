@@ -273,6 +273,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const isStorehouse = fac.name.includes("Storehouse");
             const storedGp = fac.isFlag ? (fac.sourceDoc.flags?.[MODULE_ID]?.storedGp || 0) : (fac.sourceDoc.getFlag(MODULE_ID, "storedGp") || 0);
             const tradeChoice = fac.isFlag ? (fac.sourceDoc.flags?.[MODULE_ID]?.tradeChoice || "procure") : (fac.sourceDoc.getFlag(MODULE_ID, "tradeChoice") || "procure");
+            const autoNextAction = fac.isFlag ? (fac.sourceDoc.flags?.[MODULE_ID]?.autoNextAction || "procure") : (fac.sourceDoc.getFlag(MODULE_ID, "autoNextAction") || "procure");
             const isAutoTrade = tradeChoice === "auto";
             
             let storehouseLimit = actorLevel >= 13 ? 5000 : (actorLevel >= 9 ? 2000 : 500);
@@ -572,6 +573,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 isTradeOrder,
                 isAutoTrade,
                 storedGp,
+                autoNextAction: autoNextAction.charAt(0).toUpperCase() + autoNextAction.slice(1),
                 tradeChoice,
                 tradeAmount,
                 storehouseLimit,
@@ -883,6 +885,38 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             // Recruitment logic
             if (fac.itemName === "Barrack" && fac.showOrderDropdown && fac.orderOptions.find(o => o.selected)?.value === "Recruit") {
                 expectedOutputs.push({ facName: fac.name, label: "New Defenders (1d4)" });
+            }
+
+            // Trade logic (Storehouse & Armory)
+            if (currentOrder === "Trade") {
+                if (fac.isStorehouse) {
+                    let choice = fac.tradeChoice;
+                    let amount = fac.tradeAmount;
+                    if (choice === "auto") {
+                        choice = fac.autoNextAction?.toLowerCase() || "procure";
+                        amount = 99999; // Assume maximum possible trade in auto-mode
+                    }
+                    const limit = fac.storehouseLimit;
+                    const markupPct = fac.storehouseMarkup;
+                    const stored = fac.storedGp;
+
+                    if (choice === "procure") {
+                        const actualAmount = Math.min(amount, limit - stored);
+                        if (actualAmount > 0) {
+                            expectedOutputs.push({ facName: fac.name, label: `Procure Goods: -${actualAmount} GP`, color: "#a32a22" });
+                        }
+                    } else if (choice === "sell") {
+                        const actualAmount = Math.min(amount, stored);
+                        if (actualAmount > 0) {
+                            const totalReturn = Math.floor(actualAmount * ((100 + markupPct) / 100));
+                            expectedOutputs.push({ facName: fac.name, label: `Sell Goods: +${totalReturn} GP`, color: "#2e7d32" });
+                        }
+                    }
+                } else if (fac.itemName.includes("Armory")) {
+                    let cost = 100 + (100 * totalDefenders); 
+                    if (facilities.some(f => f.itemName.includes("Smithy"))) cost = Math.floor(cost / 2);
+                    expectedOutputs.push({ facName: fac.name, label: `Stock Armory: -${cost} GP`, color: "#a32a22" });
+                }
             }
         }
 
