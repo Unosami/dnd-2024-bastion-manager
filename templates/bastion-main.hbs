@@ -1,5 +1,7 @@
-<div class="bastion-manager-container" style="display: flex; gap: 15px; height: 100%;">
-    <div class="bastion-sidebar" style="flex: 0 0 380px; overflow-y: auto; padding-right: 10px; border-right: 1px solid #ccc; display: flex; flex-direction: column;">
+<div class="bastion-manager-container" style="display: flex; gap: 15px; height: 100%; overflow: hidden;">
+    
+    <div class="bastion-sidebar" style="flex: 0 0 350px; overflow-y: auto; padding-right: 10px; border-right: 1px solid #ccc; display: flex; flex-direction: column;">
+    <div class="sidebar-content-column">
     <div class="bastion-header" style="text-align: center; margin-bottom: 5px;">
         <h2 style="margin-bottom: 5px; line-height: 1.2;">{{actor.name}}'s Bastion</h2>
         <div style="font-size: 1em; display: flex; align-items: center; justify-content: center; gap: 15px; flex-wrap: wrap;">
@@ -103,7 +105,8 @@
         </summary>
     <ul style="list-style: none; padding: 0; margin: 0;">
         {{#each specialFacilitiesBuilt}}
-            <li class="facility-item {{#if this.isLayoutActive}}active-layout{{/if}}" style="margin-bottom: 4px; padding: 3px; background: {{#if this.isLayoutActive}}rgba(0,0,0,0.12){{else}}rgba(0,0,0,0.02){{/if}}; border-radius: 3px; border-left: 4px solid {{this.facColor}}; {{#if this.isUnderConstruction}}opacity: 0.7;{{/if}}; display: flex; align-items: flex-start; justify-content: space-between; gap: 5px;">
+            <li class="facility-item {{#if this.isLayoutActive}}active-layout{{/if}}" style="margin-bottom: 4px; padding: 3px; background: {{#if this.isLayoutActive}}rgba(0,0,0,0.12){{else}}rgba(0,0,0,0.02){{/if}}; border-radius: 3px; border-left: 4px solid {{this.facColor}}; {{#if this.isUnderConstruction}}opacity: 0.7;{{/if}}; display: flex; flex-direction: column; gap: 5px;">
+                <div style="display: flex; align-items: flex-start; justify-content: space-between; width: 100%;">
                 <div style="display: flex; gap: 6px; flex: 1;">
                 <img src="{{this.img}}" width="24" height="24" style="border: none; border-radius: 3px; vertical-align: middle; {{#if this.isUnderConstruction}}filter: grayscale(1);{{/if}}">
                 
@@ -125,11 +128,18 @@
                         <span style="font-size: 0.85em; color: #555; font-style: italic; display: block;">(Hirelings: {{this.hirelings}})</span>
                     {{/if}}
 
-                    <div style="font-size: 0.65em; margin-top: 1px; color: #666;">
-                        <i class="fa-solid fa-layer-group"></i> Layout: 
-                        <span style="{{#if (eq this.placedSquares this.maxSquares)}}color: green; font-weight: bold;{{/if}}">
-                            {{this.placedSquares}} / {{this.maxSquares}} sq
-                        </span>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 1px;">
+                        <div style="font-size: 0.65em; color: #666;">
+                            <i class="fa-solid fa-layer-group"></i> Layout: 
+                            <span style="{{#if (eq this.placedSquares this.maxSquares)}}color: green; font-weight: bold;{{/if}}">
+                                {{this.placedSquares}} / {{this.maxSquares}} sq
+                            </span>
+                        </div>
+                        {{#if this.isStorehouse}}
+                            <div style="font-size: 0.65em; color: #555; text-align: right;" title="Current Stock / Maximum Capacity">
+                                <i class="fa-solid fa-boxes-stacked"></i> <b>{{this.storedGp}} / {{this.storehouseLimit}} GP</b> (+{{this.storehouseMarkup}}%)
+                            </div>
+                        {{/if}}
                     </div>
 
                     {{#if this.hasOrders}}
@@ -178,12 +188,27 @@
                                             </div>
                                         {{/if}}
                                         {{#if this.showArcaneFocusSelect}}
-                                            <select class="arcane-study-focus-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em;" {{#if this.isOrderLocked}}disabled{{/if}}>
+                                            <div style="display: flex; align-items: center; gap: 4px;">
+                                            <select class="arcane-study-focus-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isOrderLocked}}disabled{{/if}}>
                                                 <option value="">-- Select Focus Type --</option>
                                                 {{#each focusOptions}}
-                                                    <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                                                    {{#if this.groupOptions}}
+                                                        <optgroup label="{{this.label}}">
+                                                            {{#each this.groupOptions}}
+                                                                <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                                                            {{/each}}
+                                                        </optgroup>
+                                                    {{else}}
+                                                        <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                                                    {{/if}}
                                                 {{/each}}
                                             </select>
+                                            </div>
+                                        {{/if}}
+                                        {{#if (and this.craftChoice (not this.isInherited))}}
+                                            <button type="button" data-action="addToQueue" data-item-id="{{this.id}}" style="height: 20px; font-size: 0.75em; margin-top: 2px;">
+                                                <i class="fa-solid fa-plus"></i> Add to Craft Queue
+                                            </button>
                                         {{/if}}
                                     </div>
                                 {{/if}}
@@ -266,8 +291,36 @@
                                                 {{/if}}
                                             </div>
                                         {{/if}}
+                                        {{#if (and this.craftChoice (not this.isInherited))}}
+                                            <button type="button" data-action="addToQueue" data-item-id="{{this.id}}" style="height: 20px; font-size: 0.75em; margin-top: 2px;">
+                                                <i class="fa-solid fa-plus"></i> Add to Craft Queue
+                                            </button>
+                                        {{/if}}
                                     </div>
                                 {{/if}}
+
+                                {{#if (and this.isStorehouse this.isTradeOrder)}}
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 4px;">
+                                        <div style="display: flex; gap: 4px; align-items: center;">
+                                            <select class="storehouse-trade-choice" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" 
+                                                    style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isAutoTrade}}disabled style="opacity: 0.5;"{{/if}}>
+                                                <option value="procure" {{#if (eq this.tradeChoice "procure")}}selected{{/if}}>Procure Goods</option>
+                                                <option value="sell" {{#if (eq this.tradeChoice "sell")}}selected{{/if}}>Sell Goods</option>
+                                            </select>
+                                            <input type="number" class="storehouse-trade-amount" value="{{this.tradeAmount}}" {{#if this.isAutoTrade}}disabled style="opacity: 0.5;"{{/if}}
+                                                   data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                                   style="width: 50px; height: 20px; font-size: 0.85em;" title="GP amount to trade">
+                                            <span style="font-size: 0.8em;">GP</span>
+                                        </div>
+                                        {{#unless this.isInherited}}
+                                            <button type="button" data-action="donateToStorehouse" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                                    style="height: 20px; font-size: 0.75em; width: 100%;">
+                                                <i class="fa-solid fa-box-open"></i> Donate Items to Coffers
+                                            </button>
+                                        {{/unless}}
+                                    </div>
+                                {{/if}}
+
                                 {{#if (and this.isArcaneStudyCrafting this.progress)}}
                                     <div style="font-size: 0.7em; color: purple; margin-top: 2px;">Progress: {{this.progress}} / {{this.maxCraftTurns}} {{this.progressLabel}}</div>
                                 {{/if}}
@@ -375,6 +428,14 @@
                         </button>
                     {{/if}}
 
+                    {{#if (eq this.itemName "Storehouse")}}
+                        <button type="button" data-action="toggleAutoTrade" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                            style="width: auto; padding: 2px 6px; color: {{#if this.isAutoTrade}}green{{else}}gray{{/if}};"
+                            title="Toggle Auto-Trade (Alternates buying/selling each turn) - Currently: {{#if this.isAutoTrade}}ON{{else}}OFF{{/if}}">
+                            <i class="fa-solid fa-arrows-rotate"></i>
+                        </button>
+                    {{/if}}
+
                     <button type="button" data-action="selectFacilityLayout" data-item-id="{{this.id}}" 
                         style="width: auto; padding: 2px 6px; {{#if this.isLayoutActive}}background: #444; color: white;{{else}}color: #444;{{/if}}" 
                         title="Select to layout squares on grid">
@@ -385,6 +446,7 @@
                         <i class="fa-solid fa-trash"></i>
                     </button>
                     {{/unless}}
+                </div>
                 </div>
             </li>
         {{/each}}
@@ -431,8 +493,19 @@
         </ul>
     </details>
     </div>
+    </div>
 
-    <div class="bastion-layout-designer" style="flex: 1; display: flex; flex-direction: column;">
+    <div class="bastion-layout-designer" style="flex: 1; display: flex; flex-direction: column; padding-left: 15px;">
+        <div class="bastion-tabs" style="display: flex; gap: 2px; margin-bottom: 5px;">
+            <button type="button" data-action="switchTab" data-tab="map" class="{{#if (eq activeTab "map")}}active{{/if}}" style="flex: 1; padding: 5px; font-weight: bold; border-radius: 4px 4px 0 0; border: 1px solid #ccc; border-bottom: none; {{#if (eq activeTab "map")}}background: rgba(0,0,0,0.1);{{else}}background: rgba(0,0,0,0.05); opacity: 0.6;{{/if}}">
+                <i class="fa-solid fa-map"></i> Bastion Map
+            </button>
+            <button type="button" data-action="switchTab" data-tab="info" class="{{#if (eq activeTab "info")}}active{{/if}}" style="flex: 1; padding: 5px; font-weight: bold; border-radius: 4px 4px 0 0; border: 1px solid #ccc; border-bottom: none; {{#if (eq activeTab "info")}}background: rgba(0,0,0,0.1);{{else}}background: rgba(0,0,0,0.05); opacity: 0.6;{{/if}}">
+                <i class="fa-solid fa-circle-info"></i> Logistics Panel
+            </button>
+        </div>
+
+        {{#if (eq activeTab "map")}}
         <div style="background: rgba(0,0,0,0.05); padding: 8px; border-radius: 4px; margin-bottom: 10px; border: 1px solid #ccc;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
                 <h3 style="margin: 0; font-size: 1.1em;"><i class="fa-solid fa-grid-2"></i> Layout Designer</h3>
@@ -511,5 +584,75 @@
                 </div>
             {{/each}}
         </div>
+        {{/if}}
+
+        {{#if (eq activeTab "info")}}
+            <div class="bastion-info-panel" style="flex: 1; background: rgba(0,0,0,0.03); color: #111; padding: 12px; border-radius: 4px; border: 1px solid #ccc; overflow-y: auto;">
+                <h3 style="border-bottom: 2px solid #555; padding-bottom: 5px; margin-top: 0;"><i class="fa-solid fa-warehouse"></i> Bastion Logistics</h3>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <!-- Column 1: Master Queue -->
+                    <section>
+                        <h4 style="color: #a32a22; border-bottom: 1px solid #ccc; padding-bottom: 2px; margin-bottom: 8px;">
+                            <i class="fa-solid fa-hourglass-start"></i> Project Queues
+                        </h4>
+                        {{#if allActiveQueues.length}}
+                            {{#each allActiveQueues}}
+                                <details class="facility-queue-block" data-queue-id="{{this.id}}" {{#unless this.isQueueCollapsed}}open{{/unless}} style="margin-bottom: 8px; background: rgba(255,255,255,0.5); color: #111; padding: 6px; border-radius: 3px; border-left: 3px solid {{this.facColor}};">
+                                    <summary style="cursor: pointer; font-weight: bold; font-size: 0.85em; display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; list-style: none;">
+                                        <div style="display: flex; align-items: center; gap: 5px; flex: 1;">
+                                            <i class="fa-solid fa-caret-{{#if this.isQueueCollapsed}}right{{else}}down{{/if}}" style="opacity: 0.5; width: 10px;"></i>
+                                            <span>{{this.name}} <span style="font-weight: normal; color: #a32a22; margin-left: 5px;">({{this.queueTotalGold}} Gold, {{this.queueTotalTurns}} Turns)</span></span>
+                                        </div>
+                                        {{#unless this.isInherited}}
+                                            <a data-action="clearQueue" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-member-id="{{this.memberId}}" data-is-inherited="{{this.isInherited}}" 
+                                               style="color: #666; font-size: 0.9em;" title="Clear Entire Queue">
+                                                <i class="fa-solid fa-eraser"></i>
+                                            </a>
+                                        {{/unless}}
+                                    </summary>
+                                    <ul style="list-style: none; padding: 0; margin: 4px 0 0 15px; font-size: 0.8em;">
+                                        {{#each this.craftQueue}}
+                                            <li style="display: flex; justify-content: space-between; padding: 1px 0; border-top: 1px solid rgba(0,0,0,0.05);">
+                                                <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><i class="fa-solid fa-caret-right" style="opacity: 0.3;"></i> {{this.label}}</span>
+                                                <span style="font-style: italic; color: #666; margin-left: 4px; flex-shrink: 0;">
+                                                    ({{this.goldCost}}gp, {{this.timeCost}}{{../progressLabel}}
+                                                    {{#if (eq ../../calculationMode "days")}} ({{this.timeCostInTurns}}t){{/if}}
+                                                    )
+                                                </span>
+                                            </li>
+                                        {{/each}}
+                                    </ul>
+                                </details>
+                            {{/each}}
+                        {{else}}
+                            <p style="font-style: italic; color: #777; font-size: 0.85em;">No items currently queued.</p>
+                        {{/if}}
+                    </section>
+
+                    <!-- Column 2: Expected Output -->
+                    <section>
+                        <h4 style="color: #2e7d32; border-bottom: 1px solid #ccc; padding-bottom: 2px; margin-bottom: 8px;">
+                            <i class="fa-solid fa-box-open"></i> Next Turn Forecast
+                        </h4>
+                        {{#if expectedOutputs.length}}
+                            <ul style="list-style: none; padding: 0; margin: 0;">
+                                {{#each expectedOutputs}}
+                                    <li style="background: rgba(255,255,255,0.7); color: #111; margin-bottom: 4px; padding: 6px; border-radius: 3px; border-left: 3px solid #2e7d32; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                                        <div style="font-size: 0.7em; color: #555; text-transform: uppercase; font-weight: bold;">{{this.facName}}</div>
+                                        <div style="font-size: 0.9em; font-weight: bold;">{{this.label}}</div>
+                                    </li>
+                                {{/each}}
+                            </ul>
+                            <div style="font-size: 0.75em; color: #666; margin-top: 8px; line-height: 1.2;">
+                                <i class="fa-solid fa-circle-info"></i> These items are expected to be ready when the next Bastion Turn is advanced.
+                            </div>
+                        {{else}}
+                            <p style="font-style: italic; color: #777; font-size: 0.85em;">No projects finishing next turn.</p>
+                        {{/if}}
+                    </section>
+                </div>
+            </div>
+        {{/if}}
     </div>
 </div>
