@@ -24,11 +24,6 @@
                 </button>
             {{/if}}
             
-            <button type="button" data-action="abandonBastion" style="width: auto; padding: 2px 8px; font-size: 0.75em; color: #a32a22;" 
-                title="Abandon/Divest Bastion (Permanently removes all facilities)">
-                <i class="fa-solid fa-burst"></i> Abandon
-            </button>
-
             <div style="display: flex; gap: 5px; align-items: center; border: 1px solid #ccc; padding: 4px; border-radius: 4px; background: rgba(0,0,0,0.05);">
                 <button type="button" data-action="maintainAll" style="width: auto; padding: 2px 8px; font-size: 0.75em;" title="Set all facilities to Maintain">
                     <i class="fa-solid fa-broom"></i> Maintain All
@@ -37,7 +32,7 @@
                 {{#if canAdvanceTurn}}
                     <span style="border-left: 1px solid #ccc; height: 20px; margin: 0 5px;"></span>
                     <input type="number" name="turns" value="1" min="1" style="width: 35px; text-align: center; height: 20px; font-size: 0.8em;" title="Turns to advance">
-                    <button type="button" data-action="advanceGlobalTurn" style="width: auto; padding: 2px 8px; font-size: 0.75em; color: darkred;" title="Advance turns globally for all Bastions">
+                    <button type="button" data-action="advanceGlobalTurn" style="width: auto; padding: 2px 8px; font-size: 0.75em; color: #2e7d32;" title="Advance turns globally for all Bastions">
                         <i class="fa-solid fa-earth-americas"></i> Advance Turn
                     </button>
             {{/if}}
@@ -97,7 +92,7 @@
         <div style="background: rgba(0, 100, 200, 0.05); border: 1px solid #005a9e; padding: 6px; border-radius: 4px; margin-bottom: 10px; font-size: 0.85em; text-align: center; color: #004578;">
             <i class="fa-solid fa-link"></i> Linked to <b>{{combinedGroup.name}}</b>
         </div>
-    {{/if}}
+        {{/if}}
 
     <details data-section="special" {{#if sectionStates.special}}open{{/if}}>
         <summary style="cursor: pointer; border-bottom: 1px solid #ccc; margin-bottom: 5px;" title="Click to toggle section">
@@ -114,6 +109,11 @@
                     <b style="font-size: 0.95em;">{{this.name}}</b> 
                     
                     <span style="font-size: 0.7em; background: {{#if (eq this.size "Construction")}}#a32a22; color: white;{{else}}#ddd; color: #333;{{/if}} padding: 1px 4px; border-radius: 3px; margin-left: 4px; vertical-align: middle;">{{this.size}}</span>
+                    {{#if (and this.progress (not this.isBuilding))}}
+                        <span style="font-size: 0.65em; background: #2e7d32; color: white; padding: 1px 5px; border-radius: 3px; margin-left: 4px; vertical-align: middle; animation: pulse 2s infinite;" title="Facility is currently working on a project">
+                            <i class="fa-solid fa-gear fa-spin" style="font-size: 0.8em;"></i> WORKING
+                        </span>
+                    {{/if}}
                     {{#if this.subType}}
                         <span style="font-size: 0.8em; color: darkgreen; margin-left: 5px; font-weight: bold;">[{{this.subType}}]</span>
                     {{/if}}
@@ -150,24 +150,22 @@
                         <div style="font-size: 0.85em; margin-top: 2px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
                             {{#if this.showOrderDropdown}}
                                 <label>Order: </label>
-                                <select class="facility-order-select" 
-                                        data-item-id="{{this.id}}" data-item-name="{{this.itemName}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}"
-                                        {{#if this.isOrderLocked}}disabled style="opacity: 0.6; cursor: not-allowed;" title="This order is currently in progress and cannot be changed."{{/if}}>
-                                    {{#each this.orderOptions}}
-                                        <option value="{{this.value}}" {{#if this.selected}}selected{{/if}} style="font-size: 0.9em;">{{this.label}}</option>
-                                    {{/each}}
-                                </select>
+                                {{#if (and this.isOrderLocked (not this.isOrderChanging))}}
+                                    <span style="font-weight: bold; color: #a32a22; border: 1px solid #a32a22; padding: 0 5px; border-radius: 3px; background: rgba(163,42,34,0.05);">{{this.safeOrder}}</span>
+                                    <button type="button" data-action="changeOrder" data-item-id="{{this.id}}" style="width: auto; padding: 0 6px; height: 18px; font-size: 0.7em; cursor: pointer;" title="Pause current progress and change order">Change Order</button>
+                                {{else}}
+                                    <select class="facility-order-select" 
+                                            data-item-id="{{this.id}}" data-item-name="{{this.itemName}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}">
+                                        {{#each this.orderOptions}}
+                                            <option value="{{this.value}}" {{#if this.selected}}selected{{/if}} style="font-size: 0.9em;">{{this.label}}</option>
+                                        {{/each}}
+                                    </select>
+                                {{/if}}
                                 {{#if this.isLibraryResearching}}
                                     <input type="text" class="library-topic-input" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" value="{{this.libraryTopic}}" placeholder="Enter topic..." style="height: 20px; font-size: 0.85em; width: 120px;">
                                 {{/if}}
                                 {{#if this.isArcaneStudyCrafting}}
                                     <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
-                                        <select class="arcane-study-craft-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em;" {{#if this.isOrderLocked}}disabled{{/if}}>
-                                            <option value="">-- Select Craft --</option>
-                                            {{#each craftOptions}}
-                                                <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-                                            {{/each}}
-                                        </select>
                                         {{#if this.showArcanaItemSelect}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                                 <select class="arcane-study-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isOrderLocked}}disabled{{/if}}>
@@ -218,12 +216,6 @@
                                 {{/if}}
                                 {{#if this.isSanctuaryCrafting}}
                                     <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
-                                        <select class="sanctuary-craft-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em;" {{#if this.isOrderLocked}}disabled{{/if}}>
-                                            <option value="">-- Select Craft --</option>
-                                            {{#each sanctuaryCraftOptions}}
-                                                <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-                                            {{/each}}
-                                        </select>
                                         {{#if this.showSacredFocusSelect}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                                 <select class="sanctuary-focus-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isOrderLocked}}disabled{{/if}}>
@@ -243,12 +235,6 @@
                                 {{/if}}
                                 {{#if this.isSmithyCrafting}}
                                     <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
-                                        <select class="smithy-craft-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em;" {{#if this.isOrderLocked}}disabled{{/if}}>
-                                            <option value="">-- Select Craft --</option>
-                                            {{#each craftOptions}}
-                                                <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-                                            {{/each}}
-                                        </select>
                                         {{#if this.showSmithyItemSelect}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                                 <select class="smithy-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isOrderLocked}}disabled{{/if}}>
@@ -304,12 +290,6 @@
                                 {{/if}}
                                 {{#if this.isWorkshopCrafting}}
                                     <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
-                                        <select class="workshop-craft-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em;" {{#if this.isOrderLocked}}disabled{{/if}}>
-                                            <option value="">-- Select Craft --</option>
-                                            {{#each workshopCraftOptions}}
-                                                <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-                                            {{/each}}
-                                        </select>
                                         {{#if this.showWorkshopItemSelect}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                                 <select class="workshop-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isOrderLocked}}disabled{{/if}}>
@@ -382,12 +362,17 @@
                                                 data-is-inherited="{{isInherited}}" 
                                                 data-is-flag="{{isFlag}}" 
                                                 data-member-id="{{memberId}}"
-                                                style="width: 100%; font-size: 0.85em;">
+                                                style="flex: 1; font-size: 0.85em;">
                                             <option value="">-- Choose Harvest --</option>
                                             {{#each harvestOptions}}
                                             <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
                                             {{/each}}
                                         </select>
+                                        {{#if this.harvestUuid}}
+                                            <a class="content-link" data-action="previewItem" data-uuid="{{this.harvestUuid}}" draggable="true" style="font-size: 0.9em; height: 20px; display: flex; align-items: center; border: none; background: none;" title="View Item Details">
+                                                <i class="fas fa-eye"></i>
+                                            </a>
+                                        {{/if}}
                                     </div>
                                     {{/if}}
                                     {{#if this.isVastGarden}}
@@ -398,12 +383,17 @@
                                                     data-is-inherited="{{isInherited}}" 
                                                     data-is-flag="{{isFlag}}" 
                                                     data-member-id="{{memberId}}"
-                                                    style="width: 100%; font-size: 0.85em;">
+                                                    style="flex: 1; font-size: 0.85em;">
                                                 <option value="">-- Choose Harvest --</option>
                                                 {{#each harvestOptions2}}
                                                 <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
                                                 {{/each}}
                                             </select>
+                                            {{#if this.harvestUuid2}}
+                                                <a class="content-link" data-action="previewItem" data-uuid="{{this.harvestUuid2}}" draggable="true" style="font-size: 0.9em; height: 20px; display: flex; align-items: center; border: none; background: none;" title="View Item Details">
+                                                    <i class="fas fa-eye"></i>
+                                                </a>
+                                            {{/if}}
                                         </div>
                                     {{/if}}
                                     </div>
@@ -444,6 +434,12 @@
                     {{#if (and (eq this.itemName "Sanctuary") (not this.isBuilding))}}
                         <div style="font-size: 0.8em; color: #a32a22; margin-top: 2px;">
                             <i class="fa-solid fa-heart-pulse"></i> <b>Passive:</b> Gain <i>Healing Word</i> charm after Long Rest.
+                        </div>
+                    {{/if}}
+
+                    {{#if (and (eq this.itemName "Workshop") (not this.isBuilding))}}
+                        <div style="font-size: 0.8em; color: #2e7d32; margin-top: 2px;">
+                            <i class="fa-solid fa-lightbulb"></i> <b>Passive:</b> Gain <i>Heroic Inspiration</i> after Short Rest.
                         </div>
                     {{/if}}
 
@@ -537,6 +533,14 @@
             {{/each}}
         </ul>
     </details>
+
+    {{#if (ne actor.type "group")}}
+        <button type="button" data-action="abandonBastion" 
+            style="width: 100%; padding: 4px; font-size: 0.75em; color: #a32a22; margin-top: auto; border: 1px dashed #a32a22; background: none; margin-bottom: 10px; opacity: 0.6;" 
+            title="Abandon/Divest Bastion (Permanently removes all facilities)">
+            <i class="fa-solid fa-burst"></i> Abandon Bastion
+        </button>
+    {{/if}}
     </div>
     </div>
 
@@ -632,9 +636,31 @@
         {{/if}}
 
         {{#if (eq activeTab "info")}}
-            <div class="bastion-info-panel" style="flex: 1; background: rgba(0,0,0,0.03); color: #111; padding: 12px; border-radius: 4px; border: 1px solid #ccc; overflow-y: auto;">
+            <div class="bastion-info-panel" style="flex: 1; background: rgba(0,0,0,0.03); padding: 12px; border-radius: 4px; border: 1px solid #ccc; overflow-y: auto;">
                 <h3 style="border-bottom: 2px solid #555; padding-bottom: 5px; margin-top: 0;"><i class="fa-solid fa-warehouse"></i> Bastion Logistics</h3>
                 
+                <!-- Thematic Forecast at the top -->
+                <section style="margin-bottom: 20px; background: rgba(46, 125, 50, 0.05); padding: 10px; border-radius: 5px; border: 1px solid rgba(46, 125, 50, 0.2);">
+                    <h4 style="color: #2e7d32; border-bottom: 1px solid rgba(46, 125, 50, 0.3); padding-bottom: 4px; margin-top: 0; margin-bottom: 10px;">
+                        <i class="fa-solid fa-sun-cloud"></i> The Horizon
+                    </h4>
+                    {{#if expectedOutputs.length}}
+                        <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px;">
+                            {{#each expectedOutputs}}
+                                <li style="background: rgba(255,255,255,0.8); color: #111; padding: 3px 8px; border-radius: 4px; border-left: 3px solid {{#if this.color}}{{this.color}}{{else}}#2e7d32{{/if}}; box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; font-size: 0.9em;">
+                                    <span style="font-weight: bold; color: #333; flex-shrink: 0; margin-right: 10px;">{{this.facName}}:</span>
+                                    <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right;">{{this.label}}</span>
+                                </li>
+                            {{/each}}
+                        </ul>
+                        <div style="font-size: 0.8em; color: #555; margin-top: 10px; font-style: italic; opacity: 0.8;">
+                            <i class="fa-solid fa-circle-info"></i> These projects are active and will progress when the next Bastion Turn is advanced.
+                        </div>
+                    {{else}}
+                        <p style="font-style: italic; color: #777; font-size: 0.9em; margin: 5px 0;">The coming days appear quiet; no projects are nearing completion.</p>
+                    {{/if}}
+                </section>
+
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                     <!-- Column 1: Master Queue -->
                     <section>
@@ -675,41 +701,22 @@
                         {{/if}}
                     </section>
 
-                    <!-- Column 2.5: Artisan's Tool Utilize Effects -->
-                    {{#if allWorkshopUtilizeEffects.length}}
+                    <!-- Column 2.5: Bastion Utilities -->
+                    {{#if allUtilities.length}}
                         <section>
                             <h4 style="color: #4a86e8; border-bottom: 1px solid #ccc; padding-bottom: 2px; margin-bottom: 8px;">
-                                <i class="fa-solid fa-screwdriver-wrench"></i> Artisan's Tools
+                                <i class="fa-solid fa-screwdriver-wrench"></i> Bastion Utilities
                             </h4>
                             <ul style="list-style: none; padding: 0; margin: 0; font-size: 0.85em;">
-                                {{#each allWorkshopUtilizeEffects}}
-                                    <li style="margin-bottom: 4px;"><b>{{this.toolName}}:</b> {{this.utilizeEffect}}</li>
+                                {{#each allUtilities}}
+                                    <li style="margin-bottom: 4px; background: rgba(255,255,255,0.7); color: #111; padding: 6px; border-radius: 3px; border-left: 3px solid #4a86e8; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                                        <div style="font-size: 0.7em; color: #555; text-transform: uppercase; font-weight: bold; margin-bottom: 2px;">{{this.sources}}</div>
+                                        <div style="font-size: 0.95em;"><b>{{this.name}}:</b> {{this.description}}</div>
+                                    </li>
                                 {{/each}}
                             </ul>
                         </section>
                     {{/if}}
-
-                    <!-- Column 2: Expected Output -->
-                    <section>
-                        <h4 style="color: #2e7d32; border-bottom: 1px solid #ccc; padding-bottom: 2px; margin-bottom: 8px;">
-                            <i class="fa-solid fa-box-open"></i> Next Turn Forecast
-                        </h4>
-                        {{#if expectedOutputs.length}}
-                            <ul style="list-style: none; padding: 0; margin: 0;">
-                                {{#each expectedOutputs}}
-                                    <li style="background: rgba(255,255,255,0.7); color: #111; margin-bottom: 4px; padding: 6px; border-radius: 3px; border-left: 3px solid {{#if this.color}}{{this.color}}{{else}}#2e7d32{{/if}}; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                                        <div style="font-size: 0.7em; color: #555; text-transform: uppercase; font-weight: bold;">{{this.facName}}</div>
-                                        <div style="font-size: 0.9em; font-weight: bold;">{{this.label}}</div>
-                                    </li>
-                                {{/each}}
-                            </ul>
-                            <div style="font-size: 0.75em; color: #666; margin-top: 8px; line-height: 1.2;">
-                                <i class="fa-solid fa-circle-info"></i> These items are expected to be ready when the next Bastion Turn is advanced.
-                            </div>
-                        {{else}}
-                            <p style="font-style: italic; color: #777; font-size: 0.85em;">No projects finishing next turn.</p>
-                        {{/if}}
-                    </section>
                 </div>
             </div>
         {{/if}}

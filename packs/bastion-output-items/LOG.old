@@ -1,3 +1,7 @@
-2026/05/14-17:30:10.155800 70b56f2bf6c0 Recovering log #83
-2026/05/14-17:30:10.320088 70b56f2bf6c0 Delete type=0 #83
-2026/05/14-17:30:10.320155 70b56f2bf6c0 Delete type=3 #81
+2026/05/16-16:20:29.302249 778f31ebf6c0 Recovering log #93
+2026/05/16-16:20:29.449677 778f31ebf6c0 Delete type=0 #93
+2026/05/16-16:20:29.449771 778f31ebf6c0 Delete type=3 #89
+2026/05/16-17:39:46.158501 778f113ff6c0 Level-0 table #98: started
+2026/05/16-17:39:46.158566 778f113ff6c0 Level-0 table #98: 0 bytes OK
+2026/05/16-17:39:46.202769 778f113ff6c0 Delete type=0 #96
+2026/05/16-17:39:46.330375 778f113ff6c0 Manual compaction at level-0 from '!folders!5GDgLVqjIrCalWb9' @ 72057594037927935 : 1 .. '!items.effects!zc5fQAMrei4S63MT.antitoxinxxxxxxx' @ 0 : 0; will stop at (end)
