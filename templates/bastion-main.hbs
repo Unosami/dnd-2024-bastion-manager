@@ -346,10 +346,7 @@
                                     </div>
                                 {{/if}}
 
-                                {{#if (and this.isArcaneStudyCrafting this.progress)}}
-                                    <div style="font-size: 0.7em; color: purple; margin-top: 2px;">Progress: {{this.progress}} / {{this.maxCraftTurns}} {{this.progressLabel}}</div>
-                                {{/if}}
-                                {{#if (and this.isSmithyCrafting this.progress)}}
+                                {{#if (and this.isCraftingOrPaused this.progress)}}
                                     <div style="font-size: 0.7em; color: purple; margin-top: 2px;">Progress: {{this.progress}} / {{this.maxCraftTurns}} {{this.progressLabel}}</div>
                                 {{/if}}
                                 {{#if this.isGardenHarvesting}}
@@ -684,7 +681,11 @@
                                     </summary>
                                     <ul style="list-style: none; padding: 0; margin: 4px 0 0 15px; font-size: 0.8em;">
                                         {{#each this.displayQueue}}
-                                            <li style="display: flex; justify-content: space-between; padding: 1px 0; border-top: 1px solid rgba(0,0,0,0.05);">
+                                            <li class="{{#if (ne this.actualIndex -1)}}draggable-queue-item{{/if}}" 
+                                                style="display: flex; justify-content: space-between; padding: 1px 0; border-top: 1px solid rgba(0,0,0,0.05); {{#if (ne this.actualIndex -1)}}cursor: grab;{{/if}}"
+                                                {{#if (ne this.actualIndex -1)}}title="Drag to reorder. Right-click to swap with active project."{{/if}}
+                                                {{#if (ne this.actualIndex -1)}}draggable="true"{{/if}}
+                                                data-index="{{this.actualIndex}}" data-item-id="{{../id}}" data-is-flag="{{../isFlag}}" data-member-id="{{../memberId}}" data-is-inherited="{{../isInherited}}">
                                                 <div style="display: flex; align-items: center; gap: 5px; flex: 1; overflow: hidden;">
                                                     {{#if (eq this.actualIndex -1)}}
                                                         <i class="fa-solid fa-gear fa-spin" style="color: #2e7d32; font-size: 0.8em;" title="Active Project"></i>
@@ -695,7 +696,7 @@
                                                 </div>
                                                 <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
                                                 <span style="font-style: italic; color: #666; margin-left: 4px;">
-                                                    {{#if this.currentProgress}}
+                                                    {{#if (or this.currentProgress (eq this.actualIndex -1))}}
                                                         ({{this.progressPct}}% Complete)
                                                     {{else}}
                                                         ({{this.goldCost}}gp, {{this.timeCost}}{{../progressLabel}}
