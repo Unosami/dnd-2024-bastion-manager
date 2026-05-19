@@ -150,23 +150,17 @@
                         <div style="font-size: 0.85em; margin-top: 2px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
                             {{#if this.showOrderDropdown}}
                                 <label>Order: </label>
-                                {{#if (and this.isOrderLocked (not this.isOrderChanging))}}
-                                    <button type="button" data-action="changeOrder" data-item-id="{{this.id}}" style="width: auto; padding: 0 6px; height: 18px; font-size: 0.7em; cursor: pointer; margin-left: 5px;" title="Pause current progress and change order">Change Order</button>
-                                    <span style="font-weight: bold; color: #444; border: 1px solid #7a7971; padding: 0 5px; border-radius: 3px; background: rgba(0,0,0,0.05); margin-left: 5px;">{{this.safeOrder}}</span>
-                                {{else}}
-                                    <select class="facility-order-select" 
-                                            data-item-id="{{this.id}}" data-item-name="{{this.itemName}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}">
-                                        {{#each this.orderOptions}}
-                                            <option value="{{this.value}}" {{#if this.selected}}selected{{/if}} style="font-size: 0.9em;">{{this.label}}</option>
-                                        {{/each}}
-                                    </select>
-                                {{/if}}
+                                <select class="facility-order-select" data-item-id="{{this.id}}" data-item-name="{{this.itemName}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" {{#if this.isOrderDisabled}}disabled{{/if}}>
+                                    {{#each this.orderOptions}}
+                                        <option value="{{this.value}}" {{#if this.selected}}selected{{/if}} style="font-size: 0.9em;">{{this.label}}</option>
+                                    {{/each}}
+                                </select>
                                 {{#if this.isLibraryResearching}}
                                     <input type="text" class="library-topic-input" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" value="{{this.libraryTopic}}" placeholder="Enter topic..." style="height: 20px; font-size: 0.85em; width: 120px;">
                                 {{/if}}
                                 {{#if this.isArcaneStudyCrafting}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
-                                        {{#if this.showArcanaItemSelect}}
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; {{#if this.isContinuingProject}}display: none;{{/if}}">
+                                        {{#if (and this.showArcanaItemSelect (not this.isContinuingProject))}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                                 <select class="arcane-study-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
                                                     <option value="">-- Select Magic Item --</option>
@@ -189,7 +183,7 @@
                                                 {{/if}}
                                             </div>
                                         {{/if}}
-                                        {{#if this.showArcaneFocusSelect}}
+                                        {{#if (and this.showArcaneFocusSelect (not this.isContinuingProject))}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                             <select class="arcane-study-focus-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
                                                 <option value="">-- Select Focus Type --</option>
@@ -207,7 +201,7 @@
                                             </select>
                                             </div>
                                         {{/if}}
-                                        {{#if (and this.craftChoice (not this.isInherited))}}
+                                        {{#if (and this.craftChoice (not this.isInherited) (not this.isContinuingProject))}}
                                             <button type="button" data-action="addToQueue" data-item-id="{{this.id}}" style="height: 20px; font-size: 0.75em; margin-top: 2px;">
                                                 <i class="fa-solid fa-plus"></i> Add to Craft Queue
                                             </button>
@@ -215,7 +209,7 @@
                                     </div>
                                 {{/if}}
                                 {{#if this.isSanctuaryCrafting}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; {{#if this.isContinuingProject}}display: none;{{/if}}">
                                         {{#if this.showSacredFocusSelect}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                                 <select class="sanctuary-focus-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
@@ -234,8 +228,8 @@
                                     </div>
                                 {{/if}}
                                 {{#if this.isSmithyCrafting}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
-                                        {{#if this.showSmithyItemSelect}}
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; {{#if this.isContinuingProject}}display: none;{{/if}}">
+                                        {{#if (and this.showSmithyItemSelect (not this.isContinuingProject))}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                                 <select class="smithy-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
                                                     <option value="">-- Select Item --</option>
@@ -258,7 +252,7 @@
                                                 {{/if}}
                                             </div>
                                         {{/if}}
-                                        {{#if this.showArmamentItemSelect}}
+                                        {{#if (and this.showArmamentItemSelect (not this.isContinuingProject))}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                                 <select class="armament-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
                                                     <option value="">-- Select Magic Item --</option>
@@ -281,7 +275,7 @@
                                                 {{/if}}
                                             </div>
                                         {{/if}}
-                                        {{#if (and this.craftChoice (not this.isInherited))}}
+                                        {{#if (and this.craftChoice (not this.isInherited) (not this.isContinuingProject))}}
                                             <button type="button" data-action="addToQueue" data-item-id="{{this.id}}" style="height: 20px; font-size: 0.75em; margin-top: 2px;">
                                                 <i class="fa-solid fa-plus"></i> Add to Craft Queue
                                             </button>
@@ -289,8 +283,8 @@
                                     </div>
                                 {{/if}}
                                 {{#if this.isWorkshopCrafting}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
-                                        {{#if this.showWorkshopItemSelect}}
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; {{#if this.isContinuingProject}}display: none;{{/if}}">
+                                        {{#if (and this.showWorkshopItemSelect (not this.isContinuingProject))}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                                 <select class="workshop-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
                                                     <option value="">-- Select Item --</option>
@@ -313,7 +307,7 @@
                                                 {{/if}}
                                             </div>
                                         {{/if}}
-                                        {{#if (and this.craftChoice (not this.isInherited))}}
+                                        {{#if (and this.craftChoice (not this.isInherited) (not this.isContinuingProject))}}
                                             <button type="button" data-action="addToQueue" data-item-id="{{this.id}}" style="height: 20px; font-size: 0.75em; margin-top: 2px;">
                                                 <i class="fa-solid fa-plus"></i> Add to Craft Queue
                                             </button>
@@ -427,12 +421,50 @@
                             <i class="fa-solid fa-sparkles"></i> <b>Passive:</b> Gain <i>Identify</i> charm after Long Rest.
                         </div>
                     {{/if}}
+                                {{#if this.isSacristyCrafting}}
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; {{#if this.isContinuingProject}}display: none;{{/if}}">
+                                        {{#if this.showRelicItemSelect}}
+                                            <div style="display: flex; align-items: center; gap: 4px;">
+                                                <select class="sacristy-relic-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
+                                                    <option value="">-- Select Magic Item --</option>
+                                                    {{#each relicItemOptions}}
+                                                        {{#if this.groupOptions}}
+                                                            <optgroup label="{{this.label}}">
+                                                                {{#each this.groupOptions}}
+                                                                    <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                                                                {{/each}}
+                                                            </optgroup>
+                                                        {{else}}
+                                                            <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                                                        {{/if}}
+                                                    {{/each}}
+                                                </select>
+                                                {{#if this.relicItemUuid}}
+                                                    <a class="content-link" data-action="previewItem" data-uuid="{{this.relicItemUuid}}" draggable="true" style="font-size: 0.9em; height: 20px; display: flex; align-items: center; border: none; background: none;" title="View Item Details">
+                                                        <i class="fas fa-eye"></i>
+                                                    </a>
+                                                {{/if}}
+                                            </div>
+                                        {{/if}}
+                                        {{#if (and this.craftChoice (not this.isInherited) (not this.isContinuingProject))}}
+                                            <button type="button" data-action="addToQueue" data-item-id="{{this.id}}" style="height: 20px; font-size: 0.75em; margin-top: 2px;">
+                                                <i class="fa-solid fa-plus"></i> Add to Craft Queue
+                                            </button>
+                                        {{/if}}
+                                    </div>
+                                {{/if}}
 
                     {{#if (and (eq this.itemName "Sanctuary") (not this.isBuilding))}}
                         <div style="font-size: 0.8em; color: #a32a22; margin-top: 2px;">
                             <i class="fa-solid fa-heart-pulse"></i> <b>Passive:</b> Gain <i>Healing Word</i> charm after Long Rest.
                         </div>
                     {{/if}}
+
+                                {{#if (and (eq this.itemName "Sacristy") (not this.isBuilding))}}
+                                    <div style="font-size: 0.8em; color: #a32a22; margin-top: 2px;">
+                                        <i class="fa-solid fa-wand-sparkles"></i> <b>Passive:</b> Spell slot refreshment (Level 5 or lower) after Short Rest.
+                                    </div>
+                                {{/if}}
 
                     {{#if (and (eq this.itemName "Workshop") (not this.isBuilding))}}
                         <div style="font-size: 0.8em; color: #2e7d32; margin-top: 2px;">
