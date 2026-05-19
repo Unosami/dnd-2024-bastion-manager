@@ -109,7 +109,7 @@
                     <b style="font-size: 0.95em;">{{this.name}}</b> 
                     
                     <span style="font-size: 0.7em; background: {{#if (eq this.size "Construction")}}#a32a22; color: white;{{else}}#ddd; color: #333;{{/if}} padding: 1px 4px; border-radius: 3px; margin-left: 4px; vertical-align: middle;">{{this.size}}</span>
-                    {{#if (and this.progress (not this.isBuilding))}}
+                    {{#if (and (or this.progress this.isCrafting) (not this.isBuilding) (not this.isOrderChanging))}}
                         <span style="font-size: 0.65em; background: #2e7d32; color: white; padding: 1px 5px; border-radius: 3px; margin-left: 4px; vertical-align: middle; animation: pulse 2s infinite;" title="Facility is currently working on a project">
                             <i class="fa-solid fa-gear fa-spin" style="font-size: 0.8em;"></i> WORKING
                         </span>
@@ -151,8 +151,8 @@
                             {{#if this.showOrderDropdown}}
                                 <label>Order: </label>
                                 {{#if (and this.isOrderLocked (not this.isOrderChanging))}}
-                                    <span style="font-weight: bold; color: #a32a22; border: 1px solid #a32a22; padding: 0 5px; border-radius: 3px; background: rgba(163,42,34,0.05);">{{this.safeOrder}}</span>
-                                    <button type="button" data-action="changeOrder" data-item-id="{{this.id}}" style="width: auto; padding: 0 6px; height: 18px; font-size: 0.7em; cursor: pointer;" title="Pause current progress and change order">Change Order</button>
+                                    <button type="button" data-action="changeOrder" data-item-id="{{this.id}}" style="width: auto; padding: 0 6px; height: 18px; font-size: 0.7em; cursor: pointer; margin-left: 5px;" title="Pause current progress and change order">Change Order</button>
+                                    <span style="font-weight: bold; color: #444; border: 1px solid #7a7971; padding: 0 5px; border-radius: 3px; background: rgba(0,0,0,0.05); margin-left: 5px;">{{this.safeOrder}}</span>
                                 {{else}}
                                     <select class="facility-order-select" 
                                             data-item-id="{{this.id}}" data-item-name="{{this.itemName}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}">
@@ -168,7 +168,7 @@
                                     <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
                                         {{#if this.showArcanaItemSelect}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
-                                                <select class="arcane-study-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isOrderLocked}}disabled{{/if}}>
+                                                <select class="arcane-study-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
                                                     <option value="">-- Select Magic Item --</option>
                                                     {{#each magicItemOptions}}
                                                         {{#if this.groupOptions}}
@@ -191,7 +191,7 @@
                                         {{/if}}
                                         {{#if this.showArcaneFocusSelect}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
-                                            <select class="arcane-study-focus-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isOrderLocked}}disabled{{/if}}>
+                                            <select class="arcane-study-focus-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
                                                 <option value="">-- Select Focus Type --</option>
                                                 {{#each focusOptions}}
                                                     {{#if this.groupOptions}}
@@ -218,7 +218,7 @@
                                     <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
                                         {{#if this.showSacredFocusSelect}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
-                                                <select class="sanctuary-focus-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isOrderLocked}}disabled{{/if}}>
+                                                <select class="sanctuary-focus-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
                                                     <option value="">-- Select Focus Type --</option>
                                                     {{#each sacredFocusOptions}}
                                                         <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
@@ -237,7 +237,7 @@
                                     <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
                                         {{#if this.showSmithyItemSelect}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
-                                                <select class="smithy-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isOrderLocked}}disabled{{/if}}>
+                                                <select class="smithy-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
                                                     <option value="">-- Select Item --</option>
                                                     {{#each smithyItemOptions}}
                                                         {{#if this.groupOptions}}
@@ -260,7 +260,7 @@
                                         {{/if}}
                                         {{#if this.showArmamentItemSelect}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
-                                                <select class="armament-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isOrderLocked}}disabled{{/if}}>
+                                                <select class="armament-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
                                                     <option value="">-- Select Magic Item --</option>
                                                     {{#each armamentItemOptions}}
                                                         {{#if this.groupOptions}}
@@ -292,7 +292,7 @@
                                     <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
                                         {{#if this.showWorkshopItemSelect}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
-                                                <select class="workshop-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isOrderLocked}}disabled{{/if}}>
+                                                <select class="workshop-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
                                                     <option value="">-- Select Item --</option>
                                                     {{#each workshopItemOptions}}
                                                         {{#if this.groupOptions}}
@@ -405,8 +405,8 @@
                                                 data-is-inherited="{{isInherited}}" 
                                                 data-is-flag="{{isFlag}}" 
                                                 data-member-id="{{memberId}}"
-                                                style="width: 100%; font-size: 0.85em; {{#if this.isOrderLocked}}opacity: 0.6; cursor: not-allowed;{{/if}}"
-                                                {{#if this.isOrderLocked}}disabled{{/if}}>
+                                                style="width: 100%; font-size: 0.85em; {{#if this.isSelectionDisabled}}opacity: 0.6; cursor: not-allowed;{{/if}}"
+                                                {{#if this.isSelectionDisabled}}disabled{{/if}}>
                                             <option value="">-- Choose New Type (3 Turns) --</option>
                                             {{#each changeTypeOptions}}
                                             <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
@@ -683,14 +683,34 @@
                                         {{/unless}}
                                     </summary>
                                     <ul style="list-style: none; padding: 0; margin: 4px 0 0 15px; font-size: 0.8em;">
-                                        {{#each this.craftQueue}}
+                                        {{#each this.displayQueue}}
                                             <li style="display: flex; justify-content: space-between; padding: 1px 0; border-top: 1px solid rgba(0,0,0,0.05);">
-                                                <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><i class="fa-solid fa-caret-right" style="opacity: 0.3;"></i> {{this.label}}</span>
-                                                <span style="font-style: italic; color: #666; margin-left: 4px; flex-shrink: 0;">
-                                                    ({{this.goldCost}}gp, {{this.timeCost}}{{../progressLabel}}
-                                                    {{#if (eq ../../calculationMode "days")}} ({{this.timeCostInTurns}}t){{/if}}
-                                                    )
+                                                <div style="display: flex; align-items: center; gap: 5px; flex: 1; overflow: hidden;">
+                                                    {{#if (eq this.actualIndex -1)}}
+                                                        <i class="fa-solid fa-gear fa-spin" style="color: #2e7d32; font-size: 0.8em;" title="Active Project"></i>
+                                                    {{else}}
+                                                        <i class="fa-solid fa-caret-right" style="opacity: 0.3;"></i>
+                                                    {{/if}}
+                                                    <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{this.label}}</span>
+                                                </div>
+                                                <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                                                <span style="font-style: italic; color: #666; margin-left: 4px;">
+                                                    {{#if this.currentProgress}}
+                                                        ({{this.progressPct}}% Complete)
+                                                    {{else}}
+                                                        ({{this.goldCost}}gp, {{this.timeCost}}{{../progressLabel}}
+                                                        {{#if (eq ../../calculationMode "days")}} ({{this.timeCostInTurns}}t){{/if}}
+                                                        )
+                                                    {{/if}}
                                                 </span>
+                                                {{#if (ne this.actualIndex -1)}}
+                                                    <div style="display: flex; gap: 2px;">
+                                                        <a data-action="moveQueueItem" data-item-id="{{../id}}" data-index="{{this.actualIndex}}" data-direction="-1" data-is-flag="{{../isFlag}}" data-member-id="{{../memberId}}" data-is-inherited="{{../isInherited}}" title="Move Up"><i class="fa-solid fa-chevron-up"></i></a>
+                                                        <a data-action="moveQueueItem" data-item-id="{{../id}}" data-index="{{this.actualIndex}}" data-direction="1" data-is-flag="{{../isFlag}}" data-member-id="{{../memberId}}" data-is-inherited="{{../isInherited}}" title="Move Down"><i class="fa-solid fa-chevron-down"></i></a>
+                                                        <a data-action="deleteQueueItem" data-item-id="{{../id}}" data-index="{{this.actualIndex}}" data-is-flag="{{../isFlag}}" data-member-id="{{../memberId}}" data-is-inherited="{{../isInherited}}" style="color: #a32a22;" title="Delete Item"><i class="fa-solid fa-xmark"></i></a>
+                                                    </div>
+                                                {{/if}}
+                                                </div>
                                             </li>
                                         {{/each}}
                                     </ul>

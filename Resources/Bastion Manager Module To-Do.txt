@@ -15,11 +15,15 @@ Bastion Module notes:
     - Defensive walls (each 5-foot segement has a time and gold cost)
     - Doors and Windows
 
-- UI Improvements
+UI Improvements
+- Founding Your Bastion window needs scroll functionality when long.
     - Show all input options in the same dialog rather than clicking through all of the options when creating a facility or advancing a turn.
     - Change the grid layout to populate the squares with relevent furnishings. (ambitious)
     - Change the grid layout of combined bastions to have each player be a color and their facilities be different shades of that color. (Or some way to distinguish who owns what without text)
     - The option of Structure shapes/outlines? Tower, shrine, fortified keep, lodge vs village(current freeform)
+
+- Calendar compatibility
+    - Make the module track days using Simple Calendar rather than internally? (Only works if Simple Calendar gets an update to be compatible with current versions of Foundry)
 
 - Homebrew (not hardcoded, I want them to be like submodules?):
     - Veteran Hirelings: After a certain length of service/special event/the hireling is attained in a special way the hireling should give bonuses to the facility they work.
@@ -29,6 +33,5 @@ Bastion Module notes:
 
 ---
 Known Bugs:
-- 
-"I have also added the Magic Item craft options for the Smithy and Workshop facilities to the dropdowns, as these are the other level 5 facilities that gain these options at level 9+."
+
 
