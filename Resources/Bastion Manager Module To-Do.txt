@@ -1,4 +1,8 @@
 Bastion Module notes:
+- Players need a "Ready to advance turn" button and the DM needs to see the number of players ready. The button should give warnings to the player in the same way that the advance turn button does to the DM.
+
+STABLE - animals need sizes somehow.
+
 - Next I want to start fleshing out the other facility outputs.
     - ARCANE STUDY Get crafting magic items to work properly.
     - Specify what the garden/workshop/etc. should be producing.
