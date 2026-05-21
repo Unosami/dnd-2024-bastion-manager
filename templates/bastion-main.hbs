@@ -31,11 +31,33 @@
             
                 {{#if canAdvanceTurn}}
                     <span style="border-left: 1px solid #ccc; height: 20px; margin: 0 5px;"></span>
-                    <input type="number" name="turns" value="1" min="1" style="width: 35px; text-align: center; height: 20px; font-size: 0.8em;" title="Turns to advance">
-                    <button type="button" data-action="advanceGlobalTurn" style="width: auto; padding: 2px 8px; font-size: 0.75em; color: #2e7d32;" title="Advance turns globally for all Bastions">
-                        <i class="fa-solid fa-earth-americas"></i> Advance Turn
-                    </button>
-            {{/if}}
+                    <div style="display: flex; gap: 0; align-items: center; border: 1px solid #777; border-radius: 4px; overflow: hidden; background: white;">
+                        <button type="button" data-action="toggleAdvanceMode" style="width: auto; padding: 2px 6px; border: none; border-right: 1px solid #777; background: {{#if (eq advanceMode "global")}}#2e7d32{{else}}none{{/if}}; color: {{#if (eq advanceMode "global")}}white{{else}}#666{{/if}}; border-radius: 0;" title="Global Mode: Advance all active Bastions">
+                            <i class="fa-solid fa-earth-americas"></i>
+                        </button>
+                        <button type="button" data-action="toggleAdvanceMode" style="width: auto; padding: 2px 6px; border: none; background: {{#if (eq advanceMode "individual")}}#a32a22{{else}}none{{/if}}; color: {{#if (eq advanceMode "individual")}}white{{else}}#666{{/if}}; border-radius: 0;" title="Individual Mode: Advance ONLY this character (Catch-up)">
+                            <i class="fa-solid fa-person-running"></i>
+                        </button>
+                    </div>
+                    <input type="number" name="turns" value="1" min="1" style="width: 30px; text-align: center; height: 20px; font-size: 0.8em; border: 1px solid #777;" title="Turns to advance">
+                    
+                    {{#if (eq advanceMode "global")}}
+                        <button type="button" data-action="advanceGlobalTurn" style="width: auto; padding: 2px 8px; font-size: 0.75em; color: #2e7d32;" title="Process all Bastions owned by logged-in players">
+                            <i class="fa-solid fa-play"></i> Run Turn ({{readyCount}}/{{totalBastions}})
+                        </button>
+                    {{else}}
+                        <button type="button" data-action="advanceIndividualTurn" style="width: auto; padding: 2px 8px; font-size: 0.75em; color: #a32a22;" title="Process only this character's Bastion">
+                            <i class="fa-solid fa-person-running"></i> Run Catch-up
+                        </button>
+                    {{/if}}
+                {{else}}
+                    {{#if (ne actor.type "group")}}
+                        <span style="border-left: 1px solid #ccc; height: 20px; margin: 0 5px;"></span>
+                        <button type="button" data-action="toggleReady" style="width: auto; padding: 2px 8px; font-size: 0.75em; {{#if isReady}}background: #2e7d32; color: white;{{/if}}" title="Signal to DM that you are ready for the next turn">
+                            <i class="fa-solid fa-check-to-slot"></i> {{#if isReady}}Ready!{{else}}Mark Ready{{/if}}
+                        </button>
+                    {{/if}}
+                {{/if}}
             </div>
         </div>
         
@@ -417,8 +439,18 @@
 
                                 {{#if this.isStable}}
                                     <div style="font-size: 0.75em; color: #555; margin-top: 4px;">
-                                        <i class="fa-solid fa-horse"></i> <b>Stocked Mounts:</b> 
-                                        {{#if this.stableAnimalsList}}{{this.stableAnimalsList}}{{else}}None{{/if}}
+                                        <i class="fa-solid fa-horse"></i> <b>Stocked Mounts:</b>
+                                        <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px;">
+                                            {{#each this.stableAnimals}}
+                                                <span class="stable-animal-tag" style="background: rgba(0,0,0,0.05); padding: 2px 8px; border-radius: 10px; border: 1px solid #ccc; cursor: pointer; color: #333;" 
+                                                      data-action="renameStableAnimal" data-index="{{@index}}" data-item-id="{{../id}}" data-is-flag="{{../isFlag}}"
+                                                      title="Click to Rename">
+                                                    <i class="fa-solid fa-pen" style="font-size: 0.8em; opacity: 0.5;"></i> {{#if this.nickname}}<b>{{this.nickname}}</b> ({{this.species}}){{else}}{{this.species}}{{/if}}
+                                                </span>
+                                            {{else}}
+                                                <span style="font-style: italic;">None</span>
+                                            {{/each}}
+                                        </div>
                                         ({{this.stableUsedSlots}} / {{this.stableMaxSlots}} slots)
                                     </div>
                                 {{/if}}
@@ -552,6 +584,29 @@
                     {{#if (and (eq this.itemName "Workshop") (not this.isBuilding))}}
                         <div style="font-size: 0.8em; color: #2e7d32; margin-top: 2px;">
                             <i class="fa-solid fa-lightbulb"></i> <b>Passive:</b> Gain <i>Heroic Inspiration</i> after Short Rest.
+                        </div>
+                    {{/if}}
+
+                    {{#if this.isTeleportationCircle}}
+                        <div style="font-size: 0.75em; color: #555; margin-top: 6px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 5px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                                <span><i class="fa-solid fa-wand-magic-sparkles"></i> <b>Visiting Spellcaster:</b></span>
+                                {{#if (and this.visitingSpellcaster (gt this.spellcasterDaysRemaining 0))}}
+                                    <button type="button" data-action="castSpellcasterSpell" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 1px 6px; font-size: 0.75em; height: 18px;" title="Request Wizard spell (Level {{this.maxSpellLevel}} or lower). Spellcaster departs after casting.">
+                                        Cast & Dismiss
+                                    </button>
+                                {{/if}}
+                            </div>
+                            {{#if this.visitingSpellcaster}}
+                                <div style="display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
+                                    <span class="spellcaster-tag" style="background: rgba(0,100,200,0.05); padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(0,100,200,0.2); color: #004578;">
+                                        <b>{{#if this.spellcasterName}}{{this.spellcasterName}}{{else}}Friendly Wizard{{/if}}</b>
+                                    </span>
+                                    <span style="color: #666; font-style: italic;">({{this.spellcasterDaysRemaining}} days left, Max Level: {{this.maxSpellLevel}})</span>
+                                </div>
+                            {{else}}
+                                <span style="font-style: italic; opacity: 0.6;">None present</span>
+                            {{/if}}
                         </div>
                     {{/if}}
 

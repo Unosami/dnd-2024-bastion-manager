@@ -1,16 +1,16 @@
-2026/05/18-09:58:14.473492 74aab49ee6c0 Recovering log #100
-2026/05/18-09:58:14.473615 74aab49ee6c0 Level-0 table #102: started
-2026/05/18-09:58:14.585776 74aab49ee6c0 Level-0 table #102: 2604 bytes OK
-2026/05/18-09:58:14.585894 74aab49ee6c0 Recovering log #103
-2026/05/18-09:58:14.605088 74aab49ee6c0 Level-0 table #103: started
-2026/05/18-09:58:14.677429 74aab49ee6c0 Level-0 table #103: 104362 bytes OK
-2026/05/18-09:58:14.802616 74aab49ee6c0 Delete type=0 #100
-2026/05/18-09:58:14.802698 74aab49ee6c0 Delete type=0 #103
-2026/05/18-09:58:14.802796 74aab49ee6c0 Delete type=3 #99
-2026/05/18-10:00:46.931676 74aaa04cb6c0 Compacting 2@0 + 1@1 files
-2026/05/18-10:00:47.091224 74aaa04cb6c0 Generated table #105@0: 901 keys, 978491 bytes
-2026/05/18-10:00:47.091315 74aaa04cb6c0 Compacted 2@0 + 1@1 files => 978491 bytes
-2026/05/18-10:00:47.151812 74aaa04cb6c0 compacted to: files[ 0 1 0 0 0 0 0 ]
-2026/05/18-10:00:47.152092 74aaa04cb6c0 Delete type=2 #92
-2026/05/18-10:00:47.168559 74aaa04cb6c0 Delete type=2 #102
-2026/05/18-10:00:47.168834 74aaa04cb6c0 Delete type=2 #103
+2026/05/20-20:34:02.702900 7761f5fef6c0 Recovering log #108
+2026/05/20-20:34:02.862392 7761f5fef6c0 Delete type=2 #105
+2026/05/20-20:34:02.862545 7761f5fef6c0 Delete type=2 #107
+2026/05/20-20:34:02.862661 7761f5fef6c0 Delete type=0 #108
+2026/05/20-20:34:02.862734 7761f5fef6c0 Delete type=3 #106
+2026/05/20-21:08:49.554587 7761e9dff6c0 Level-0 table #113: started
+2026/05/20-21:08:49.616453 7761e9dff6c0 Level-0 table #113: 2333 bytes OK
+2026/05/20-21:08:49.646531 7761e9dff6c0 Delete type=0 #111
+2026/05/20-21:08:49.646795 7761e9dff6c0 Manual compaction at level-0 from '!folders!4cwf6Z6aRn8CKbnI' @ 72057594037927935 : 1 .. '!items.effects!zc5fQAMrei4S63MT.antitoxinxxxxxxx' @ 0 : 0; will stop at '!items!TALlMjVWOuszU3o0' @ 1825 : 1
+2026/05/20-21:08:49.646843 7761e9dff6c0 Compacting 1@0 + 1@1 files
+2026/05/20-21:08:49.773974 7761e9dff6c0 Generated table #114@0: 910 keys, 984666 bytes
+2026/05/20-21:08:49.774028 7761e9dff6c0 Compacted 1@0 + 1@1 files => 984666 bytes
+2026/05/20-21:08:49.806030 7761e9dff6c0 compacted to: files[ 0 1 0 0 0 0 0 ]
+2026/05/20-21:08:49.806322 7761e9dff6c0 Delete type=2 #109
+2026/05/20-21:08:49.806618 7761e9dff6c0 Delete type=2 #113
+2026/05/20-21:08:49.921059 7761e9dff6c0 Manual compaction at level-0 from '!items!TALlMjVWOuszU3o0' @ 1825 : 1 .. '!items.effects!zc5fQAMrei4S63MT.antitoxinxxxxxxx' @ 0 : 0; will stop at (end)

@@ -256,33 +256,31 @@ class ConstructionConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
 class ResetBastionsApp extends ApplicationV2 {
     static DEFAULT_OPTIONS = {
         id: "reset-bastions-app",
-        window: { title: "Reset Global Bastion Turns", frame: false },
-        position: { width: 400, height: "auto" }
+        window: { title: "Reset Global Bastion Turns", frame: true },
+        position: { width: 300, height: "auto" }
     };
 
-    _renderHTML() { return ""; }
-    _replaceHTML() { }
+    async _renderHTML(context, options) { return `<p style="padding: 10px; text-align: center;">Opening Reset Dialog...</p>`; }
 
     async _onFirstRender(context, options) {
-        this.close();
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        const currentGlobal = game.settings.get(MODULE_ID, "globalTurnCount") || 0;
         const confirm = await DialogV2.confirm({
             window: { title: "Reset All Bastion Turns" },
-            content: "<p>Are you sure you want to instantly reset the Bastion Turn count to 0 for every character, NPC, and Group in the world?</p>",
+            content: `<p>The current global turn count is <b>${currentGlobal}</b>.</p><p>Are you sure you want to instantly reset the Bastion Turn count to 0 for every character, NPC, and Group in the world?</p>`,
             rejectClose: false,
             modal: true
         });
 
         if (confirm) {
-            const MODULE_ID = "dnd-2024-bastion-manager";
             await game.settings.set(MODULE_ID, "globalTurnCount", 0);
             for (const actor of game.actors) {
-                const data = actor.getFlag(MODULE_ID, "data");
-                if (data && data.turnCount !== undefined) {
-                    await actor.setFlag(MODULE_ID, "data.turnCount", 0);
-                }
+                await actor.unsetFlag(MODULE_ID, "turnCount");
+                await actor.unsetFlag(MODULE_ID, "data.turnCount"); // Clean up legacy data path
             }
             ui.notifications.info("Bastion Manager | All Bastion turns have been globally reset to 0.");
         }
+        this.close();
     }
 }
 
@@ -376,10 +374,20 @@ Hooks.once("init", () => {
         default: true
     });
 
+    game.settings.register(MODULE_ID, "unifyCombinedTurns", {
+        name: "Unify Combined Bastion Turns",
+        hint: "If enabled, characters who have combined their Bastions will share a single turn counter (stored on the Group actor).",
+        scope: "world",
+        config: true,
+        type: Boolean,
+        default: false
+    });
+
     game.settings.register(MODULE_ID, "globalTurnCount", {
         name: "Global Turn Count",
+        hint: "The current group-wide Bastion turn number.",
         scope: "world",
-        config: false,
+        config: true,
         type: Number,
         default: 0
     });
@@ -511,6 +519,30 @@ Hooks.once("init", () => {
 
 
 });
+
+/**
+ * Global Reactivity: Re-render all open Bastion Managers when an Actor's bastion flags change.
+ * This handles the "Ready Up" system updates across different clients (GM vs Player).
+ */
+Hooks.on("updateActor", (actor, changes) => {
+    const MODULE_ID = "dnd-2024-bastion-manager";
+    if (foundry.utils.hasProperty(changes, `flags.${MODULE_ID}`)) {
+        for (const app of foundry.applications.instances.values()) {
+            if (app.constructor.name === "BastionManager") app.render();
+        }
+    }
+});
+
+Hooks.once("ready", () => {
+    game.socket.on("module.dnd-2024-bastion-manager", (data) => {
+        if (data.action === "globalAdvance") {
+            for (const app of foundry.applications.instances.values()) {
+                if (app.constructor.name === "BastionManager") app.render();
+            }
+        }
+    });
+});
+
 // Hook into the modern V13 ApplicationV2 Header Controls (The 3-dot menu)
 Hooks.on("getHeaderControlsApplicationV2", (app, controls) => {
     // Only target Actor sheets, not generic apps

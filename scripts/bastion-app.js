@@ -45,6 +45,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         this._activeTab = "map";
         this._queueStates = {};
         this._changingOrders = new Set();
+        this._advanceMode = "global";
     }
     static DEFAULT_OPTIONS = {
         id: "bastion-manager", classes: ["bastion-app"], tag: "form",
@@ -77,6 +78,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             switchTab: BastionManager.onSwitchTab,
             instantTransferAnimal: BastionManager.onInstantTransferAnimal,
             changeOrder: BastionManager.onChangeOrder,
+            toggleReady: BastionManager.onToggleReady,
+            advanceIndividualTurn: BastionManager.onAdvanceIndividualTurn,
+            toggleAdvanceMode: BastionManager.onToggleAdvanceMode,
+            castSpellcasterSpell: BastionManager.onCastSpellcasterSpell,
+            renameStableAnimal: BastionManager.onRenameStableAnimal,
         }
     };
     static PARTS = { main: { template: "modules/dnd-2024-bastion-manager/templates/bastion-main.hbs" } };
@@ -93,6 +99,46 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             return pid === parentFolderId;
         });
         return [parentFolderId, ...subfolders.flatMap(f => BastionManager._getAllSubfolderIds(pack, f.id))];
+    }
+
+    /**
+     * Extracts a size key from a document (Actor or Item).
+     * Looks for system.size, then checks system.properties for size tags.
+     * @param {object} doc The document or index entry.
+     * @returns {string} The size key (tiny, sm, med, lg, huge, grg).
+     */
+    static async _extractSize(doc) {
+        if (!doc) return "lg";
+        // 1. Direct size field (standard for Actors, some Item schemas)
+        let size = doc.system?.size || doc.system?.details?.size || doc.system?.traits?.size;
+        if (size && typeof size === "string") return size.toLowerCase();
+
+        // 2. Look in properties (Set, Array, or Object)
+        let props = doc.system?.properties;
+        let propList = (props instanceof Set) ? Array.from(props) : (Array.isArray(props) ? props : (typeof props === "object" && props !== null ? Object.keys(props).filter(k => props[k]) : []));
+        const sizeKeys = ["tiny", "sm", "med", "lg", "huge", "grg"];
+        const found = propList.find(p => sizeKeys.includes(String(p).toLowerCase()));
+        if (found) return found.toLowerCase();
+
+        // 3. Parse Description for Link (Actor UUID)
+        const desc = doc.system?.description?.value;
+        if (desc) {
+            const match = desc.match(/@(?:UUID|Actor)\[([^\]]+)\]/);
+            if (match) {
+                try {
+                    const linkedDoc = await fromUuid(match[1]);
+                    if (linkedDoc && linkedDoc.documentName === "Actor") {
+                        // Traits.size is the standard dnd5e path for Actor size
+                        let linkedSize = linkedDoc.system?.traits?.size || linkedDoc.system?.size;
+                        if (linkedSize) return linkedSize.toLowerCase();
+                    }
+                } catch (e) {
+                    console.error("Bastion Manager | Error resolving linked actor for size:", e);
+                }
+            }
+        }
+
+        return "lg";
     }
 
     static _getScrollRequirements(name) {
@@ -139,11 +185,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     static _getMountSlotCost(sizeKey) {
         const s = String(sizeKey || "lg").toLowerCase();
         // Tiny, Small, Medium all count as 0.5
-        if ( ["tiny", "sm", "med"].includes(s) ) return 0.5;
+        if ( ["tiny", "sm", "med", "small", "medium"].includes(s) ) return 0.5;
         // Large counts as 1.0
-        if ( s === "lg" ) return 1.0;
+        if ( s === "lg" || s === "large" ) return 1.0;
         // Huge counts as 4.0
-        if ( s === "huge" ) return 3.0;
+        if ( s === "huge" || s === "hg" ) return 3.0;
         // Anything larger (Gargantuan+) or unknown defaults to a "cannot house" value
         return 999;
     }
@@ -152,7 +198,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
      * Recursively builds a nested option structure for select menus matching folder hierarchy.
      */
     static async _getNestedCompendiumOptions(pack, rootFolderId, selectedValue, calculationMode, daysPerTurn, progressLabel, isMagicItem = true, folderNamesFilter = null, folderNamesExclude = null) {
-        const index = await pack.getIndex({ fields: ["folder", "system.rarity", "system.price", "system.quantity", "system.requirements.level", "system.size"] });
+        const index = await pack.getIndex({ fields: ["folder", "system.rarity", "system.price", "system.quantity", "system.requirements.level", "system.size", "system.properties", "system.description.value"] });
         const allRelevantFolderIds = BastionManager._getAllSubfolderIds(pack, rootFolderId);
         
         let rootItems = [];
@@ -190,11 +236,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             });
             if (items.length === 0) continue;
 
-            const processedItems = items.map(i => {
+            const processedItems = await Promise.all(items.map(async i => {
                 const rarity = i.system.rarity || "common";
                 let price = i.system.price?.value ?? i.system.price ?? 0;
                 if (typeof price === "string") price = parseFloat(price.replace(/[^0-9.]/g, "")) || 0;
-                const size = i.system.size || "lg";
+                const size = await BastionManager._extractSize(i);
                 const slots = BastionManager._getMountSlotCost(size);
                 const qty = i.system.quantity || 1;
 
@@ -236,7 +282,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     price: gp,
                     uuid: i.uuid || `Compendium.dnd-2024-bastion-manager.bastion-output-items.Item.${i._id || i.id}`
                 };
-            });
+            }));
 
             const sortedItems = processedItems.sort((a,b) => {
                 if (isMagicItem) {
@@ -298,9 +344,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     async _prepareContext(options) {
-        const globalTurnCount = game.settings.get("dnd-2024-bastion-manager", "globalTurnCount") || 0;
-        const rawFacilities = this._getUnifiedFacilities();
         const MODULE_ID = "dnd-2024-bastion-manager";
+        const actorTurnCount = this.actor.getFlag(MODULE_ID, "turnCount") || 0;
+        const rawFacilities = this._getUnifiedFacilities();
 
         const wallCount = this.actor.getFlag(MODULE_ID, "completedWalls") || 0;
         const wallDays = this.actor.getFlag(MODULE_ID, "pendingWallDays") || 0;
@@ -311,6 +357,18 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const combinedGroup = combinedGroupId ? game.actors.get(combinedGroupId) : null;
         const layoutActor = combinedGroup || this.actor;
         const isGroupMode = this.actor.type === "group" || !!combinedGroup;
+
+        // Denominator logic: Only count actors owned by active (logged-in) non-GM users.
+        const activeNonGMs = game.users.filter(u => u.active && !u.isGM);
+        const bastionActors = game.actors.filter(a => {
+            const isAllowedType = a.type === "character" || a.type === "npc";
+            const hasFacilities = a.items.some(i => i.type === "facility") || a.getFlag(MODULE_ID, "groupFacilities")?.length > 0;
+            const ownedByActivePlayer = activeNonGMs.some(u => a.testUserPermission(u, "OWNER"));
+            return isAllowedType && hasFacilities && ownedByActivePlayer;
+        });
+        const readyCount = bastionActors.filter(a => a.getFlag(MODULE_ID, "isReady")).length;
+        const totalBastions = bastionActors.length;
+        const isReady = this.actor.getFlag(MODULE_ID, "isReady") || false;
 
         const pack = game.packs.get("dnd-2024-bastion-manager.bastion-facilities");
         const SPECIAL_ROOT_ID = "jvwwGTr0bMORqJD4";
@@ -430,6 +488,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             
             const isBarrack = fac.name.includes("Barrack");
             const promptNames = isBarrack ? (getFacFlag("promptNames") ?? true) : false;
+
+            const isTeleportationCircle = fac.name.includes("Teleportation Circle");
+            const visitingSpellcaster = getFacFlag("visitingSpellcaster") || false;
+            const spellcasterDaysRemaining = getFacFlag("spellcasterDaysRemaining") || 0;
+            const spellcasterName = getFacFlag("spellcasterName") || "";
+            const maxSpellLevel = actorLevel >= 17 ? 8 : 4;
 
             const storedCraftChoice = getFacFlag("craftChoice") || "";
             const storedFocusChoice = getFacFlag("focusChoice") || "";
@@ -621,19 +685,21 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             // --- Stable Metadata Initialization ---
             const isStable = fac.name.includes("Stable");
-            const stableAnimals = getFacFlag("stableAnimals") || [];
+            let stableAnimals = getFacFlag("stableAnimals") || [];
+            // Migrate old string-only array to object array if necessary
+            stableAnimals = stableAnimals.map(a => typeof a === "string" ? { species: a, nickname: "" } : a);
+            
             const stableTradeChoice = getFacFlag("stableTradeChoice") || "buy";
             const stableMaxSlots = facSize === "Vast" ? 6 : 3;
             const isStableTrade = isStable && currentOrder === "Trade";
             let stableUsedSlots = 0;
             
             if (isStable && outPack) {
-                const index = await outPack.getIndex({fields: ["system.size"]});
-                stableAnimals.forEach(name => {
-                    const entry = index.find(e => e.name.toLowerCase() === name.toLowerCase());
-                    const size = entry?.system?.size || "lg";
-                    stableUsedSlots += BastionManager._getMountSlotCost(size);
-                });
+                const index = await outPack.getIndex({fields: ["system.size", "system.properties", "system.description.value"]});
+                for (const animal of stableAnimals) {
+                    const entry = index.find(e => e.name.toLowerCase() === animal.species.toLowerCase());
+                    stableUsedSlots += BastionManager._getMountSlotCost(await BastionManager._extractSize(entry));
+                }
             }
 
             if (outPack?.folders) {
@@ -747,17 +813,16 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         fac.potentialMountNames = allStableOptions.flatMap(o => o.groupOptions ? o.groupOptions.map(so => so.value) : [o.value]);
 
                         // Filter Sell dropdown to only what is in the stable
-                        const stableAnimals = getFacFlag("stableAnimals") || [];
                         const tradeChoice = getFacFlag("stableTradeChoice") || "buy";
                         if (tradeChoice === "sell") {
-                            let filteredOptions = [];
+                            let filteredOptions = []; // Filter sell dropdown to only what is in the stable
                             for (const option of allStableOptions) {
                                 if (option.groupOptions) {
-                                    const filteredGroupOptions = option.groupOptions.filter(subOption => stableAnimals.includes(subOption.value));
+                                    const filteredGroupOptions = option.groupOptions.filter(subOption => stableAnimals.some(a => a.species === subOption.value));
                                     if (filteredGroupOptions.length > 0) {
                                         filteredOptions.push({ ...option, groupOptions: filteredGroupOptions });
                                     }
-                                } else if (stableAnimals.includes(option.value)) {
+                                } else if (stableAnimals.some(a => a.species === option.value)) {
                                     filteredOptions.push(option);
                                 }
                             }
@@ -925,7 +990,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             if (isStable) {
                 if (stableTransferType === "claim") {
-                    stableTransferOptions = stableAnimals.map(a => ({ value: a, label: a, selected: a === stableTransferChoice }));
+                    stableTransferOptions = stableAnimals.map((a, idx) => ({ value: idx, label: a.nickname ? `${a.nickname} (${a.species})` : a.species, selected: String(idx) === String(stableTransferChoice) }));
                 } else {
                     stableTransferOptions = this.actor.items
                         .filter(i => (fac.potentialMountNames || []).includes(i.name) || i.system?.type?.value === "beast")
@@ -1041,10 +1106,17 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 workshopItemUuid: workshopItemUuid,
                 isStable: isStable,
                 isStableTrade: isStableTrade,
+                isTeleportationCircle,
+                visitingSpellcaster,
+                spellcasterDaysRemaining,
+                spellcasterName,
+                maxSpellLevel,
+                isSpellcasterPresent: visitingSpellcaster && spellcasterDaysRemaining > 0,
                 stableTradeChoice: stableTradeChoice,
                 stableItemChoice: effectiveStableItemChoice,
                 stableItemOptions: stableItemOptions,
-                stableAnimalsList: stableAnimals.join(", "),
+                stableAnimals: stableAnimals,
+                stableAnimalsList: stableAnimals.map(a => a.nickname ? `${a.nickname} (${a.species})` : a.species).join(", "),
                 stableTransferType,
                 stableTransferOptions, // Options for the claim/store dropdowns
                 stableUsedSlots, stableMaxSlots,
@@ -1450,8 +1522,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         // Persist section states
         if (this._sectionStates === undefined) this._sectionStates = { special: true, basic: true };
         
+        const unify = game.settings.get(MODULE_ID, "unifyCombinedTurns");
+        const displayTurnCount = (unify && combinedGroup) ? (combinedGroup.getFlag(MODULE_ID, "turnCount") || 0) : actorTurnCount;
+
         this.context = { 
-            actor: this.actor, turnCount: globalTurnCount, 
+            actor: this.actor, turnCount: displayTurnCount, 
+            advanceMode: this._advanceMode || "global",
             totalDefenders, defenderNames: allDefenderNames.join(", "), 
             allActiveQueues,
             allUtilities,
@@ -1462,7 +1538,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             canAdvanceTurn, grid, gridSize, isNewBastion,
             wallCount, wallDays, hasMap,
             selectedId, combinedGroup, wallCost, wallTime,
-            totalWallSquaresAllowed, placedWallSquares, structIds: STRUCT_IDS,
+            totalWallSquaresAllowed, placedWallSquares, structIds: STRUCT_IDS, readyCount, totalBastions, isReady,
             gridBackground, selectedOpening: this._selectedOpeningType || "Door", neglectWarning, neglectColor, neglectCounter, actorLevel,
             sectionStates: this._sectionStates
         };
@@ -2406,6 +2482,39 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         this.render();
     }
 
+    static async onRenameStableAnimal(event, target) {
+        const ds = target.dataset;
+        const idx = parseInt(ds.index);
+        const MODULE_ID = "dnd-2024-bastion-manager";
+
+        let gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+        let fac = ds.isFlag === "true" ? gf.find(f => f._id === ds.itemId) : this.actor.items.get(ds.itemId);
+        if (!fac) return;
+
+        let animals = Array.from((ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.stableAnimals : fac.getFlag(MODULE_ID, "stableAnimals")) || []);
+        if (!animals[idx]) return;
+
+        const current = typeof animals[idx] === "string" ? { species: animals[idx], nickname: "" } : animals[idx];
+        
+        const newName = await DialogV2.prompt({
+            window: { title: `Name your ${current.species}` },
+            content: `<div class="form-group"><label>Nickname:</label><input type="text" name="name" value="${current.nickname}" placeholder="Enter name..." autofocus></div>`,
+            ok: { label: "Save Name", callback: (event, button) => button.form.elements.name.value.trim() },
+            rejectClose: false
+        });
+
+        if (newName !== undefined) {
+            animals[idx] = { species: current.species, nickname: newName };
+            if (ds.isFlag === "true") {
+                foundry.utils.setProperty(fac, `flags.${MODULE_ID}.stableAnimals`, animals);
+                await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+            } else {
+                await fac.setFlag(MODULE_ID, "stableAnimals", animals);
+            }
+            this.render();
+        }
+    }
+
     static async onDonateToStorehouse(event, target) {
         const ds = target.dataset;
         const MODULE_ID = "dnd-2024-bastion-manager";
@@ -2835,23 +2944,28 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const type = (ds.isFlag === "true") ? (this.actor.getFlag(MODULE_ID, "groupFacilities")?.find(f => f._id === ds.itemId)?.flags?.[MODULE_ID]?.stableTransferType || "claim") : (this.actor.items.get(ds.itemId)?.getFlag(MODULE_ID, "stableTransferType") || "claim");
         const choice = (ds.isFlag === "true") ? (this.actor.getFlag(MODULE_ID, "groupFacilities")?.find(f => f._id === ds.itemId)?.flags?.[MODULE_ID]?.stableTransferChoice || "") : (this.actor.items.get(ds.itemId)?.getFlag(MODULE_ID, "stableTransferChoice") || "");
 
-        if (!choice) return ui.notifications.warn("Select an animal first.");
+        if (choice === "" || choice === null) return ui.notifications.warn("Select an animal first.");
 
         let gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
         let fac = ds.isFlag === "true" ? gf.find(f => f._id === ds.itemId) : this.actor.items.get(ds.itemId);
         let animals = Array.from((ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.stableAnimals : fac.getFlag(MODULE_ID, "stableAnimals")) || []);
+        // Migration
+        animals = animals.map(a => typeof a === "string" ? { species: a, nickname: "" } : a);
 
         if (type === "claim") {
-            const idx = animals.indexOf(choice);
-            if (idx === -1) return;
+            const idx = parseInt(choice);
+            if (isNaN(idx) || !animals[idx]) return;
+            
+            const animalData = animals[idx];
+            const speciesName = animalData.species;
             
             const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
-            const entry = (await outPack.getIndex()).find(e => e.name === choice);
+            const entry = (await outPack.getIndex()).find(e => e.name === speciesName);
             if (entry) {
                 const doc = await outPack.getDocument(entry._id);
                 await this.actor.createEmbeddedDocuments("Item", [doc.toObject()]);
                 animals.splice(idx, 1);
-                ui.notifications.info(`Claimed <b>${choice}</b> from the Stable.`);
+                ui.notifications.info(`Claimed <b>${animalData.nickname || speciesName}</b> from the Stable.`);
             }
         } else {
             const invItem = this.actor.items.get(choice);
@@ -2862,13 +2976,13 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const facSize = (ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.size : fac.getFlag(MODULE_ID, "size")) || "Roomy";
             const max = facSize === "Vast" ? 6 : 3;
             const currentUsed = this.context.facilities.find(f => f.id === ds.itemId).stableUsedSlots;
-            const cost = BastionManager._getMountSlotCost(invItem.system?.size);
+            const cost = BastionManager._getMountSlotCost(await BastionManager._extractSize(invItem));
             
             if (currentUsed + cost > max) return ui.notifications.error(`Stable is too full to store ${name}.`);
 
             if ((invItem.system.quantity || 1) > 1) await invItem.update({"system.quantity": invItem.system.quantity - 1});
             else await invItem.delete();
-            animals.push(name);
+            animals.push({ species: name, nickname: "" });
             ui.notifications.info(`Stored <b>${name}</b> in the Stable.`);
         }
 
@@ -3717,11 +3831,24 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const turnsInput = this.element.querySelector('input[name="turns"]');
         const turnsToAdvance = parseInt(turnsInput?.value) || 1;
 
-        const playerActors = game.actors.filter(a => a.hasPlayerOwner && a.type === "character");
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        const activeNonGMs = game.users.filter(u => u.active && !u.isGM);
+        const bastionActors = game.actors.filter(a => {
+            const isAllowed = a.type === "character" || a.type === "npc";
+            const hasFac = a.items.some(i => i.type === "facility") || a.getFlag(MODULE_ID, "groupFacilities")?.length > 0;
+            const activeOwner = activeNonGMs.some(u => a.testUserPermission(u, "OWNER"));
+            return isAllowed && hasFac && activeOwner;
+        });
+
+        // Ensure the actor in the current window is also advanced, regardless of active ownership
+        if ( !bastionActors.some(a => a.id === this.actor.id) ) {
+            const hasFac = this.actor.items.some(i => i.type === "facility") || this.actor.getFlag(MODULE_ID, "groupFacilities")?.length > 0;
+            if ( hasFac ) bastionActors.push(this.actor);
+        }
+
         let allMissing = [];
-        let warningShown = false;
-        for (let actor of playerActors) {
-            allMissing.push(...BastionManager._validateFacilities(actor));
+        for (let actor of bastionActors) {
+            allMissing.push(...await BastionManager._validateFacilities(actor));
         }
 
         if (allMissing.length > 0) {
@@ -3733,31 +3860,40 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 modal: true
             });
             if (!proceed) return;
-            warningShown = true;
         }
 
-        const confirm = warningShown || await DialogV2.confirm({ 
+        const confirm = (allMissing.length > 0) || await DialogV2.confirm({ 
             window: { title: "Advance Bastion Turn" }, 
             content: `<p>Are you sure you want to advance the global Bastion turn by <b>${turnsToAdvance}</b>?</p>`, 
             rejectClose: false, modal: true 
         });
 
         if (confirm) {
-            const currentGlobalTurns = game.settings.get("dnd-2024-bastion-manager", "globalTurnCount") || 0;
-            await game.settings.set("dnd-2024-bastion-manager", "globalTurnCount", currentGlobalTurns + turnsToAdvance);
+            const currentGlobalTurns = game.settings.get(MODULE_ID, "globalTurnCount") || 0;
+            await game.settings.set(MODULE_ID, "globalTurnCount", currentGlobalTurns + turnsToAdvance);
 
-            const playerActors = game.actors.filter(a => {
-                const isAllowed = a.type === "character" || a.type === "npc";
-                return isAllowed && (a.items.some(i => i.type === "facility") || a.getFlag("dnd-2024-bastion-manager", "groupFacilities")?.length > 0);
-            });
             let reports = [];
-            for (let actor of playerActors) {
-                // If they have facilities or had bastion data initialized
-                if (actor.getFlag("dnd-2024-bastion-manager", "data") || actor.items.some(i => i.type === "facility")) {
-                    const r = await BastionManager.executeBastionTurn(actor, turnsToAdvance);
-                    if (r) reports.push(r);
+            const processedGroups = new Set();
+            const unify = game.settings.get(MODULE_ID, "unifyCombinedTurns");
+
+            for (let actor of bastionActors) {
+                const combinedId = actor.getFlag(MODULE_ID, "combinedGroupId");
+                if (unify && combinedId && !processedGroups.has(combinedId)) {
+                    const group = game.actors.get(combinedId);
+                    if (group) {
+                        const groupTurns = group.getFlag(MODULE_ID, "turnCount") || 0;
+                        await group.setFlag(MODULE_ID, "turnCount", groupTurns + turnsToAdvance);
+                    }
+                    processedGroups.add(combinedId);
                 }
+
+                const currentActorTurns = actor.getFlag(MODULE_ID, "turnCount") || 0;
+                await actor.setFlag(MODULE_ID, "isReady", false);
+                await actor.setFlag(MODULE_ID, "turnCount", currentActorTurns + turnsToAdvance);
+                const r = await BastionManager.executeBastionTurn(actor, turnsToAdvance);
+                if (r) reports.push(r);
             }
+
             if (reports.length > 0) {
                 await BastionManager._dispatchReports(reports, turnsToAdvance);
             }
@@ -3766,6 +3902,107 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             game.socket.emit("module.dnd-2024-bastion-manager", { action: "globalAdvance" });
             this.render();
         }
+    }
+
+    static onToggleAdvanceMode(event, target) {
+        this._advanceMode = this._advanceMode === "global" ? "individual" : "global";
+        this.render();
+    }
+
+    static async onAdvanceIndividualTurn(event, target) {
+        const turnsInput = this.element.querySelector('input[name="turns"]');
+        const turnsToAdvance = parseInt(turnsInput?.value) || 1;
+        const MODULE_ID = "dnd-2024-bastion-manager";
+
+        const missing = await BastionManager._validateFacilities(this.actor);
+        if (missing.length > 0) {
+            let list = missing.map(m => `<li>${m}</li>`).join("");
+            const proceed = await DialogV2.confirm({
+                window: { title: "Incomplete Selections" },
+                content: `<p><b>${this.actor.name}'s</b> Bastion has missing selections:</p><ul>${list}</ul><p>Proceed anyway? (Facilities with missing selections will Maintain)</p>`,
+                rejectClose: false, modal: true
+            });
+            if (!proceed) return;
+        }
+
+        const confirm = (missing.length > 0) || await DialogV2.confirm({ 
+            window: { title: "Advance Turn: " + this.actor.name }, 
+            content: `<p>Are you sure you want to advance <b>${this.actor.name}'s</b> Bastion by <b>${turnsToAdvance}</b> turn(s)?</p><p style="font-size: 0.85em; color: #666;">This processes this character independently of other bastions.</p>`, 
+            rejectClose: false, modal: true 
+        });
+
+        if (confirm) {
+            let reports = [];
+            const unify = game.settings.get(MODULE_ID, "unifyCombinedTurns");
+            const combinedId = this.actor.getFlag(MODULE_ID, "combinedGroupId");
+
+            if (unify && combinedId) {
+                const group = game.actors.get(combinedId);
+                if (group) {
+                    const groupTurns = group.getFlag(MODULE_ID, "turnCount") || 0;
+                    await group.setFlag(MODULE_ID, "turnCount", groupTurns + turnsToAdvance);
+                }
+            }
+
+            const currentActorTurns = this.actor.getFlag(MODULE_ID, "turnCount") || 0;
+            await this.actor.setFlag(MODULE_ID, "isReady", false);
+            await this.actor.setFlag(MODULE_ID, "turnCount", currentActorTurns + turnsToAdvance);
+            const r = await BastionManager.executeBastionTurn(this.actor, turnsToAdvance);
+            if (r) reports.push(r);
+
+            if (reports.length > 0) {
+                await BastionManager._dispatchReports(reports, turnsToAdvance);
+            }
+            ui.notifications.info(`Advanced ${this.actor.name}'s Bastion by ${turnsToAdvance} turn(s).`);
+            this.render();
+        }
+    }
+
+    static async onCastSpellcasterSpell(event, target) {
+        const ds = target.dataset;
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        
+        let fac;
+        if (ds.isFlag === "true") {
+            const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+            fac = gf.find(f => f._id === ds.itemId);
+        } else {
+            fac = this.actor.items.get(ds.itemId);
+        }
+        if (!fac) return;
+
+        const confirm = await DialogV2.confirm({
+            window: { title: "Cast Visiting Spell" },
+            content: `<p>Request the visiting spellcaster to cast one Wizard spell? They will depart immediately after.</p>`,
+            rejectClose: false, modal: true
+        });
+
+        if (confirm) {
+            const spellcasterName = ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.spellcasterName : fac.getFlag(MODULE_ID, "spellcasterName");
+            const updates = { [`flags.${MODULE_ID}.visitingSpellcaster`]: false, [`flags.${MODULE_ID}.spellcasterDaysRemaining`]: 0, [`flags.${MODULE_ID}.spellcasterName`]: "" }; // Clear name on dismissal
+            if (ds.isFlag === "true") {
+                const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+                const targetFac = gf.find(f => f._id === ds.itemId);
+                for (let [k,v] of Object.entries(updates)) foundry.utils.setProperty(targetFac, k, v);
+                await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+            } else {
+                await fac.update(updates);
+            }
+            ui.notifications.info(`<b>${spellcasterName || 'The spellcaster'}</b> has cast their spell and departed.`);
+        }
+    }
+
+    static async onToggleReady(event, target) {
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        const current = this.actor.getFlag(MODULE_ID, "isReady") || false;
+        await this.actor.setFlag(MODULE_ID, "isReady", !current);
+        
+        if (!current) {
+            const missing = await BastionManager._validateFacilities(this.actor);
+            if (missing.length > 0) ui.notifications.warn(`${this.actor.name}: You have incomplete facility orders.`);
+        }
+        
+        this.render();
     }
 
     // --- THE STANDALONE ENGINE ---
@@ -3830,75 +4067,110 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     // --- HELPER: VALIDATION ---
-    static _validateFacilities(actor) {
+    static async _validateFacilities(actor) {
         const facilities = BastionManager._getActorFacilities(actor);
         const missing = [];
         const MODULE_ID = "dnd-2024-bastion-manager";
 
         for (const fac of facilities) {
-            const order = fac.isFlag ? (fac.doc.flags?.[MODULE_ID]?.order || "Maintain") : (fac.doc.getFlag(MODULE_ID, "order") || "Maintain");
+            const getFacFlag = (key) => fac.isFlag ? (fac.doc.flags?.[MODULE_ID]?.[key]) : (fac.doc.getFlag(MODULE_ID, key));
+            const order = getFacFlag("order") || "Maintain";
             
             if (order === "Maintain") continue;
 
             if (fac.name.includes("Library") && order === "Research") {
-                const topic = fac.isFlag ? fac.doc.flags?.[MODULE_ID]?.libraryTopic : fac.doc.getFlag(MODULE_ID, "libraryTopic");
+                const topic = getFacFlag("libraryTopic");
                 if (!topic || topic.trim() === "") missing.push(`${actor.name}: Library needs a Research Topic.`);
             }
             
             if (fac.name.includes("Arcane Study") && order === "Craft") {
-                const choice = fac.isFlag ? fac.doc.flags?.[MODULE_ID]?.craftChoice : fac.doc.getFlag(MODULE_ID, "craftChoice");
-                const queue = fac.isFlag ? (fac.doc.flags?.[MODULE_ID]?.craftQueue || []) : (fac.doc.getFlag(MODULE_ID, "craftQueue") || []);
+                const choice = getFacFlag("craftChoice");
+                const queue = getFacFlag("craftQueue") || [];
                 if (!choice && queue.length === 0) missing.push(`${actor.name}: Arcane Study needs a Craft selection or Queue.`);
                 else if (choice === "Arcane Focus") {
-                    const focusChoice = fac.isFlag ? fac.doc.flags?.[MODULE_ID]?.focusChoice : fac.doc.getFlag(MODULE_ID, "focusChoice");
+                    const focusChoice = getFacFlag("focusChoice");
                     if (!focusChoice) missing.push(`${actor.name}: Arcane Study (Arcane Focus) needs a Focus Type selection.`);
                 }
             }
 
             if (fac.name.includes("Sanctuary") && order === "Craft") {
-                const choice = fac.isFlag ? fac.doc.flags?.[MODULE_ID]?.craftChoice : fac.doc.getFlag(MODULE_ID, "craftChoice");
-                const queue = fac.isFlag ? (fac.doc.flags?.[MODULE_ID]?.craftQueue || []) : (fac.doc.getFlag(MODULE_ID, "craftQueue") || []);
+                const choice = getFacFlag("craftChoice");
+                const queue = getFacFlag("craftQueue") || [];
                 if (!choice && queue.length === 0) missing.push(`${actor.name}: Sanctuary needs a Craft selection or Queue.`);
                 else if (choice === "Druidic Focus" || choice === "Holy Symbol") {
-                    const sacredFocusChoice = fac.isFlag ? fac.doc.flags?.[MODULE_ID]?.sacredFocusChoice : fac.doc.getFlag(MODULE_ID, "sacredFocusChoice");
+                    const sacredFocusChoice = getFacFlag("sacredFocusChoice");
                     if (!sacredFocusChoice) missing.push(`${actor.name}: Sanctuary (${choice}) needs a Focus Type selection.`);
                 }
             } else if (fac.name.includes("Smithy") && order === "Craft") {
-                const choice = fac.isFlag ? fac.doc.flags?.[MODULE_ID]?.craftChoice : fac.doc.getFlag(MODULE_ID, "craftChoice");
-                const queue = fac.isFlag ? (fac.doc.flags?.[MODULE_ID]?.craftQueue || []) : (fac.doc.getFlag(MODULE_ID, "craftQueue") || []);
+                const choice = getFacFlag("craftChoice");
+                const queue = getFacFlag("craftQueue") || [];
                 if (!choice && queue.length === 0) missing.push(`${actor.name}: Smithy needs a Craft selection or Queue.`);
                 else if (choice === "Smith's Tools") {
-                    const itemChoice = fac.isFlag ? fac.doc.flags?.[MODULE_ID]?.smithyItemChoice : fac.doc.getFlag(MODULE_ID, "smithyItemChoice");
+                    const itemChoice = getFacFlag("smithyItemChoice");
                     if (!itemChoice) missing.push(`${actor.name}: Smithy (Smith's Tools) needs an item selection.`);
                 } else if (choice === "Magic Item (Armament)") {
-                    const itemChoice = fac.isFlag ? fac.doc.flags?.[MODULE_ID]?.armamentItemChoice : fac.doc.getFlag(MODULE_ID, "armamentItemChoice");
+                    const itemChoice = getFacFlag("armamentItemChoice");
                     if (!itemChoice) missing.push(`${actor.name}: Smithy (Armament) needs a Magic Item selection.`);
                 }
             }
 
             if (fac.name.includes("Garden")) {
                 if (order === "Harvest") {
-                    const choice = fac.isFlag ? fac.doc.flags?.["dnd-2024-bastion-manager"]?.harvestChoice : fac.doc.getFlag("dnd-2024-bastion-manager", "harvestChoice");
+                    const choice = getFacFlag("harvestChoice");
                     if (!choice) missing.push(`${actor.name}: Garden needs a Harvest selection.`);
                 }
                 if (order === "Change Type") {
-                    const pending = fac.isFlag ? fac.doc.flags?.["dnd-2024-bastion-manager"]?.pendingSubType : fac.doc.getFlag("dnd-2024-bastion-manager", "pendingSubType");
+                    const pending = getFacFlag("pendingSubType");
                     if (!pending) missing.push(`${actor.name}: Garden needs a target Specialization for Change Type.`);
                 }
             } else if (fac.name.includes("Scriptorium") && order === "Craft") {
-                const choice = fac.isFlag ? fac.doc.flags?.[MODULE_ID]?.craftChoice : fac.doc.getFlag(MODULE_ID, "craftChoice");
+                const choice = getFacFlag("craftChoice");
                 if (choice === "Book Replica") {
                     const hasBook = actor.items.some(i => i.name.toLowerCase().includes("blank book") || (i.name.toLowerCase() === "book" && i.type !== "facility"));
                     if (!hasBook) missing.push(`${actor.name}: Scriptorium requires a Blank Book in inventory to begin a Book Replica.`);
-                    const title = fac.isFlag ? fac.doc.flags?.[MODULE_ID]?.bookTitle : fac.doc.getFlag(MODULE_ID, "bookTitle");
+                    const title = getFacFlag("bookTitle");
                     if (!title) missing.push(`${actor.name}: Scriptorium requires a Book Title to replicate.`);
                 } else if (choice === "Paperwork") {
-                    const title = fac.isFlag ? fac.doc.flags?.[MODULE_ID]?.paperworkTitle : fac.doc.getFlag(MODULE_ID, "paperworkTitle");
+                    const title = getFacFlag("paperworkTitle");
                     if (!title) missing.push(`${actor.name}: Scriptorium requires a description/title for Paperwork.`);
                 }
             } else if (fac.name.includes("Stable") && order === "Trade") {
-                const choice = fac.isFlag ? fac.doc.flags?.[MODULE_ID]?.stableItemChoice : fac.doc.getFlag(MODULE_ID, "stableItemChoice");
-                if (!choice) missing.push(`${actor.name}: Stable requires a mount selection for Trade.`);
+                const choice = getFacFlag("stableItemChoice");
+                const tradeType = getFacFlag("stableTradeChoice") || "buy";
+                if (!choice) {
+                    missing.push(`${actor.name}: Stable requires a mount selection for Trade.`);
+                } else if (tradeType === "buy") {
+                    const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+                    const index = await outPack.getIndex({fields: ["system.price", "system.size", "system.properties", "system.description.value"]});
+                    const entry = index.find(e => e.name === choice);
+                    if (entry) {
+                        let p = entry.system.price?.value ?? entry.system.price ?? 0;
+                        if (typeof p === "string") p = parseFloat(p.replace(/[^0-9.]/g, ""));
+                        let price = Number(p || 0);
+                        const currentGP = Number(actor.system.currency?.gp || 0);
+                        if (currentGP < price) {
+                            missing.push(`${actor.name}: Cannot afford <b>${choice}</b> (${price} GP required, ${currentGP} GP available).`);
+                        }
+
+                        const costInSlots = BastionManager._getMountSlotCost(await BastionManager._extractSize(entry));
+                        const facSize = getFacFlag("size") || "Roomy";
+                        const maxSlots = facSize === "Vast" ? 6 : 3;
+                        
+                        let usedSlots = 0;
+                        const stableAnimals = getFacFlag("stableAnimals") || [];
+                        for (const animal of stableAnimals) {
+                            const speciesName = typeof animal === "string" ? animal : animal.species;
+                            const e = index.find(i => i.name.toLowerCase() === speciesName.toLowerCase());
+                            usedSlots += BastionManager._getMountSlotCost(await BastionManager._extractSize(e));
+                        }
+
+                        if (usedSlots + costInSlots > maxSlots) {
+                            missing.push(`${actor.name}: Stable is too full for <b>${choice}</b> (${usedSlots}/${maxSlots} slots occupied).`);
+                        } else if (costInSlots > 3) {
+                            missing.push(`${actor.name}: <b>${choice}</b> is too large for the Stable.`);
+                        }
+                    }
+                }
             }
         }
         return missing;
@@ -4005,6 +4277,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let stableTransferType = getFacFlag("stableTransferType");
             let stableTransferChoice = getFacFlag("stableTransferChoice");
             let stableAnimals = getFacFlag("stableAnimals") || [];
+            // Migration: Ensure resolution engine treats animals as objects
+            stableAnimals = stableAnimals.map(a => typeof a === "string" ? { species: a, nickname: "" } : a);
+
             let activeProjectChoice = getFacFlag("activeProjectChoice");
             let storedGp = Number(getFacFlag("storedGp") || 0);
             let autoNextAction = getFacFlag("autoNextAction") || "procure";
@@ -4040,6 +4315,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let targetSubType2 = getFacFlag("targetSubType2");
             let facSubType2 = getFacFlag("subType2");
             let upgradeTurns = getFacFlag("upgradeTurns") || 0;
+
+            let visitingSpellcaster = getFacFlag("visitingSpellcaster") || false;
+            let spellcasterDaysRemaining = Number(getFacFlag("spellcasterDaysRemaining") || 0);
+            let spellcasterName = getFacFlag("spellcasterName") || "";
 
             const wasNewBuild = facEntry.isFlag && !facSize;
             if (targetSize && upgradeTurns <= 0) upgradeTurns = 1;
@@ -4078,6 +4357,17 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let currentResultText = "";
             let localGold = 0;
             let materialCost = 0;
+
+            // Lifecycle: Decrement stay duration
+            if (visitingSpellcaster && spellcasterDaysRemaining > 0) {
+                spellcasterDaysRemaining -= (turns * 7);
+                if (spellcasterDaysRemaining <= 0) {
+                    visitingSpellcaster = false;
+                    spellcasterDaysRemaining = 0;
+                    spellcasterName = "";
+                    orderSummary += `<li style="margin-bottom: 6px; padding: 4px; background: rgba(0,0,0,0.03); border-radius: 3px;"><i class="fa-solid fa-person-walking-arrow-right"></i> <b>${facName}:</b> The visiting spellcaster has departed after their stay.</li>`;
+                }
+            }
 
             // Check if the first item in the queue is a paused project and resume it
             if (order === "Craft" && !craftChoice && craftQueue.length > 0) {
@@ -4155,7 +4445,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         const mountName = getFacFlag("stableItemChoice");
                         
                         const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
-                        const index = await outPack.getIndex({fields: ["system.price", "system.size"]});
+                        const index = await outPack.getIndex({fields: ["system.price", "system.size", "system.properties", "system.description.value"]});
                         const entry = index.find(e => e.name === mountName);
 
                         if (tradeType === "buy") {
@@ -4168,15 +4458,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                                 const currentActorGP = Number(actor.system.currency?.gp || 0) || 0;
 
                                 // Updated Slot calculation
-                                const size = entry.system.size || "lg";
-                                const costInSlots = BastionManager._getMountSlotCost(size);
+                                const costInSlots = BastionManager._getMountSlotCost(await BastionManager._extractSize(entry));
                                 const maxSlots = facSize === "Vast" ? 6 : 3;
                                 
-                                let usedSlots = 0;
-                                stableAnimals.forEach(name => {
-                                    const e = index.find(i => i.name.toLowerCase() === name.toLowerCase());
-                                    usedSlots += BastionManager._getMountSlotCost(e?.system?.size);
-                                });
+                                let usedSlots = 0; // Calculate current used slots
+                                for (const animal of stableAnimals) {
+                                    const e = index.find(i => i.name.toLowerCase() === animal.species.toLowerCase());
+                                    usedSlots += BastionManager._getMountSlotCost(await BastionManager._extractSize(e));
+                                }
 
                                 if (currentActorGP + totalGold + localGold < price) {
                                     currentResultText = `Purchase failed: Insufficient gold for <b>${mountName}</b> (${price} GP).`;
@@ -4186,12 +4475,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                                     currentResultText = `Purchase failed: <b>${mountName}</b> is too large for the Stable.`;
                                 } else {
                                     localGold -= price;
-                                    stableAnimals.push(mountName);
+                                    stableAnimals.push({ species: mountName, nickname: "" });
                                     currentResultText = `Purchased a <b>${mountName}</b> for <b>${price} GP</b>.`;
                                 }
                             }
                         } else { // Sell
-                            const idx = stableAnimals.indexOf(mountName);
+                            const idx = stableAnimals.findIndex(a => a.species === mountName);
                             if (idx === -1) {
                                 currentResultText = `Sale failed: No <b>${mountName}</b> found in the stable.`;
                             } else if (!entry) {
@@ -4407,8 +4696,22 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         currentResultText = `Changing type to [${pending}] (Progress: ${progress}/${totalTurns} turns).`; 
                     }
                 } else if (order === "Recruit") {
-                    let recRes = await BastionManager._handleRecruit(facDoc.name, facEntry, actor);
-                    currentResultText = recRes.text; facDoc.newDefenders = { count: recRes.newCount, names: recRes.newNames };
+                    if (facDoc.name.includes("Teleportation Circle")) {
+                        if (visitingSpellcaster) {
+                            currentResultText = "Recruitment skipped: A spellcaster is already visiting.";
+                        } else {
+                            const roll = (await new Roll("1d2").evaluate()).total;
+                            if (roll === 2) {
+                                visitingSpellcaster = true;
+                                spellcasterDaysRemaining = 14;
+                                spellcasterName = BastionManager._generateRandomName();
+                                currentResultText = `Invitation accepted! <b>${spellcasterName}</b> has arrived via the Teleportation Circle.`;
+                            } else currentResultText = "Invitation declined. No spellcaster arrived.";
+                        }
+                    } else {
+                        let recRes = await BastionManager._handleRecruit(facDoc.name, facEntry, actor);
+                        currentResultText = recRes.text; facDoc.newDefenders = { count: recRes.newCount, names: recRes.newNames };
+                    }
                 } else if (order === "Empower") {
                     let empRes = await BastionManager._handleEmpower(facDoc.name, facEntry, actor);
                     currentResultText = empRes.text;
@@ -4444,7 +4747,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         relicItemChoice, scrollChoice, activeProjectChoice, craftQueue, storedGp, autoNextAction,
                         bookTitle, paperworkTitle, paperworkQty,
                         stableItemChoice, stableTradeChoice, stableTransferType, stableTransferChoice,
-                        stableAnimals: facEntry.stableAnimals || stableAnimals
+                        stableAnimals: facEntry.stableAnimals || stableAnimals,
+                        visitingSpellcaster, spellcasterDaysRemaining, spellcasterName
                     });
                     
                     // Handle updated defenders if any were recruited
@@ -4486,6 +4790,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     [`flags.${MODULE_ID}.stableAnimals`]: facEntry.stableAnimals || stableAnimals,
                     
                     [`flags.${MODULE_ID}.activeProjectChoice`]: activeProjectChoice,
+                    [`flags.${MODULE_ID}.visitingSpellcaster`]: visitingSpellcaster,
+                    [`flags.${MODULE_ID}.spellcasterDaysRemaining`]: spellcasterDaysRemaining,
+                    [`flags.${MODULE_ID}.spellcasterName`]: spellcasterName,
                     [`flags.${MODULE_ID}.size`]: facSize,
                     [`flags.${MODULE_ID}.upgradeTurns`]: upgradeTurns,
                     [`flags.${MODULE_ID}.storedGp`]: storedGp,
@@ -5103,6 +5410,15 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             }
         } else if (roll <= 55) { 
             cat = "Attack"; desc = "A hostile force attacks your Bastion but is defeated.";
+            const departing = [];
+            const MODULE_ID = "dnd-2024-bastion-manager";
+            BastionManager._getActorFacilities(actor).forEach(f => {
+                const isPresent = f.isFlag ? f.doc.flags?.[MODULE_ID]?.visitingSpellcaster : f.doc.getFlag(MODULE_ID, "visitingSpellcaster");
+                if (isPresent) departing.push(f.name);
+            });
+            if (departing.length > 0) {
+                auto += `<p style="color: darkred; font-size: 0.85em; margin-top: 5px;"><i class="fa-solid fa-person-running"></i> Visiting spellcaster(s) from <b>${departing.join(", ")}</b> departed immediately due to the chaos.</p>`;
+            }
             if (promptAll) auto = mkRes(mkAutoBtn('attack'));
             else {
                 const atkRoll = await new Roll("6d6").evaluate();
@@ -5328,6 +5644,23 @@ class EventResolverApp extends ApplicationV2 {
                         const atkRoll = await new Roll("6d6").evaluate();
                         const ones = atkRoll.dice[0].results.filter(d => d.result === 1).length;
                         resultText = `Rolled 6d6: <b>${ones}</b> Bastion Defender(s) died. If you have 0 Defenders, a random special facility shuts down (unusable next turn).`; 
+
+                        if (a) {
+                             const MODULE_ID = "dnd-2024-bastion-manager";
+                             const gf = Array.from(a.getFlag(MODULE_ID, "groupFacilities") || []);
+                             let gfChanged = false;
+                             for (const fac of gf) {
+                                 if (fac.flags?.[MODULE_ID]?.visitingSpellcaster) {
+                                     foundry.utils.setProperty(fac, `flags.${MODULE_ID}.visitingSpellcaster`, false);
+                                     foundry.utils.setProperty(fac, `flags.${MODULE_ID}.spellcasterDaysRemaining`, 0);
+                                     gfChanged = true;
+                                 }
+                             }
+                             if (gfChanged) await a.setFlag(MODULE_ID, "groupFacilities", gf);
+                             for (const i of a.items.filter(i => i.type === "facility" && i.getFlag(MODULE_ID, "visitingSpellcaster"))) {
+                                 await i.update({ [`flags.${MODULE_ID}.visitingSpellcaster`]: false, [`flags.${MODULE_ID}.spellcasterDaysRemaining`]: 0 });
+                             }
+                        }
                     } else resultText = `<b>Resolved Manually.</b>`;
                 } else if (eventType === "criminal") {
                     if (choice === "pay") {
