@@ -81,6 +81,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             toggleReady: BastionManager.onToggleReady,
             advanceIndividualTurn: BastionManager.onAdvanceIndividualTurn,
             toggleAdvanceMode: BastionManager.onToggleAdvanceMode,
+            theaterAction: BastionManager.onTheaterAction,
             castSpellcasterSpell: BastionManager.onCastSpellcasterSpell,
             renameStableAnimal: BastionManager.onRenameStableAnimal,
         }
@@ -491,6 +492,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             const isTeleportationCircle = fac.name.includes("Teleportation Circle");
             const visitingSpellcaster = getFacFlag("visitingSpellcaster") || false;
+            const isTheater = fac.name.includes("Theater");
+            const theaterPhase = isTheater ? (getFacFlag("theaterPhase") || "Idle") : "Idle";
+            const theaterProgress = isTheater ? Number(getFacFlag("theaterProgress") || 0) : 0;
+            const theaterContributors = isTheater ? (getFacFlag("theaterContributors") || []) : [];
+            const theaterDieSize = actorLevel >= 17 ? "d10" : (actorLevel >= 13 ? "d8" : "d6");
+
             const spellcasterDaysRemaining = getFacFlag("spellcasterDaysRemaining") || 0;
             const spellcasterName = getFacFlag("spellcasterName") || "";
             const maxSpellLevel = actorLevel >= 17 ? 8 : 4;
@@ -993,7 +1000,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     stableTransferOptions = stableAnimals.map((a, idx) => ({ value: idx, label: a.nickname ? `${a.nickname} (${a.species})` : a.species, selected: String(idx) === String(stableTransferChoice) }));
                 } else {
                     stableTransferOptions = this.actor.items
-                        .filter(i => (fac.potentialMountNames || []).includes(i.name) || i.system?.type?.value === "beast")
+                        .filter(i => {
+                            if ((fac.potentialMountNames || []).includes(i.name)) return true;
+                            if (i.system?.type?.value === "beast") return true;
+                            const match = i.name.match(/^(.*) \((.*)\)$/);
+                            return match && (fac.potentialMountNames || []).includes(match[2]);
+                        })
                         .map(i => ({ value: i.id, label: i.name, selected: i.id === stableTransferChoice }));
                 }
             }
@@ -1107,6 +1119,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 isStable: isStable,
                 isStableTrade: isStableTrade,
                 isTeleportationCircle,
+                isTheater,
+                theaterPhase,
+                theaterProgress,
+                theaterContributors,
+                theaterDieSize,
                 visitingSpellcaster,
                 spellcasterDaysRemaining,
                 spellcasterName,
@@ -2503,7 +2520,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             rejectClose: false
         });
 
-        if (newName !== undefined) {
+        // Strictly check for a string result. Cancel resolution returns null.
+        if (typeof newName === "string") {
             animals[idx] = { species: current.species, nickname: newName };
             if (ds.isFlag === "true") {
                 foundry.utils.setProperty(fac, `flags.${MODULE_ID}.stableAnimals`, animals);
@@ -2963,14 +2981,27 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const entry = (await outPack.getIndex()).find(e => e.name === speciesName);
             if (entry) {
                 const doc = await outPack.getDocument(entry._id);
-                await this.actor.createEmbeddedDocuments("Item", [doc.toObject()]);
+                const itemData = doc.toObject();
+                
+                // If the animal has a nickname, set the item name to "Nickname (Species)"
+                if (animalData.nickname) itemData.name = `${animalData.nickname} (${speciesName})`;
+                
+                await this.actor.createEmbeddedDocuments("Item", [itemData]);
                 animals.splice(idx, 1);
                 ui.notifications.info(`Claimed <b>${animalData.nickname || speciesName}</b> from the Stable.`);
             }
         } else {
             const invItem = this.actor.items.get(choice);
             if (!invItem) return;
-            const name = invItem.name;
+            let species = invItem.name;
+            let nickname = "";
+
+            // Try to extract nickname and species if the item follows the "Name (Species)" format
+            const nameMatch = invItem.name.match(/^(.*) \((.*)\)$/);
+            if (nameMatch) {
+                nickname = nameMatch[1];
+                species = nameMatch[2];
+            }
             
             // Check Slots
             const facSize = (ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.size : fac.getFlag(MODULE_ID, "size")) || "Roomy";
@@ -2978,12 +3009,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const currentUsed = this.context.facilities.find(f => f.id === ds.itemId).stableUsedSlots;
             const cost = BastionManager._getMountSlotCost(await BastionManager._extractSize(invItem));
             
-            if (currentUsed + cost > max) return ui.notifications.error(`Stable is too full to store ${name}.`);
+            if (currentUsed + cost > max) return ui.notifications.error(`Stable is too full to store ${invItem.name}.`);
 
             if ((invItem.system.quantity || 1) > 1) await invItem.update({"system.quantity": invItem.system.quantity - 1});
             else await invItem.delete();
-            animals.push({ species: name, nickname: "" });
-            ui.notifications.info(`Stored <b>${name}</b> in the Stable.`);
+            animals.push({ species: species, nickname: nickname });
+            ui.notifications.info(`Stored <b>${nickname ? nickname + " (" + species + ")" : species}</b> in the Stable.`);
         }
 
         if (ds.isFlag === "true") {
@@ -3971,25 +4002,51 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         }
         if (!fac) return;
 
-        const confirm = await DialogV2.confirm({
-            window: { title: "Cast Visiting Spell" },
-            content: `<p>Request the visiting spellcaster to cast one Wizard spell? They will depart immediately after.</p>`,
-            rejectClose: false, modal: true
+        const spellcasterName = ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.spellcasterName : fac.getFlag(MODULE_ID, "spellcasterName");
+        const updates = { [`flags.${MODULE_ID}.visitingSpellcaster`]: false, [`flags.${MODULE_ID}.spellcasterDaysRemaining`]: 0, [`flags.${MODULE_ID}.spellcasterName`]: "" }; 
+        
+        if (ds.isFlag === "true") {
+            const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+            const targetFac = gf.find(f => f._id === ds.itemId);
+            for (let [k,v] of Object.entries(updates)) foundry.utils.setProperty(targetFac, k, v);
+            await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+        } else {
+            await fac.update(updates);
+        }
+
+        let quotes = [
+            "Farewell! My magic is spent, but your hospitality was most welcome.",
+            "The winds of magic call me elsewhere. Until next time!",
+            "The spell is cast. My journey continues. Safe travels!",
+            "I must return to my studies. Thank you for the refuge.",
+            "My task here is complete. I shall depart through the circle now.",
+            "A pleasure assisting you. May your Bastion stand strong!",
+            "Magic is a fickle mistress, but this casting was true. Goodbye!"
+        ];
+
+        try {
+            const response = await fetch("modules/dnd-2024-bastion-manager/Resources/Teleportation Circle Departure Messages");
+            if (response.ok) {
+                const text = await response.text();
+                const externalQuotes = text.split(/\r?\n\s*\r?\n/).map(q => q.trim().replace(/^["'](.*)["']$/, '$1')).filter(q => q.length > 0);
+                if (externalQuotes.length > 0) quotes = externalQuotes;
+            }
+        } catch (err) {
+            console.warn("Bastion Manager | Failed to load external departure messages file. Using defaults.");
+        }
+
+        const quote = quotes[Math.floor(Math.random() * quotes.length)];
+
+        await ChatMessage.create({
+            speaker: ChatMessage.getSpeaker({actor: this.actor}),
+            content: `<div class="bastion-chat-card">
+                <h3 style="border-bottom: 2px solid #005a9e; padding-bottom: 3px; color: #004578;"><i class="fa-solid fa-wand-magic-sparkles"></i> Spellcaster Departure</h3>
+                <p><b>${spellcasterName || 'A friendly wizard'}</b> has cast their final spell and departed the Teleportation Circle.</p>
+                <blockquote style="font-style: italic; border-left: 3px solid #ccc; padding-left: 10px; margin: 10px 0;">"${quote}"</blockquote>
+            </div>`
         });
 
-        if (confirm) {
-            const spellcasterName = ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.spellcasterName : fac.getFlag(MODULE_ID, "spellcasterName");
-            const updates = { [`flags.${MODULE_ID}.visitingSpellcaster`]: false, [`flags.${MODULE_ID}.spellcasterDaysRemaining`]: 0, [`flags.${MODULE_ID}.spellcasterName`]: "" }; // Clear name on dismissal
-            if (ds.isFlag === "true") {
-                const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
-                const targetFac = gf.find(f => f._id === ds.itemId);
-                for (let [k,v] of Object.entries(updates)) foundry.utils.setProperty(targetFac, k, v);
-                await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
-            } else {
-                await fac.update(updates);
-            }
-            ui.notifications.info(`<b>${spellcasterName || 'The spellcaster'}</b> has cast their spell and departed.`);
-        }
+        ui.notifications.info(`<b>${spellcasterName || 'The spellcaster'}</b> has cast their spell and departed.`);
     }
 
     static async onToggleReady(event, target) {
@@ -5087,7 +5144,62 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (hName !== "The hireling") hName = `${hName} ${hProf}`;
 
         if (baseName === "Theater") {
-            return { text: `The hirelings begin work on a theatrical production or concert.` };
+            let phase = getFacFlag("theaterPhase") || "Idle";
+            let progress = Number(getFacFlag("theaterProgress") || 0);
+            let resultText = "";
+
+            if (phase === "Idle") {
+                phase = "Rehearsing";
+                progress = 0;
+                resultText = "Production rehearsals have begun (14 days). ";
+            }
+
+            progress += (turns * 7);
+
+            if (phase === "Writing" && progress >= 14) {
+                phase = "Rehearsing";
+                progress = 0;
+                resultText += "Writing complete. Rehearsals have begun (14 days).";
+            } else if (phase === "Rehearsing" && progress >= 14) {
+                phase = "Performing";
+                progress = 0;
+                resultText += "Rehearsals complete. The performance is now live! (7+ days).";
+                
+                // Create a notification to resolve checks
+                await ChatMessage.create({
+                    content: `
+                        <div class="bastion-chat-card">
+                            <h3><i class="fa-solid fa-masks-theater"></i> Theater: Rehearsals Complete</h3>
+                            <p>The rehearsals for the production in <b>${actor.name}'s</b> Bastion are finished. The performance phase has begun!</p>
+                            <p>Each contributor must now make a <b>DC 15 Charisma (Performance)</b> check to see if the show is a success and earn their Theater Die.</p>
+                        </div>`
+                });
+            } else if (phase === "Performing") {
+                resultText += "The performances continue indefinitely.";
+            } else {
+                const remaining = Math.max(0, 14 - progress);
+                resultText += `${phase} phase in progress. ${remaining} days remaining until the next stage.`;
+            }
+
+            const updates = {
+                [`flags.${MODULE_ID}.theaterPhase`]: phase,
+                [`flags.${MODULE_ID}.theaterProgress`]: progress
+            };
+
+            if (fac.isFlag) {
+                const gf = actor.getFlag(MODULE_ID, "groupFacilities") || [];
+                const target = gf.find(f => f._id === fac.doc._id);
+                if (target) {
+                    for (let [k, v] of Object.entries(updates)) {
+                        foundry.utils.setProperty(target, k, v);
+                    }
+                    await actor.setFlag(MODULE_ID, "groupFacilities", gf);
+                }
+            } else {
+                await fac.doc.update(updates);
+            }
+
+            return { text: resultText };
         } else if (baseName === "Training Area") {
             return { text: `The hirelings conduct training exercises for the next 7 days.` };
         } else if (baseName === "Meditation Chamber") {
@@ -5108,6 +5220,63 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         }
         return { text: `Executed Empower order.` };
     }
+
+    static async onTheaterAction(event, target) {
+        const ds = target.dataset;
+        const action = ds.subAction;
+        const MODULE_ID = "dnd-2024-bastion-manager";
+
+        let gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+        let fac = ds.isFlag === "true" ? gf.find(f => f._id === ds.itemId) : this.actor.items.get(ds.itemId);
+        if (!fac) return;
+
+        if (action === "join") {
+            const roles = ["Composer/Writer", "Conductor/Director", "Performer"];
+            const roleOptions = roles.map(r => `<option value="${r}">${r}</option>`).join("");
+            
+            const role = await DialogV2.prompt({
+                window: { title: "Join Production" },
+                content: `<div class="form-group"><label>Select Role:</label><select name="role">${roleOptions}</select></div>`,
+                ok: { callback: (event, button) => button.form.elements.role.value }
+            });
+
+            if (role) {
+                let contributors = Array.from((ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.theaterContributors : fac.getFlag(MODULE_ID, "theaterContributors")) || []);
+                // Remove existing if same actor
+                contributors = contributors.filter(c => c.actorId !== game.user.character?.id);
+                contributors.push({
+                    actorId: game.user.character?.id || null,
+                    name: game.user.character?.name || game.user.name,
+                    role: role
+                });
+
+                if (ds.isFlag === "true") {
+                    foundry.utils.setProperty(fac, `flags.${MODULE_ID}.theaterContributors`, contributors);
+                    await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+                } else {
+                    await fac.setFlag(MODULE_ID, "theaterContributors", contributors);
+                }
+            }
+        } else if (action === "start-writing") {
+            const updates = { [`flags.${MODULE_ID}.theaterPhase`]: "Writing", [`flags.${MODULE_ID}.theaterProgress`]: 0 };
+            if (ds.isFlag === "true") {
+                for (let [k, v] of Object.entries(updates)) foundry.utils.setProperty(fac, k, v);
+                await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+            } else {
+                await fac.update(updates);
+            }
+        } else if (action === "reset") {
+            const updates = { [`flags.${MODULE_ID}.theaterPhase`]: "Idle", [`flags.${MODULE_ID}.theaterProgress`]: 0, [`flags.${MODULE_ID}.theaterContributors`]: [] };
+            if (ds.isFlag === "true") {
+                for (let [k, v] of Object.entries(updates)) foundry.utils.setProperty(fac, k, v);
+                await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+            } else {
+                await fac.update(updates);
+            }
+        }
+        this.render();
+    }
+
     static async _handleResearch(baseName, fac, subType) {
         let hirelings = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.hirelings) : (fac.doc.getFlag("dnd-2024-bastion-manager", "hirelings"));
         let hName = (Array.isArray(hirelings) && hirelings.length > 0) ? hirelings[0] : "The hireling";

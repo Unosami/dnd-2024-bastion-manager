@@ -438,11 +438,52 @@
                                 {{/if}}
 
                                 {{#if this.isStable}}
-                                    <div style="font-size: 0.75em; color: #555; margin-top: 4px;">
+                                {{#if this.isTheater}}
+                                    <div style="font-size: 0.75em; color: #eee; margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 5px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                            <span><i class="fa-solid fa-masks-theater"></i> <b>Production Status:</b> <span style="color: #82cfff;">{{this.theaterPhase}}</span></span>
+                                            <div style="display: flex; gap: 4px;">
+                                                {{#if (eq this.theaterPhase "Idle")}}
+                                                    <button type="button" data-action="theaterAction" data-sub-action="start-writing" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 1px 6px; font-size: 0.75em; height: 18px;">Start Writing</button>
+                                                {{/if}}
+                                                {{#unless (eq this.theaterPhase "Idle")}}
+                                                    <button type="button" data-action="theaterAction" data-sub-action="join" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 1px 6px; font-size: 0.75em; height: 18px;">Join Roles</button>
+                                                    <button type="button" data-action="theaterAction" data-sub-action="reset" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 1px 4px; font-size: 0.75em; height: 18px;" title="Reset Production"><i class="fa-solid fa-rotate-left"></i></button>
+                                                {{/unless}}
+                                            </div>
+                                        </div>
+
+                                        {{#if (or (eq this.theaterPhase "Writing") (eq this.theaterPhase "Rehearsing"))}}
+                                            <div class="bastion-progress-bar" title="Days: {{this.theaterProgress}} / 14" style="height: 10px; background: rgba(0,0,0,0.2); border: 1px solid #555; border-radius: 5px; position: relative; overflow: hidden; margin-bottom: 5px;">
+                                                <div class="fill" style="width: {{#if (ge this.theaterProgress 14)}}100{{else}}{{mult (div this.theaterProgress 14) 100}}{{/if}}%; height: 100%; background: #82cfff; transition: width 0.5s;"></div>
+                                            </div>
+                                        {{/if}}
+
+                                        {{#if this.theaterContributors.length}}
+                                            <div style="display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px;">
+                                                {{#each this.theaterContributors}}
+                                                    <span style="background: rgba(130, 207, 255, 0.1); border: 1px solid rgba(130, 207, 255, 0.3); padding: 1px 6px; border-radius: 4px; font-size: 0.85em; color: #82cfff;">
+                                                        <b>{{this.name}}</b>: {{this.role}}
+                                                    </span>
+                                                {{/each}}
+                                            </div>
+                                        {{else}}
+                                            {{#unless (eq this.theaterPhase "Idle")}}
+                                                <div style="font-style: italic; opacity: 0.6; font-size: 0.85em;">No characters joined yet.</div>
+                                            {{/unless}}
+                                        {{/if}}
+                                        
+                                        {{#if (eq this.theaterPhase "Performing")}}
+                                            <div style="color: #4caf50; font-weight: bold; font-size: 0.85em; margin-top: 4px;"><i class="fa-solid fa-circle-play"></i> Show is Live! (Award: {{this.theaterDieSize}} die)</div>
+                                        {{/if}}
+                                    </div>
+                                {{/if}}
+
+                                    <div style="font-size: 0.75em; color: #eee; margin-top: 4px;">
                                         <i class="fa-solid fa-horse"></i> <b>Stocked Mounts:</b>
-                                        <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px;">
+                                        <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; color: #fff;">
                                             {{#each this.stableAnimals}}
-                                                <span class="stable-animal-tag" style="background: rgba(0,0,0,0.05); padding: 2px 8px; border-radius: 10px; border: 1px solid #ccc; cursor: pointer; color: #333;" 
+                                                <span class="stable-animal-tag" style="background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 10px; border: 1px solid #555; cursor: pointer; color: #eee;" 
                                                       data-action="renameStableAnimal" data-index="{{@index}}" data-item-id="{{../id}}" data-is-flag="{{../isFlag}}"
                                                       title="Click to Rename">
                                                     <i class="fa-solid fa-pen" style="font-size: 0.8em; opacity: 0.5;"></i> {{#if this.nickname}}<b>{{this.nickname}}</b> ({{this.species}}){{else}}{{this.species}}{{/if}}
@@ -588,21 +629,21 @@
                     {{/if}}
 
                     {{#if this.isTeleportationCircle}}
-                        <div style="font-size: 0.75em; color: #555; margin-top: 6px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 5px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                        <div style="font-size: 0.75em; color: #eee; margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 5px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; color: #eee;">
                                 <span><i class="fa-solid fa-wand-magic-sparkles"></i> <b>Visiting Spellcaster:</b></span>
                                 {{#if (and this.visitingSpellcaster (gt this.spellcasterDaysRemaining 0))}}
-                                    <button type="button" data-action="castSpellcasterSpell" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 1px 6px; font-size: 0.75em; height: 18px;" title="Request Wizard spell (Level {{this.maxSpellLevel}} or lower). Spellcaster departs after casting.">
+                                    <button type="button" data-action="castSpellcasterSpell" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: auto;" title="Request Wizard spell (Level {{this.maxSpellLevel}} or lower). Spellcaster departs after casting.">
                                         Cast & Dismiss
                                     </button>
                                 {{/if}}
                             </div>
                             {{#if this.visitingSpellcaster}}
                                 <div style="display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
-                                    <span class="spellcaster-tag" style="background: rgba(0,100,200,0.05); padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(0,100,200,0.2); color: #004578;">
+                                    <span class="spellcaster-tag" style="background: rgba(0,100,200,0.2); padding: 2px 8px; border-radius: 10px; border: 1px solid #0078d4; color: #82cfff;">
                                         <b>{{#if this.spellcasterName}}{{this.spellcasterName}}{{else}}Friendly Wizard{{/if}}</b>
                                     </span>
-                                    <span style="color: #666; font-style: italic;">({{this.spellcasterDaysRemaining}} days left, Max Level: {{this.maxSpellLevel}})</span>
+                                    <span style="color: #bbb; font-style: italic;">({{this.spellcasterDaysRemaining}} days left, Max Level: {{this.maxSpellLevel}})</span>
                                 </div>
                             {{else}}
                                 <span style="font-style: italic; opacity: 0.6;">None present</span>

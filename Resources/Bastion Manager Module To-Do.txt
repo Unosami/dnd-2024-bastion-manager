@@ -1,13 +1,17 @@
 Bastion Module notes:
-- Players need a "Ready to advance turn" button and the DM needs to see the number of players ready. The button should give warnings to the player in the same way that the advance turn button does to the DM.
-
-STABLE - animals need sizes somehow.
+Move hireling and defender name pools to seperate editable files.
 
 - Next I want to start fleshing out the other facility outputs.
-    - ARCANE STUDY Get crafting magic items to work properly.
-    - Specify what the garden/workshop/etc. should be producing.
-    - Workshop requires 6 Artisan's Tools selections when built.
-    - Make sure the enlarged facilites get their mechanical benefits.
+    - TELEPORTATION CIRCLE perhaps some way to type in gold costs for material components? Or better yet, drag and drop a spell item onto the facility to determine the spell to cast.
+    - THEATER
+Summary of Features
+Phase Tracking: The Theater now cycles from Idle to Writing (optional), Rehearsing (14 days), and finally Performing.
+Progress: Turn advancement automatically pushes the production forward.
+Collaboration: Players can use the "Join Roles" button to assign themselves as the Writer, Director, or Performers.
+Resolution: When rehearsals end, a chat card notifies the group to make their DC 15 Charisma (Performance) checks.
+Scaling Rewards: The UI automatically calculates the correct Theater Die size (d6, d8, or d10) based on the character's level.
+
+
 
 - Bastion Events when the Maintain order is issued. (Groundwork is done)
     - Flesh out the events and add automation for the DM
