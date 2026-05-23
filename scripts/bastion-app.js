@@ -573,14 +573,18 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             if (systemOrder && typeof systemOrder === "string") {
                 const formattedOrder = systemOrder.charAt(0).toUpperCase() + systemOrder.slice(1).toLowerCase();
-                if (formattedOrder !== "Maintain") availableOrders.push(formattedOrder);
+                let label = formattedOrder;
+                if (formattedOrder === "Empower" && fac.name.includes("Theater")) label = "Empower: Theatrical Event";
+                if (formattedOrder !== "Maintain") availableOrders.push(label);
             }
 
             BASTION_ORDERS.forEach(order => {
-                if (order === "Maintain" || availableOrders.includes(order)) return;
+                let label = order;
+                if (order === "Empower" && fac.name.includes("Theater")) label = "Empower: Theatrical Event";
+                if (order === "Maintain" || availableOrders.includes(label)) return;
                 const lowerOrder = order.toLowerCase();
                 if (safeProps.some(p => p.includes(lowerOrder))) {
-                    availableOrders.push(order);
+                    availableOrders.push(label);
                 }
             });
 
@@ -617,6 +621,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             let craftChoice = fac.isFlag ? (fac.sourceDoc.flags?.[MODULE_ID]?.craftChoice || "") : (fac.sourceDoc.getFlag(MODULE_ID, "craftChoice") || "");
             let currentUIOrder = (currentOrder === "Craft" && craftChoice) ? `Craft: ${craftChoice}` : currentOrder;
+            if (currentOrder === "Empower" && fac.name.includes("Theater")) currentUIOrder = "Empower: Theatrical Event";
+            
             let safeOrder = availableOrders.includes(currentUIOrder) ? currentUIOrder : "Maintain";
             if (progress > 0) safeOrder = "Continue Project";
 
@@ -1702,7 +1708,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 let newOrder = val;
                 let craftChoice = "";
 
-                if (val.includes(": ")) {
+                if (val === "Empower: Theatrical Event") {
+                    newOrder = "Empower";
+                } else if (val.includes(": ")) {
                     const parts = val.split(": ");
                     newOrder = parts[0];
                     craftChoice = parts[1];
@@ -5190,7 +5198,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let resultText = "";
 
             if (phase === "Idle") {
-                return { text: "The Theater is waiting for an order to start a production." };
+                const contributors = getFacFlag("theaterContributors") || [];
+                const hasWriter = contributors.some(c => c.role === "Composer/Writer");
+                phase = hasWriter ? "Writing" : "Rehearsing";
+                progress = 0;
+                resultText = `Production preparations (${phase}) have begun. `;
+                await BastionManager._postTheaterInvite(actor, fac, "general");
             }
 
             progress += daysPerTurn;

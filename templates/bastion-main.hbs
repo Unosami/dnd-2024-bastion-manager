@@ -1,6 +1,6 @@
 <div class="bastion-manager-container" style="display: flex; gap: 15px; height: 100%; overflow: hidden;">
     
-    <div class="bastion-sidebar" style="flex: 0 0 350px; overflow-y: auto; padding-right: 10px; border-right: 1px solid #ccc; display: flex; flex-direction: column;">
+    <div class="bastion-sidebar" style="flex: 0 0 380px; overflow-y: auto; padding-right: 10px; border-right: 1px solid #ccc; display: flex; flex-direction: column;">
     <div class="sidebar-content-column">
     <div class="bastion-header" style="text-align: center; margin-bottom: 5px;">
         <h2 style="margin-bottom: 5px; line-height: 1.2;">{{actor.name}}'s Bastion</h2>
@@ -437,78 +437,79 @@
                                     </div>
                                 {{/if}}
 
-                                {{#if this.isTheater}}
-                                    <div style="font-size: 0.75em; color: #eee; margin-top: 6px; border: 2px solid {{this.theaterPhaseColor}}; border-radius: 5px; padding: 5px; background: rgba(255,255,255,0.02);">
-                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                                            <span><i class="fa-solid fa-masks-theater"></i> <b>Production Status:</b> <span style="color: #82cfff;">{{this.theaterPhase}}</span></span>
-                                            <div style="display: flex; gap: 4px;">
-                                                {{#if this.isJoinedTheater}}
-                                                    <button type="button" data-action="theaterAction" data-sub-action="leave" data-actor-id="{{../actor.id}}" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 1px 6px; font-size: 0.75em; height: 18px; color: #f44336; border-color: rgba(244, 67, 54, 0.4);" title="Leave your current role in this production">Leave Role</button>
-                                                {{else}}
-                                                    <button type="button" data-action="theaterAction" data-sub-action="join" data-actor-id="{{../actor.id}}" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 1px 6px; font-size: 0.75em; height: 18px;">Join Roles</button>
-                                                {{/if}}
-                                                {{#if (eq this.theaterPhase "Idle")}}
-                                                    <button type="button" data-action="theaterAction" data-sub-action="start-writing" data-actor-id="{{../actor.id}}" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 1px 6px; font-size: 0.75em; height: 18px;" title="Manually begin the writing phase">Start Writing</button>
-                                                    <button type="button" data-action="theaterAction" data-sub-action="invite-writer" data-actor-id="{{../actor.id}}" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 1px 6px; font-size: 0.75em; height: 18px;" title="Post a call for a Composer/Writer to chat">Invite Writer</button>
-                                                {{/if}}
-                                                {{#unless (eq this.theaterPhase "Idle")}}
-                                                    <button type="button" data-action="theaterAction" data-sub-action="invite" data-actor-id="{{../actor.id}}" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 1px 6px; font-size: 0.75em; height: 18px;" title="Post an invitation to chat">Send Invite</button>
-                                                    <button type="button" data-action="theaterAction" data-sub-action="reset" data-actor-id="{{../actor.id}}" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 1px 4px; font-size: 0.75em; height: 18px;" title="Reset Production"><i class="fa-solid fa-clapperboard"></i></button>
-                                                {{/unless}}
-                                            </div>
-                                        </div>
+                </div>
+                {{#if this.isTheater}}
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid {{this.theaterPhaseColor}}; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px;">
+                        <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px;">
+                            <span><i class="fa-solid fa-masks-theater"></i> <b>Production Status:</b> <span style="color: #82cfff;">{{this.theaterPhase}}</span></span>
+                            <div style="display: flex; gap: 5px; flex-wrap: nowrap;">
+                                {{#if this.isJoinedTheater}}
+                                    <button type="button" data-action="theaterAction" data-sub-action="leave" data-actor-id="{{../actor.id}}" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 26px; color: #f44336; border-color: rgba(244, 67, 54, 0.4); white-space: nowrap;" title="Leave your current role in this production">Leave Role</button>
+                                {{else}}
+                                    <button type="button" data-action="theaterAction" data-sub-action="join" data-actor-id="{{../actor.id}}" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 26px; white-space: nowrap;">Join Roles</button>
+                                {{/if}}
+                                {{#if (eq this.theaterPhase "Idle")}}
+                                    <button type="button" data-action="theaterAction" data-sub-action="start-writing" data-actor-id="{{../actor.id}}" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 26px; white-space: nowrap;" title="Manually begin the writing phase">Start Writing</button>
+                                    <button type="button" data-action="theaterAction" data-sub-action="invite-writer" data-actor-id="{{../actor.id}}" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 26px; white-space: nowrap;" title="Post a call for a Composer/Writer to chat">Invite Writer</button>
+                                {{/if}}
+                                {{#unless (eq this.theaterPhase "Idle")}}
+                                    <button type="button" data-action="theaterAction" data-sub-action="invite" data-actor-id="{{../actor.id}}" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 26px; white-space: nowrap;" title="Post an invitation to chat">Send Invite</button>
+                                    <button type="button" data-action="theaterAction" data-sub-action="reset" data-actor-id="{{../actor.id}}" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 6px; font-size: 0.85em; height: 26px; white-space: nowrap;" title="Reset Production"><i class="fa-solid fa-clapperboard"></i></button>
+                                {{/unless}}
+                            </div>
+                        </div>
 
-                                        {{#if (or (eq this.theaterPhase "Writing") (eq this.theaterPhase "Rehearsing"))}}
-                                            <div class="bastion-progress-bar" title="Days: {{this.theaterProgress}} / 14" style="height: 10px; background: rgba(0,0,0,0.2); border: 1px solid #555; border-radius: 5px; position: relative; overflow: hidden; margin-bottom: 5px;">
-                                                <div class="fill" style="width: {{this.theaterProgressPct}}%; height: 100%; background: #82cfff; transition: width 0.5s;"></div>
-                                            </div>
-                                        {{/if}}
+                        {{#if (or (eq this.theaterPhase "Writing") (eq this.theaterPhase "Rehearsing"))}}
+                            <div class="bastion-progress-bar" title="Days: {{this.theaterProgress}} / 14" style="height: 10px; background: rgba(0,0,0,0.2); border: 1px solid #555; border-radius: 5px; position: relative; overflow: hidden; margin-bottom: 5px;">
+                                <div class="fill" style="width: {{this.theaterProgressPct}}%; height: 100%; background: #82cfff; transition: width 0.5s;"></div>
+                            </div>
+                        {{/if}}
 
-                                        <div style="display: flex; flex-direction: column; gap: 2px; margin-top: 4px;">
-                                            {{#if (or this.isWritingPhase (eq this.theaterPhase "Idle"))}}
-                                                <div style="font-size: 0.85em; display: flex; justify-content: space-between;">
-                                                    <span><b>Current Writer(s):</b></span>
-                                                    {{#if this.theaterRoster.writer}}
-                                                        <span style="color: #82cfff;">{{this.theaterRoster.writer.name}}</span>
-                                                    {{else}}
-                                                        <span style="color: #777; font-style: italic;">None</span>
-                                                    {{/if}}
-                                                </div>
-                                            {{/if}}
-                                            
-                                            {{#if this.isActingPhase}}
-                                                {{#if this.theaterAuthor}}
-                                                    <div style="font-size: 0.85em; display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 2px; margin-bottom: 2px;">
-                                                        <span><b>Author:</b></span>
-                                                        <span style="color: #82cfff; font-style: italic;">{{this.theaterAuthor}}</span>
-                                                    </div>
-                                                {{/if}}
-                                                <div style="font-size: 0.85em; display: flex; justify-content: space-between;">
-                                                    <span><b>Director:</b></span>
-                                                    {{#if this.theaterRoster.director}}
-                                                        <span style="color: {{#if this.theaterRoster.director.isHireling}}#777{{else}}#82cfff{{/if}};">{{this.theaterRoster.director.name}} {{#if this.theaterRoster.director.isHireling}}(Hireling){{/if}}</span>
-                                                    {{else}}
-                                                        <span style="color: #777; font-style: italic;">None (Hireling)</span>
-                                                    {{/if}}
-                                                </div>
-                                                <div style="font-size: 0.85em; display: flex; justify-content: space-between; align-items: flex-start;">
-                                                    <span style="flex-shrink: 0;"><b>Performers:</b></span>
-                                                    <span style="text-align: right; color: {{#if this.theaterRoster.performers.length}}#82cfff{{else}}#777{{/if}};">
-                                                        {{#each this.theaterRoster.performers}}
-                                                            {{this.name}}{{#unless @last}}, {{/unless}}
-                                                        {{else}}
-                                                            <i style="font-style: italic;">None (Hirelings)</i>
-                                                        {{/each}}
-                                                    </span>
-                                                </div>
-                                            {{/if}}
-                                        </div>
-                                        
-                                        {{#if (eq this.theaterPhase "Performing")}}
-                                            <div style="color: #4caf50; font-weight: bold; font-size: 0.85em; margin-top: 4px;"><i class="fa-solid fa-circle-play"></i> Show is Live! (Award: {{this.theaterDieSize}} die)</div>
-                                        {{/if}}
+                        <div style="display: flex; flex-direction: column; gap: 3px; margin-top: 6px;">
+                            {{#if (or this.isWritingPhase (eq this.theaterPhase "Idle"))}}
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span><b>Current Writer(s):</b></span>
+                                    {{#if this.theaterRoster.writer}}
+                                        <span style="color: #82cfff;">{{this.theaterRoster.writer.name}}</span>
+                                    {{else}}
+                                        <span style="color: #777; font-style: italic;">None</span>
+                                    {{/if}}
+                                </div>
+                            {{/if}}
+                            
+                            {{#if this.isActingPhase}}
+                                {{#if this.theaterAuthor}}
+                                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 2px; margin-bottom: 2px;">
+                                        <span><b>Author:</b></span>
+                                        <span style="color: #82cfff; font-style: italic;">{{this.theaterAuthor}}</span>
                                     </div>
                                 {{/if}}
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span><b>Director:</b></span>
+                                    {{#if this.theaterRoster.director}}
+                                        <span style="color: {{#if this.theaterRoster.director.isHireling}}#777{{else}}#82cfff{{/if}};">{{this.theaterRoster.director.name}} {{#if this.theaterRoster.director.isHireling}}(Hireling){{/if}}</span>
+                                    {{else}}
+                                        <span style="color: #777; font-style: italic;">None (Hireling)</span>
+                                    {{/if}}
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                                    <span style="flex-shrink: 0;"><b>Performers:</b></span>
+                                    <span style="text-align: right; color: {{#if this.theaterRoster.performers.length}}#82cfff{{else}}#777{{/if}};">
+                                        {{#each this.theaterRoster.performers}}
+                                            {{this.name}}{{#unless @last}}, {{/unless}}
+                                        {{else}}
+                                            <i style="font-style: italic;">None (Hirelings)</i>
+                                        {{/each}}
+                                    </span>
+                                </div>
+                            {{/if}}
+                        </div>
+                        
+                        {{#if (eq this.theaterPhase "Performing")}}
+                            <div style="color: #4caf50; font-weight: bold; margin-top: 6px;"><i class="fa-solid fa-circle-play"></i> Show is Live! (Award: {{this.theaterDieSize}} die)</div>
+                        {{/if}}
+                    </div>
+                {{/if}}
 
                                 {{#if this.isStable}}
                                     <div style="font-size: 0.75em; color: #eee; margin-top: 4px;">
