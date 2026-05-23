@@ -1,8 +1,12 @@
 Bastion Module notes:
 Move hireling and defender name pools to seperate editable files.
 
-- Next I want to start fleshing out the other facility outputs.
-    - TELEPORTATION CIRCLE perhaps some way to type in gold costs for material components? Or better yet, drag and drop a spell item onto the facility to determine the spell to cast.
+Next I want to start fleshing out the other facility outputs:
+
+TELEPORTATION CIRCLE 
+- Perhaps some way to type in gold costs for material components? Or better yet, drag and drop a spell item onto the facility to determine the spell to cast.
+- A cool way to display the glyphs of the specific bastion's teleportation circle? (So Extra)
+    
     - THEATER
 Summary of Features
 Phase Tracking: The Theater now cycles from Idle to Writing (optional), Rehearsing (14 days), and finally Performing.

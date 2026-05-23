@@ -495,7 +495,28 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const isTheater = fac.name.includes("Theater");
             const theaterPhase = isTheater ? (getFacFlag("theaterPhase") || "Idle") : "Idle";
             const theaterProgress = isTheater ? Number(getFacFlag("theaterProgress") || 0) : 0;
+            const theaterProgressPct = isTheater ? Math.round((Math.min(theaterProgress, 14) / 14) * 100) : 0;
             const theaterContributors = isTheater ? (getFacFlag("theaterContributors") || []) : [];
+            const theaterAuthor = isTheater ? (getFacFlag("theaterAuthor") || "") : "";
+            const theaterRoster = isTheater ? {
+                writer: theaterContributors.find(c => c.role === "Composer/Writer"),
+                director: theaterContributors.find(c => c.role === "Conductor/Director"),
+                performers: theaterContributors.filter(c => c.role === "Performer")
+            } : null;
+            const isJoinedTheater = isTheater ? theaterContributors.some(c => c.actorId === (game.user.character?.id || null)) : false;
+            const theaterPhaseColor = isTheater ? (theaterPhase === "Writing" ? "#82cfff" : (theaterPhase === "Rehearsing" ? "#ff9800" : (theaterPhase === "Performing" ? "#4caf50" : "#777"))) : "#777";
+            const isWritingPhase = theaterPhase === "Writing";
+            const isActingPhase = theaterPhase === "Rehearsing" || theaterPhase === "Performing";
+
+            if (isActingPhase && theaterRoster && !theaterRoster.director) {
+                const hList = getFacFlag("hirelings") || [];
+                if (hList.length > 0) {
+                    // Use a stable index based on facility ID so the "Director" doesn't change every render
+                    const seed = fac.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                    theaterRoster.director = { name: hList[seed % hList.length], isHireling: true };
+                }
+            }
+
             const theaterDieSize = actorLevel >= 17 ? "d10" : (actorLevel >= 13 ? "d8" : "d6");
 
             const spellcasterDaysRemaining = getFacFlag("spellcasterDaysRemaining") || 0;
@@ -1122,7 +1143,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 isTheater,
                 theaterPhase,
                 theaterProgress,
+                theaterProgressPct,
                 theaterContributors,
+                theaterAuthor,
+                theaterRoster,
+                isJoinedTheater,
+                theaterPhaseColor,
+                isWritingPhase,
+                isActingPhase,
                 theaterDieSize,
                 visitingSpellcaster,
                 spellcasterDaysRemaining,
@@ -4330,6 +4358,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let paperworkTitle = getFacFlag("paperworkTitle");
             let paperworkQty = getFacFlag("paperworkQty");
             let stableItemChoice = getFacFlag("stableItemChoice");
+            let theaterPhase = getFacFlag("theaterPhase") || "Idle";
+            let theaterProgress = Number(getFacFlag("theaterProgress") || 0);
             let stableTradeChoice = getFacFlag("stableTradeChoice");
             let stableTransferType = getFacFlag("stableTransferType");
             let stableTransferChoice = getFacFlag("stableTransferChoice");
@@ -4770,8 +4800,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         currentResultText = recRes.text; facDoc.newDefenders = { count: recRes.newCount, names: recRes.newNames };
                     }
                 } else if (order === "Empower") {
-                    let empRes = await BastionManager._handleEmpower(facDoc.name, facEntry, actor);
+                    let empRes = await BastionManager._handleEmpower(facDoc.name, facEntry, actor, theaterPhase, theaterProgress);
                     currentResultText = empRes.text;
+                    if (empRes.theaterPhase) {
+                        theaterPhase = empRes.theaterPhase;
+                        theaterProgress = empRes.theaterProgress;
+                    }
                 }
             }
             
@@ -4803,6 +4837,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         targetSubType2, upgradeTurns, smithyItemChoice, armamentItemChoice,
                         relicItemChoice, scrollChoice, activeProjectChoice, craftQueue, storedGp, autoNextAction,
                         bookTitle, paperworkTitle, paperworkQty,
+                        theaterPhase, theaterProgress,
                         stableItemChoice, stableTradeChoice, stableTransferType, stableTransferChoice,
                         stableAnimals: facEntry.stableAnimals || stableAnimals,
                         visitingSpellcaster, spellcasterDaysRemaining, spellcasterName
@@ -4839,6 +4874,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     [`flags.${MODULE_ID}.bookTitle`]: bookTitle,
                     [`flags.${MODULE_ID}.paperworkTitle`]: paperworkTitle,
                     [`flags.${MODULE_ID}.paperworkQty`]: paperworkQty,
+                    [`flags.${MODULE_ID}.theaterPhase`]: theaterPhase,
+                    [`flags.${MODULE_ID}.theaterProgress`]: theaterProgress,
                     
                     [`flags.${MODULE_ID}.stableItemChoice`]: stableItemChoice,
                     [`flags.${MODULE_ID}.stableTradeChoice`]: stableTradeChoice,
@@ -5137,33 +5174,50 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     // --- HELPER: EMPOWER ---
-    static async _handleEmpower(baseName, fac, actor) {
-        let hirelings = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.hirelings) : (fac.doc.getFlag("dnd-2024-bastion-manager", "hirelings"));
+    static async _handleEmpower(baseName, fac, actor, theaterPhase = "Idle", theaterProgress = 0) {
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        const getFacFlag = (key) => fac.isFlag ? (fac.doc.flags?.[MODULE_ID]?.[key]) : (fac.doc.getFlag(MODULE_ID, key));
+        const daysPerTurn = game.settings.get(MODULE_ID, "daysPerTurn") || 7;
+
+        let hirelings = getFacFlag("hirelings");
         let hName = (Array.isArray(hirelings) && hirelings.length > 0) ? hirelings[0] : "The hireling";
         let hProf = BastionManager._getHirelingProfession(baseName, null);
         if (hName !== "The hireling") hName = `${hName} ${hProf}`;
 
-        if (baseName === "Theater") {
-            let phase = getFacFlag("theaterPhase") || "Idle";
-            let progress = Number(getFacFlag("theaterProgress") || 0);
+        if (baseName.includes("Theater")) {
+            let phase = theaterPhase;
+            let progress = theaterProgress;
             let resultText = "";
 
             if (phase === "Idle") {
-                phase = "Rehearsing";
-                progress = 0;
-                resultText = "Production rehearsals have begun (14 days). ";
+                return { text: "The Theater is waiting for an order to start a production." };
             }
 
-            progress += (turns * 7);
+            progress += daysPerTurn;
 
             if (phase === "Writing" && progress >= 14) {
+                const contributors = getFacFlag("theaterContributors") || [];
+                const writers = contributors.filter(c => c.role === "Composer/Writer").map(c => c.name);
+                const authorName = writers.length > 0 ? writers.join(", ") : "Theater Hirelings";
+                
                 phase = "Rehearsing";
                 progress = 0;
+
+                // Persist the Author and clear the contributors roster for the acting phase
+                const updates = { 
+                    [`flags.${MODULE_ID}.theaterAuthor`]: authorName,
+                    [`flags.${MODULE_ID}.theaterContributors`]: []
+                };
+                if (fac.isFlag) Object.assign(fac.doc.flags[MODULE_ID], updates);
+                else await fac.doc.update(updates);
+
                 resultText += "Writing complete. Rehearsals have begun (14 days).";
             } else if (phase === "Rehearsing" && progress >= 14) {
                 phase = "Performing";
                 progress = 0;
                 resultText += "Rehearsals complete. The performance is now live! (7+ days).";
+                
+                await BastionManager._postTheaterInvite(actor, fac);
                 
                 // Create a notification to resolve checks
                 await ChatMessage.create({
@@ -5181,25 +5235,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 resultText += `${phase} phase in progress. ${remaining} days remaining until the next stage.`;
             }
 
-            const updates = {
-                [`flags.${MODULE_ID}.theaterPhase`]: phase,
-                [`flags.${MODULE_ID}.theaterProgress`]: progress
-            };
-
-            if (fac.isFlag) {
-                const gf = actor.getFlag(MODULE_ID, "groupFacilities") || [];
-                const target = gf.find(f => f._id === fac.doc._id);
-                if (target) {
-                    for (let [k, v] of Object.entries(updates)) {
-                        foundry.utils.setProperty(target, k, v);
-                    }
-                    await actor.setFlag(MODULE_ID, "groupFacilities", gf);
-                }
-            } else {
-                await fac.doc.update(updates);
-            }
-
-            return { text: resultText };
+            return { text: resultText, theaterPhase: phase, theaterProgress: progress };
         } else if (baseName === "Training Area") {
             return { text: `The hirelings conduct training exercises for the next 7 days.` };
         } else if (baseName === "Meditation Chamber") {
@@ -5231,33 +5267,47 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (!fac) return;
 
         if (action === "join") {
-            const roles = ["Composer/Writer", "Conductor/Director", "Performer"];
-            const roleOptions = roles.map(r => `<option value="${r}">${r}</option>`).join("");
-            
-            const role = await DialogV2.prompt({
-                window: { title: "Join Production" },
-                content: `<div class="form-group"><label>Select Role:</label><select name="role">${roleOptions}</select></div>`,
-                ok: { callback: (event, button) => button.form.elements.role.value }
-            });
+            const actor = this.actor || game.actors.get(ds.actorId);
+            if (!actor) return;
+            const phase = ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.theaterPhase : fac.getFlag(MODULE_ID, "theaterPhase");
 
-            if (role) {
-                let contributors = Array.from((ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.theaterContributors : fac.getFlag(MODULE_ID, "theaterContributors")) || []);
-                // Remove existing if same actor
-                contributors = contributors.filter(c => c.actorId !== game.user.character?.id);
-                contributors.push({
+            // If a specific role is provided (e.g. from the Writer invite), skip the dialog
+            if (ds.role) {
+                const characterData = {
                     actorId: game.user.character?.id || null,
                     name: game.user.character?.name || game.user.name,
-                    role: role
-                });
-
-                if (ds.isFlag === "true") {
-                    foundry.utils.setProperty(fac, `flags.${MODULE_ID}.theaterContributors`, contributors);
-                    await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+                    role: ds.role
+                };
+                if (!actor.testUserPermission(game.user, "OWNER")) {
+                    game.socket.emit("module.dnd-2024-bastion-manager", {
+                        action: "theaterJoinRequest", actorId: actor.id, itemId: ds.itemId, isFlag: ds.isFlag === "true", characterData
+                    });
+                    ui.notifications.info(`Request to join as ${ds.role} sent to owner.`);
                 } else {
-                    await fac.setFlag(MODULE_ID, "theaterContributors", contributors);
+                    await BastionManager.updateTheaterContributors(actor, ds.itemId, ds.isFlag === "true", characterData);
                 }
+                return;
             }
+            return BastionManager._promptTheaterJoin(actor, ds.itemId, ds.isFlag === "true", phase);
+        } else if (action === "leave") {
+            const actor = this.actor || game.actors.get(ds.actorId);
+            if (!actor) return;
+            const characterId = game.user.character?.id || null;
+            
+            if (!actor.testUserPermission(game.user, "OWNER")) {
+                game.socket.emit("module.dnd-2024-bastion-manager", {
+                    action: "theaterLeaveRequest", actorId: actor.id, itemId: ds.itemId, isFlag: ds.isFlag === "true", characterId
+                });
+                ui.notifications.info(`Request to leave production sent to owner.`);
+            } else {
+                await BastionManager.removeTheaterContributor(actor, ds.itemId, ds.isFlag === "true", characterId);
+            }
+            return;
         } else if (action === "start-writing") {
+            const contributors = (ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.theaterContributors : fac.getFlag(MODULE_ID, "theaterContributors")) || [];
+            if (!contributors.some(c => c.role === "Composer/Writer")) {
+                return ui.notifications.warn("A Composer/Writer must join the production before writing can begin.");
+            }
             const updates = { [`flags.${MODULE_ID}.theaterPhase`]: "Writing", [`flags.${MODULE_ID}.theaterProgress`]: 0 };
             if (ds.isFlag === "true") {
                 for (let [k, v] of Object.entries(updates)) foundry.utils.setProperty(fac, k, v);
@@ -5265,8 +5315,28 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             } else {
                 await fac.update(updates);
             }
+            ui.notifications.info("Writing phase has officially begun.");
+        } else if (action === "invite-writer") {
+            await BastionManager._postTheaterInvite(this.actor, { doc: fac, id: ds.itemId, isFlag: ds.isFlag === "true" }, "writer");
+            ui.notifications.info("Call for Composer/Writer posted to chat.");
+        } else if (action === "invite") {
+            await BastionManager._postTheaterInvite(this.actor, { doc: fac, id: ds.itemId, isFlag: ds.isFlag === "true" }, "general");
+            ui.notifications.info("Theater invitation posted to chat.");
         } else if (action === "reset") {
-            const updates = { [`flags.${MODULE_ID}.theaterPhase`]: "Idle", [`flags.${MODULE_ID}.theaterProgress`]: 0, [`flags.${MODULE_ID}.theaterContributors`]: [] };
+            const phase = ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.theaterPhase : fac.getFlag(MODULE_ID, "theaterPhase");
+            const progress = Number((ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.theaterProgress : fac.getFlag(MODULE_ID, "theaterProgress")) || 0);
+
+            if (phase !== "Idle" && !(phase === "Performing" && progress > 0)) {
+                const confirm = await DialogV2.confirm({
+                    window: { title: "Reset Production" },
+                    content: `<p>This production has not completed a full performance cycle yet. Resetting now will clear all progress and staffing.</p><p>Are you sure you want to end the production?</p>`,
+                    rejectClose: false,
+                    modal: true
+                });
+                if (!confirm) return;
+            }
+
+            const updates = { [`flags.${MODULE_ID}.theaterPhase`]: "Idle", [`flags.${MODULE_ID}.theaterProgress`]: 0, [`flags.${MODULE_ID}.theaterAuthor`]: "", [`flags.${MODULE_ID}.theaterContributors`]: [] };
             if (ds.isFlag === "true") {
                 for (let [k, v] of Object.entries(updates)) foundry.utils.setProperty(fac, k, v);
                 await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
@@ -5275,6 +5345,136 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             }
         }
         this.render();
+    }
+
+    static async _postTheaterInvite(actor, fac, type = "general") {
+        const itemId = fac.id || fac.doc?.id || fac.doc?._id;
+        const isFlag = !!fac.isFlag;
+
+        let title = "Theater Production";
+        let body = `A production is underway in <b>${actor.name}'s</b> Bastion!`;
+        let hint = "Characters are invited to join as Composers, Directors, or Performers to contribute to the show's success.";
+        
+        if (type === "writer") {
+            title = "Call for Composer/Writer";
+            body = `<b>${actor.name}</b> is looking for a Composer or Writer to begin a new production!`;
+            hint = "Accepting this role will begin the 14-day writing phase of the production.";
+        }
+
+        const roleAttr = type === "writer" ? 'data-role="Composer/Writer"' : "";
+        const content = `
+            <div class="bastion-chat-card theater-invite" style="border-left: 4px solid #82cfff;">
+                <h3 style="border-bottom: 2px solid #82cfff; color: #004578;"><i class="fa-solid fa-masks-theater"></i> ${title}</h3>
+                <p>${body}</p>
+                <p style="font-size: 0.85em; font-style: italic; margin-bottom: 8px;">${hint}</p>
+                <button type="button" data-action="theaterAction" data-sub-action="join" data-actor-id="${actor.id}" data-item-id="${itemId}" data-is-flag="${isFlag}" ${roleAttr} style="background: rgba(130, 207, 255, 0.2); border: 1px solid #82cfff; width: 100%;">
+                    <i class="fa-solid fa-user-plus"></i> ${type === "writer" ? "Join as Writer" : "Join Role"}
+                </button>
+            </div>`;
+        return ChatMessage.create({ content });
+    }
+
+    static async _promptTheaterJoin(actor, itemId, isFlag, phase = "Idle") {
+        let roles = ["Composer/Writer", "Conductor/Director", "Performer"];
+        if (phase === "Writing") roles = ["Composer/Writer"];
+        else if (phase !== "Idle") roles = ["Conductor/Director", "Performer"];
+
+        const roleOptions = roles.map(r => `<option value="${r}">${r}</option>`).join("");
+        
+        const role = await DialogV2.prompt({
+            window: { title: "Join Production" },
+            content: `<div class="form-group"><label>Select Role:</label><select name="role">${roleOptions}</select></div>`,
+            ok: { callback: (event, button) => button.form.elements.role.value },
+            rejectClose: false
+        });
+
+        if (!role) return;
+
+        const characterData = {
+            actorId: game.user.character?.id || null,
+            name: game.user.character?.name || game.user.name,
+            role: role
+        };
+
+        // If current user is not the owner, we must request update via socket
+        if (!actor.testUserPermission(game.user, "OWNER")) {
+            game.socket.emit("module.dnd-2024-bastion-manager", {
+                action: "theaterJoinRequest", actorId: actor.id, itemId, isFlag, characterData
+            });
+            ui.notifications.info(`Request to join as ${role} sent to owner.`);
+        } else {
+            await BastionManager.updateTheaterContributors(actor, itemId, isFlag, characterData);
+        }
+    }
+
+    static async updateTheaterContributors(actor, itemId, isFlag, characterData) {
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        let gf = actor.getFlag(MODULE_ID, "groupFacilities") || [];
+        let fac = isFlag ? gf.find(f => f._id === itemId) : actor.items.get(itemId);
+        if (!fac) return;
+
+        let contributors = Array.from((isFlag ? fac.flags?.[MODULE_ID]?.theaterContributors : fac.getFlag(MODULE_ID, "theaterContributors")) || []);
+        
+        // Update existing or add new
+        const existingIdx = contributors.findIndex(c => c.actorId === characterData.actorId && characterData.actorId !== null);
+        if (existingIdx !== -1) contributors[existingIdx] = characterData;
+        else contributors.push(characterData);
+
+        if (isFlag) {
+            foundry.utils.setProperty(fac, `flags.${MODULE_ID}.theaterContributors`, contributors);
+            // Auto-transition to Writing if a writer joins an Idle theater
+            if (characterData.role === "Composer/Writer" && (fac.flags?.[MODULE_ID]?.theaterPhase || "Idle") === "Idle") {
+                foundry.utils.setProperty(fac, `flags.${MODULE_ID}.theaterPhase`, "Writing");
+                foundry.utils.setProperty(fac, `flags.${MODULE_ID}.theaterProgress`, 0);
+            }
+            await actor.setFlag(MODULE_ID, "groupFacilities", gf);
+        } else {
+            await fac.setFlag(MODULE_ID, "theaterContributors", contributors);
+            // Auto-transition to Writing if a writer joins an Idle theater
+            if (characterData.role === "Composer/Writer" && (fac.getFlag(MODULE_ID, "theaterPhase") || "Idle") === "Idle") {
+                await fac.update({
+                    [`flags.${MODULE_ID}.theaterPhase`]: "Writing",
+                    [`flags.${MODULE_ID}.theaterProgress`]: 0
+                });
+            }
+        }
+        
+        if (game.user.id === Array.from(game.users).find(u => u.isGM && u.active)?.id) {
+            ui.notifications.info(`${characterData.name} joined the production in ${actor.name}'s Bastion.`);
+        }
+    }
+
+    static async removeTheaterContributor(actor, itemId, isFlag, actorId) {
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        let gf = actor.getFlag(MODULE_ID, "groupFacilities") || [];
+        let fac = isFlag ? gf.find(f => f._id === itemId) : actor.items.get(itemId);
+        if (!fac) return;
+
+        let contributors = Array.from((isFlag ? fac.flags?.[MODULE_ID]?.theaterContributors : fac.getFlag(MODULE_ID, "theaterContributors")) || []);
+        const originalCount = contributors.length;
+        contributors = contributors.filter(c => c.actorId !== actorId);
+        
+        if (contributors.length === originalCount) return;
+
+        const updates = { [`flags.${MODULE_ID}.theaterContributors`]: contributors };
+        const currentPhase = isFlag ? (fac.flags?.[MODULE_ID]?.theaterPhase || "Idle") : (fac.getFlag(MODULE_ID, "theaterPhase") || "Idle");
+        const hasWriter = contributors.some(c => c.role === "Composer/Writer");
+
+        // If the last writer leaves during the writing phase, reset to Idle
+        if (currentPhase === "Writing" && !hasWriter) {
+            updates[`flags.${MODULE_ID}.theaterPhase`] = "Idle";
+            updates[`flags.${MODULE_ID}.theaterProgress`] = 0;
+        }
+
+        if (isFlag) {
+            for (let [k, v] of Object.entries(updates)) foundry.utils.setProperty(fac, k, v);
+            await actor.setFlag(MODULE_ID, "groupFacilities", gf);
+        } else {
+            await fac.update(updates);
+        }
+        
+        // Re-render local instance if it matches
+        for (const app of foundry.applications.instances.values()) if (app.constructor.name === "BastionManager" && app.actor.id === actor.id) app.render();
     }
 
     static async _handleResearch(baseName, fac, subType) {

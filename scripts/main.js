@@ -287,6 +287,13 @@ class ResetBastionsApp extends ApplicationV2 {
 Hooks.once("init", () => {
     const MODULE_ID = "dnd-2024-bastion-manager";
     
+    // Register Handlebars math and comparison helpers
+    Handlebars.registerHelper({
+        ge: (a, b) => a >= b,
+        div: (a, b) => a / b,
+        mult: (a, b) => a * b
+    });
+
     // --- Construction & Upgrade Settings (Main Menu) ---
     game.settings.register(MODULE_ID, "ignoreConstructionCosts", {
         name: "Construction: Ignore All Requirements",
@@ -539,8 +546,26 @@ Hooks.once("ready", () => {
             for (const app of foundry.applications.instances.values()) {
                 if (app.constructor.name === "BastionManager") app.render();
             }
+        } else if (data.action === "theaterJoinRequest") {
+            if (!game.user.isGM) return;
+            const actor = game.actors.get(data.actorId);
+            if (actor) BastionManager.updateTheaterContributors(actor, data.itemId, data.isFlag, data.characterData);
+        } else if (data.action === "theaterLeaveRequest") {
+            if (!game.user.isGM) return;
+            const actor = game.actors.get(data.actorId);
+            if (actor) BastionManager.removeTheaterContributor(actor, data.itemId, data.isFlag, data.characterId);
         }
     });
+});
+
+Hooks.on("renderChatMessageHTML", (message, html) => {
+    for ( const button of html.querySelectorAll('button[data-action="theaterAction"]') ) {
+        button.addEventListener("click", async (ev) => {
+            const ds = ev.currentTarget.dataset;
+            const actor = game.actors.get(ds.actorId);
+            if (actor) await BastionManager.onTheaterAction.call({ actor }, ev, ev.currentTarget);
+        });
+    }
 });
 
 // Hook into the modern V13 ApplicationV2 Header Controls (The 3-dot menu)
