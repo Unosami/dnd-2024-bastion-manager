@@ -198,7 +198,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     /**
      * Recursively builds a nested option structure for select menus matching folder hierarchy.
      */
-    static async _getNestedCompendiumOptions(pack, rootFolderId, selectedValue, calculationMode, daysPerTurn, progressLabel, isMagicItem = true, folderNamesFilter = null, folderNamesExclude = null) {
+    static async _getNestedCompendiumOptions(pack, rootFolderId, selectedValue, calculationMode, daysPerTurn, progressLabel, isMagicItem = true, folderNamesFilter = null, folderNamesExclude = null, showDetails = true) {
         const index = await pack.getIndex({ fields: ["folder", "system.rarity", "system.price", "system.quantity", "system.requirements.level", "system.size", "system.properties", "system.description.value"] });
         const allRelevantFolderIds = BastionManager._getAllSubfolderIds(pack, rootFolderId);
         
@@ -261,9 +261,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     if (isMount) {
                         days = 7;
                         gp = Number(price);
+                        let label = i.name;
+                        if (showDetails) label = `${i.name} (${gp} GP, ${sizeMap[size] || "Unknown"} - ${slots} slots)`;
                         return { 
                             value: i.name, 
-                            label: `${i.name} (${gp} GP, ${sizeMap[size] || "Unknown"} - ${slots} slots)`, 
+                            label: label, 
                             selected: i.name === selectedValue, 
                             slots,
                             rarity, time: 1, price: gp, 
@@ -274,9 +276,13 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 }
 
                 const tCount = calculationMode === "days" ? days : Math.ceil(days / daysPerTurn);
+                let label = i.name;
+                if (showDetails) {
+                    label = `${i.name} (${rarity.charAt(0).toUpperCase() + rarity.slice(1)}: ${gp} GP, ${tCount} ${progressLabel})${qty > 1 ? ` [x${qty}]` : ''}`;
+                }
                 return {
                     value: i.name,
-                    label: `${i.name} (${rarity.charAt(0).toUpperCase() + rarity.slice(1)}: ${gp} GP, ${tCount} ${progressLabel})${qty > 1 ? ` [x${qty}]` : ''}`,
+                    label: label,
                     selected: i.name === selectedValue,
                     rarity,
                     time: tCount,
@@ -549,6 +555,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let effectiveWorkshopItemChoice = "";
             let effectiveRelicChoice = "";
             let effectiveScrollChoice = "";
+            let effectiveTrainerChoice = "";
             let effectiveStableItemChoice = "";
 
             const focusChoice = storedFocusChoice;
@@ -712,6 +719,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let relicItemUuid = null;
             let scrollItemOptions = [];
             let scrollItemUuid = null;
+            let trainerTypeOptions = [];
+            let trainerTypeUuid = null;
             let stableItemOptions = [];
             let stableItemUuid = null;
             let stableTransferOptions = [];
@@ -832,6 +841,16 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     if (scrollFolder) {
                         scrollItemOptions = await BastionManager._getNestedCompendiumOptions(outPack, scrollFolder.id, effectiveScrollChoice, calculationMode, daysPerTurn, progressLabel, true);
                         scrollItemUuid = findUuid(scrollItemOptions, effectiveScrollChoice);
+                    }
+                }
+
+                // --- Training Area ---
+                if (fac.name.includes("Training Area")) {
+                    const trainingFolder = outPack.folders.find(f => f.name.toLowerCase().trim() === "training area");
+                    if (trainingFolder) {
+                        effectiveTrainerChoice = getFacFlag("trainerType") || "";
+                        trainerTypeOptions = await BastionManager._getNestedCompendiumOptions(outPack, trainingFolder.id, effectiveTrainerChoice, calculationMode, daysPerTurn, progressLabel, false, null, null, false);
+                        trainerTypeUuid = findUuid(trainerTypeOptions, effectiveTrainerChoice);
                     }
                 }
 
@@ -1141,6 +1160,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 showRelicItemSelect: isSacristyCrafting && (craftChoice === "Magic Item (Relic)" || (isPausedProjectInQueue && firstQueueItem.craftType === "Magic Item (Relic)")),
                 relicItemChoice: relicItemChoice,
                 relicItemOptions: relicItemOptions,
+                isTrainingArea: fac.name.includes("Training Area"),
+                trainerType: effectiveTrainerChoice,
+                trainerTypeOptions: trainerTypeOptions,
+                trainerTypeUuid: trainerTypeUuid,
                 relicItemUuid: relicItemUuid,
                 workshopItemUuid: workshopItemUuid,
                 isStable: isStable,
@@ -1568,6 +1591,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     expectedOutputs.push({ facName: fac.name, label: `Stock Armory: -${cost} GP`, color: "#a32a22" });
                 }
             }
+
+            if (fac.itemName === "Training Area" && currentOrder === "Empower") {
+                expectedOutputs.push({ facName: fac.name, label: `Training: ${fac.trainerType || "Expert Trainer"}`, color: "#4a86e8" });
+            }
         }
 
         // Persist section states
@@ -1679,6 +1706,21 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 } else {
                     const item = this.actor.items.get(ds.itemId);
                     if (item) await item.setFlag(MODULE_ID, "tradeAmount", val);
+                }
+            });
+        });
+
+        // Training Area Listeners
+        this.element.querySelectorAll('.training-trainer-select').forEach(select => {
+            select.addEventListener('change', async (ev) => {
+                const ds = ev.target.dataset;
+                if (ds.isFlag === "true") {
+                    const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+                    const fac = gf.find(f => f._id === ds.itemId);
+                    if (fac) foundry.utils.setProperty(fac, `flags.${MODULE_ID}.trainerType`, ev.target.value);
+                    await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+                } else {
+                    await this.actor.items.get(ds.itemId)?.setFlag(MODULE_ID, "trainerType", ev.target.value);
                 }
             });
         });
@@ -4207,6 +4249,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 }
             }
 
+            if (fac.name.includes("Training Area") && order === "Empower") {
+                const trainer = getFacFlag("trainerType");
+                if (!trainer) missing.push(`${actor.name}: Training Area needs a Trainer Type selection.`);
+            }
+
             if (fac.name.includes("Garden")) {
                 if (order === "Harvest") {
                     const choice = getFacFlag("harvestChoice");
@@ -4374,6 +4421,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let stableAnimals = getFacFlag("stableAnimals") || [];
             // Migration: Ensure resolution engine treats animals as objects
             stableAnimals = stableAnimals.map(a => typeof a === "string" ? { species: a, nickname: "" } : a);
+            let trainerType = getFacFlag("trainerType");
 
             let activeProjectChoice = getFacFlag("activeProjectChoice");
             let storedGp = Number(getFacFlag("storedGp") || 0);
@@ -4848,6 +4896,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         theaterPhase, theaterProgress,
                         stableItemChoice, stableTradeChoice, stableTransferType, stableTransferChoice,
                         stableAnimals: facEntry.stableAnimals || stableAnimals,
+                        trainerType,
                         visitingSpellcaster, spellcasterDaysRemaining, spellcasterName
                     });
                     
@@ -4890,7 +4939,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     [`flags.${MODULE_ID}.stableTransferType`]: stableTransferType,
                     [`flags.${MODULE_ID}.stableTransferChoice`]: stableTransferChoice,
                     [`flags.${MODULE_ID}.stableAnimals`]: facEntry.stableAnimals || stableAnimals,
-                    
+                    [`flags.${MODULE_ID}.trainerType`]: trainerType,
+
                     [`flags.${MODULE_ID}.activeProjectChoice`]: activeProjectChoice,
                     [`flags.${MODULE_ID}.visitingSpellcaster`]: visitingSpellcaster,
                     [`flags.${MODULE_ID}.spellcasterDaysRemaining`]: spellcasterDaysRemaining,
@@ -5249,8 +5299,21 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             }
 
             return { text: resultText, theaterPhase: phase, theaterProgress: progress };
-        } else if (baseName === "Training Area") {
-            return { text: `The hirelings conduct training exercises for the next 7 days.` };
+        } else if (baseName.includes("Training Area")) {
+            const hProf = BastionManager._getHirelingProfession(baseName, null).toLowerCase() + "s";
+            const trainerType = getFacFlag("trainerType");
+            
+            let benefitText = "";
+            if (trainerType) {
+                const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+                const entry = (await outPack?.getIndex({fields: ["system.description.value"]}))?.find(e => e.name === trainerType);
+                if (entry?.system?.description?.value) {
+                    benefitText = `<div style="margin-top: 5px; font-size: 0.9em; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 5px;"><b>Trainer Benefit:</b> ${entry.system.description.value}</div>`;
+                }
+            }
+
+            const trainerLabel = trainerType ? `<b>${trainerType}</b>` : "an expert trainer";
+            return { text: `${hProf} conduct training exercises led by a ${trainerLabel} for 7 days. Any character that trained here for 8 hours a day gains the associated benefit for 7 days.${benefitText}` };
         } else if (baseName === "Meditation Chamber") {
             return { text: `The hirelings use the Meditation Chamber to gain inner peace. The next time you roll for a Bastion event, you can roll twice and choose either result.` };
         } else if (baseName === "Observatory") {
@@ -5723,6 +5786,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (name.includes("barrack")) return "the Recruiter";
         if (name.includes("sanctuary")) return "the Sanctuary Caretaker";
         if (name.includes("smithy")) return "the Smith";
+        if (name.includes("training area")) return "the Training Partner";
         if (name.includes("storehouse")) return "the Quartermaster";
         if (name.includes("workshop")) return "the Artisan";
         if (name.includes("armory")) return "the Armorer";

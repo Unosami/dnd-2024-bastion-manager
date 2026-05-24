@@ -371,6 +371,25 @@
                                     </div>
                                 {{/if}}
 
+                                {{#if (and this.isTrainingArea (eq this.safeOrder "Empower"))}}
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
+                                        <div style="display: flex; align-items: center; gap: 4px;">
+                                            <label style="font-size: 0.85em; flex-shrink: 0;">Trainer:</label>
+                                            <select class="training-trainer-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
+                                                <option value="">-- Select Trainer --</option>
+                                                {{#each trainerTypeOptions}}
+                                                    <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                                                {{/each}}
+                                            </select>
+                                            {{#if this.trainerTypeUuid}}
+                                                <a class="content-link" data-action="previewItem" data-uuid="{{this.trainerTypeUuid}}" draggable="true" style="font-size: 0.9em; height: 20px; display: flex; align-items: center; border: none; background: none;" title="View Trainer Effect">
+                                                    <i class="fas fa-eye"></i>
+                                                </a>
+                                            {{/if}}
+                                        </div>
+                                    </div>
+                                {{/if}}
+
                                 {{#if this.isStableTrade}}
                                     <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
                                         <div style="display: flex; gap: 4px; align-items: center;">

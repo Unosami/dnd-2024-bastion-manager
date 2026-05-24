@@ -2,19 +2,15 @@ Bastion Module notes:
 Move hireling and defender name pools to seperate editable files.
 
 Next I want to start fleshing out the other facility outputs:
+TRAINING AREA
+
 
 TELEPORTATION CIRCLE 
 - Perhaps some way to type in gold costs for material components? Or better yet, drag and drop a spell item onto the facility to determine the spell to cast.
 - A cool way to display the glyphs of the specific bastion's teleportation circle? (So Extra)
     
-    - THEATER
-Summary of Features
-Phase Tracking: The Theater now cycles from Idle to Writing (optional), Rehearsing (14 days), and finally Performing.
-Progress: Turn advancement automatically pushes the production forward.
-Collaboration: Players can use the "Join Roles" button to assign themselves as the Writer, Director, or Performers.
-Resolution: When rehearsals end, a chat card notifies the group to make their DC 15 Charisma (Performance) checks.
-Scaling Rewards: The UI automatically calculates the correct Theater Die size (d6, d8, or d10) based on the character's level.
-
+THEATER
+- Nice to have: Writers type in name of the production. That production script is saved as an item (in the compendium?) so they can look back on it.
 
 
 - Bastion Events when the Maintain order is issued. (Groundwork is done)
