@@ -1,9 +1,17 @@
 Bastion Module notes:
-- Next I want to start fleshing out the other facility outputs.
-    - ARCANE STUDY Get crafting magic items to work properly.
-    - Specify what the garden/workshop/etc. should be producing.
-    - Workshop requires 6 Artisan's Tools selections when built.
-    - Make sure the enlarged facilites get their mechanical benefits.
+Move hireling and defender name pools to seperate editable files.
+
+Next I want to start fleshing out the other facility outputs:
+TRAINING AREA
+
+
+TELEPORTATION CIRCLE 
+- Perhaps some way to type in gold costs for material components? Or better yet, drag and drop a spell item onto the facility to determine the spell to cast.
+- A cool way to display the glyphs of the specific bastion's teleportation circle? (So Extra)
+    
+THEATER
+- Nice to have: Writers type in name of the production. That production script is saved as an item (in the compendium?) so they can look back on it.
+
 
 - Bastion Events when the Maintain order is issued. (Groundwork is done)
     - Flesh out the events and add automation for the DM
