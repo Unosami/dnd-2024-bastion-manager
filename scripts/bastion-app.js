@@ -6061,7 +6061,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (totalAvailableDefenders === 0) {
                 auto = mkRes(`<span style="color: #a32a22; font-style: italic; margin-right: 10px;"><i class="fa-solid fa-circle-exclamation"></i> No defenders available.</span>` + mkBtn('aid', 'decline', 'Acknowledge'));
             } else {
-                auto = mkRes(`<span style="margin-right: 5px;">Send Defenders?</span><input type="number" class="aid-count" value="1" min="1" max="${totalAvailableDefenders}" style="width: 40px; margin-right: 5px; height: 26px; text-align: center;">` + mkBtn('aid', 'send', 'Send Defenders') + mkBtn('aid', 'decline', 'Decline'));
+                auto = mkRes(`<span style="margin-right: 5px;">Send Defenders?</span><input type="number" class="aid-count" value="1" min="1" max="${totalAvailableDefenders}" style="width: 40px; margin-right: 5px; height: 26px; text-align: center;">` + `<button type="button" class="aid-max-btn" style="width: auto; padding: 2px 6px; font-size: 0.75em; margin-right: 5px; background: rgba(0,0,0,0.1); border: 1px solid var(--color-border-light-2); border-radius: 3px; cursor: pointer;">Max</button>` + mkBtn('aid', 'send', 'Send Defenders') + mkBtn('aid', 'decline', 'Decline'));
             }
         } else { 
             cat = "Treasure"; desc = "Your Bastion acquires an art object or a magic item. How the Bastion acquires this treasure is up to you. It might represent an inheritance, a gift from a guest or an admirer, a theft, or a fortunate discovery. If you're in the Bastion, you can claim the treasure immediately; otherwise, it is placed in storage until you can claim it."; 
@@ -6466,6 +6466,29 @@ class EventResolverApp extends ApplicationV2 {
 
     _onRender(context, options) {
         super._onRender(context, options);
+
+        // Aid Count Input Validation: Revert to max if exceeded
+        this.element.querySelectorAll('input.aid-count').forEach(input => {
+            input.addEventListener('change', (ev) => {
+                const max = parseInt(ev.target.max) || 1;
+                let val = parseInt(ev.target.value);
+                if ( isNaN(val) || val < 1 ) ev.target.value = 1;
+                else if ( val > max ) ev.target.value = max;
+            });
+        });
+
+        // Aid Max Button Listener
+        this.element.querySelectorAll('.aid-max-btn').forEach(btn => {
+            btn.addEventListener('click', (ev) => {
+                const container = ev.target.closest('.event-resolution');
+                const input = container.querySelector('input.aid-count');
+                if ( input ) {
+                    input.value = input.max;
+                    input.dispatchEvent(new Event('change'));
+                }
+            });
+        });
+
         const btns = this.element.querySelectorAll('button[data-action="resolveEvent"]');
         for (const btn of btns) {
             btn.addEventListener('click', async (event) => {
