@@ -6,7 +6,12 @@
         <h2 style="margin-bottom: 5px; line-height: 1.2;">{{actor.name}}'s Bastion</h2>
         <div style="font-size: 1em; display: flex; align-items: center; justify-content: center; gap: 15px; flex-wrap: wrap;">
             <span><b>Total Turns:</b> {{turnCount}}</span>
-            <span><b>Total Defenders:</b> {{totalDefenders}}</span>
+            <span>
+                <b>Total Defenders:</b> {{totalDefenders}}
+                <button type="button" data-action="viewGraveyard" style="width: auto; padding: 2px 4px; border: none; background: none; color: #444; cursor: pointer;" title="View Memorial Wall (Fallen Defenders)">
+                    <i class="fa-solid fa-tombstone"></i>
+                </button>
+            </span>
 
             {{#if neglectWarning}}
                 <span class="neglect-warning" style="color: {{neglectColor}}; font-weight: bold; display: flex; align-items: center; gap: 4px;" 
@@ -129,9 +134,12 @@
                 
                     <div style="flex: 1;">
                     <b style="font-size: 0.95em;">{{this.name}}</b> 
+                    {{#if this.isDamaged}}
+                        <span style="font-size: 0.7em; background: #a32a22; color: white; padding: 1px 4px; border-radius: 3px; margin-left: 4px; vertical-align: middle;">DAMAGED</span>
+                    {{/if}}
                     
                     <span style="font-size: 0.7em; background: {{#if (eq this.size "Construction")}}#a32a22; color: white;{{else}}#ddd; color: #333;{{/if}} padding: 1px 4px; border-radius: 3px; margin-left: 4px; vertical-align: middle;">{{this.size}}</span>
-                    {{#if (and (or this.progress this.isCrafting) (not this.isBuilding) (not this.isOrderChanging))}}
+                    {{#if (and (or this.progress this.isCrafting) (not this.isBuilding) (not this.isDamaged) (not this.isOrderChanging))}}
                         <span style="font-size: 0.65em; background: #2e7d32; color: white; padding: 1px 5px; border-radius: 3px; margin-left: 4px; vertical-align: middle; animation: pulse 2s infinite;" title="Facility is currently working on a project">
                             <i class="fa-solid fa-gear fa-spin" style="font-size: 0.8em;"></i> WORKING
                         </span>
@@ -712,6 +720,15 @@
                             {{else}}
                                 <span style="font-style: italic; opacity: 0.6;">None present</span>
                             {{/if}}
+                        </div>
+                    {{/if}}
+
+                    {{#if this.isDamaged}}
+                        <div class="bastion-damage-bar" title="Repair progress: {{this.repairProgress}} / {{this.repairTurns}}" style="margin-top: 4px; height: 14px; background: rgba(255,0,0,0.1); border: 1px solid #a32a22; border-radius: 3px; position: relative; overflow: hidden; width: 100%;">
+                            <div class="fill" style="width: {{this.repairProgressPct}}%; height: 100%; background: #a32a22; border-right: 1px solid #7a7971; transition: width 0.5s;"></div>
+                            <span style="position: absolute; top: 0; left: 0; width: 100%; text-align: center; font-size: 0.8em; line-height: 14px; color: white; font-weight: bold; text-shadow: 0 0 3px black;">
+                                Damaged: Repairing...
+                            </span>
                         </div>
                     {{/if}}
 

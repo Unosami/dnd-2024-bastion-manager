@@ -1,11 +1,21 @@
 Bastion Module notes:
-Move hireling and defender name pools to seperate editable files.
+GENERAL
+- Move hireling and defender name pools to seperate editable files.
+- Make Bastion Name Editable. This should also be doable for combined bastions.
+
+EVENTS:
+- Combined Bastions should all share a single bastion event, rather than generating one-per bastion per Maintenance turn.
+
 
 Next I want to start fleshing out the other facility outputs:
-TRAINING AREA
+ARMORY
+- I would like the Armory to display the expected cost when the trade order is selected.
+- Stocking the armory does nothing if there are no bastion defenders. The facility should throw a warning to that effect if being built without an attached facility that provides defenders.
+- Defenders can be used for all parts of a combined bastion. This should be taken into account with Armory costs and Attack events.
 
 
 TELEPORTATION CIRCLE 
+- [bug] The teleportation circle visiting wizard should be cleared form the ui as soon as the button is resolved. (pressed, or follow-up prompt cleared if there is one)
 - Perhaps some way to type in gold costs for material components? Or better yet, drag and drop a spell item onto the facility to determine the spell to cast.
 - A cool way to display the glyphs of the specific bastion's teleportation circle? (So Extra)
     

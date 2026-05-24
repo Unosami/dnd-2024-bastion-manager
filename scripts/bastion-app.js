@@ -98,6 +98,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             theaterAction: BastionManager.onTheaterAction,
             castSpellcasterSpell: BastionManager.onCastSpellcasterSpell,
             renameStableAnimal: BastionManager.onRenameStableAnimal,
+            viewGraveyard: BastionManager.onViewGraveyard,
         }
     };
     static PARTS = { main: { template: "modules/dnd-2024-bastion-manager/templates/bastion-main.hbs" } };
@@ -513,13 +514,17 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             totalDefenders += facDefenders.count;
             if (facDefenders.names.length > 0) allDefenderNames.push(...facDefenders.names);
 
+            const isDamaged = getFacFlag("isDamaged") || false;
+            const repairProgress = Number(getFacFlag("repairProgress") || 0);
+            const repairTurns = Number(getFacFlag("repairTurns") || 0);
+
             const upgradeProgress = getFacFlag("upgradeProgress") || 0;
             const upgradeTurns = getFacFlag("upgradeTurns") || 0;
             const isUnderConstruction = upgradeTurns > 0;
             const isBuilding = isUnderConstruction && !facSize;
             const isOrderChanging = this._changingOrders.has(fac.id);
-            const isOrderLocked = (progress > 0 || isBuilding);
-            const isSelectionDisabled = fac.isInherited || isBuilding || (progress > 0 && !isOrderChanging);
+            const isOrderLocked = (progress > 0 || isBuilding || isDamaged);
+            const isSelectionDisabled = fac.isInherited || isBuilding || isDamaged || (progress > 0 && !isOrderChanging);
             
             const isBarrack = fac.name.includes("Barrack");
             const promptNames = isBarrack ? (getFacFlag("promptNames") ?? true) : false;
@@ -1234,6 +1239,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 bookTitle,
                 paperworkTitle,
                 paperworkQty,
+                isDamaged,
+                repairProgress,
+                repairTurns,
+                repairProgressPct: Math.round((Math.min(repairProgress, repairTurns) / (repairTurns || 1)) * 100),
                 progressPct: Math.round((Math.min(progress, 3) / 3) * 100),
                 isUnderConstruction: isUnderConstruction,
                 constructionLabel: constructionLabel,
@@ -1243,8 +1252,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 isBasic: isBasic,
                 isEnlargeable: isEnlargeable,
                 isQueueCollapsed: this._queueStates[fac.id] || false,
-                isOrderDisabled: fac.isInherited || isBuilding, // Only disable if inherited or building
-                isSelectionDisabled: fac.isInherited || isBuilding,
+                isOrderDisabled: fac.isInherited || isBuilding || isDamaged,
+                isSelectionDisabled: fac.isInherited || isBuilding || isDamaged,
                 showLogisticsHint: isCrafting && progress > 0,
                 maxSquares,
                 placedSquares,
@@ -2607,6 +2616,23 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     static onSwitchTab(event, target) {
         this._activeTab = target.dataset.tab;
         this.render();
+    }
+
+    static async onViewGraveyard(event, target) {
+        const graveyard = this.actor.getFlag("dnd-2024-bastion-manager", "graveyard") || [];
+        if (graveyard.length === 0) return ui.notifications.info("The Memorial Wall is empty. No defenders have perished... yet.");
+
+        let list = graveyard.map(d => `<li style="margin-bottom: 4px; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 2px;"><b>${d.name}</b> <span style="font-size: 0.85em; color: #666; font-style: italic;">(Turn ${d.turn}, ${d.date})</span></li>`).reverse().join("");
+        
+        await DialogV2.prompt({
+            window: { title: "Memorial Wall", icon: "fa-solid fa-tombstone" },
+            content: `
+                <div style="max-height: 400px; overflow-y: auto; padding: 5px;">
+                    <p style="margin-bottom: 10px; border-bottom: 1px solid #444; padding-bottom: 5px;">In honor of those who gave their lives in service of <b>${this.actor.name}'s</b> Bastion:</p>
+                    <ul style="list-style: none; padding-left: 0;">${list}</ul>
+                </div>`,
+            ok: { label: "Honor their memory" }
+        });
     }
 
     static async onRenameStableAnimal(event, target) {
@@ -4012,11 +4038,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (confirm) {
             const currentGlobalTurns = game.settings.get(MODULE_ID, "globalTurnCount") || 0;
             await game.settings.set(MODULE_ID, "globalTurnCount", currentGlobalTurns + turnsToAdvance);
-
+ 
             let reports = [];
             const processedGroups = new Set();
+            const rolledEvents = new Map(); // Shared map for group deduplication
             const unify = game.settings.get(MODULE_ID, "unifyCombinedTurns");
-
+ 
             for (let actor of bastionActors) {
                 const combinedId = actor.getFlag(MODULE_ID, "combinedGroupId");
                 if (unify && combinedId && !processedGroups.has(combinedId)) {
@@ -4027,19 +4054,18 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     }
                     processedGroups.add(combinedId);
                 }
-
+ 
                 const currentActorTurns = actor.getFlag(MODULE_ID, "turnCount") || 0;
                 await actor.setFlag(MODULE_ID, "isReady", false);
                 await actor.setFlag(MODULE_ID, "turnCount", currentActorTurns + turnsToAdvance);
-                const r = await BastionManager.executeBastionTurn(actor, turnsToAdvance);
+                const r = await BastionManager.executeBastionTurn(actor, turnsToAdvance, rolledEvents);
                 if (r) reports.push(r);
             }
-
+ 
             if (reports.length > 0) {
                 await BastionManager._dispatchReports(reports, turnsToAdvance);
             }
             ui.notifications.info(`Advanced global Bastion turns by ${turnsToAdvance}.`);
-            // Trigger a re-render for everyone since it's global
             game.socket.emit("module.dnd-2024-bastion-manager", { action: "globalAdvance" });
             this.render();
         }
@@ -4088,7 +4114,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const currentActorTurns = this.actor.getFlag(MODULE_ID, "turnCount") || 0;
             await this.actor.setFlag(MODULE_ID, "isReady", false);
             await this.actor.setFlag(MODULE_ID, "turnCount", currentActorTurns + turnsToAdvance);
-            const r = await BastionManager.executeBastionTurn(this.actor, turnsToAdvance);
+            const r = await BastionManager.executeBastionTurn(this.actor, turnsToAdvance, new Map());
             if (r) reports.push(r);
 
             if (reports.length > 0) {
@@ -4173,10 +4199,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     // --- THE STANDALONE ENGINE ---
-    static async executeBastionTurn(actor, turnsToAdvance) {
+    static async executeBastionTurn(actor, turnsToAdvance, rolledEvents = null) {
         // We no longer update actor-specific turn count, it uses globalTurnCount
         
-        let activeFacilities = BastionManager._getActorFacilities(actor);
+        let activeFacilities = BastionManager._getActorFacilities(actor, true); // respect combined for data gathering
         if (activeFacilities.length === 0) return null; // Silent return, let global loop continue
 
         let globalDefenders = activeFacilities.reduce((sum, fac) => sum + (fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.defenders?.count || 0) : (fac.doc.getFlag("dnd-2024-bastion-manager", "defenders.count") || 0)), 0);
@@ -4184,7 +4210,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         let actorLevel = (actor.type === "character" || actor.type === "npc") ? (actor.system.details?.level || 1) : 1;
 
         const resolution = await BastionManager._resolveOrders(actor, activeFacilities, turnsToAdvance, globalDefenders, hasSmithy, actorLevel);
-
+        if (rolledEvents) resolution.rolledEvents = rolledEvents;
         // --- NEGLECT LOGIC ---
         const MODULE_ID = "dnd-2024-bastion-manager";
         const disableNeglect = game.settings.get(MODULE_ID, "disableNeglect");
@@ -4349,13 +4375,31 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     // --- HELPER: FACILITY GATHERING ---
-    static _getActorFacilities(actor) {
-        let facs = [];
+    static _getActorFacilities(actor, unified = false) {
         const MODULE_ID = "dnd-2024-bastion-manager";
-        actor.items.filter(item => item.type === "facility").forEach(i => facs.push({ doc: i, name: i.name, isFlag: false }));
-        const flagFacs = actor.getFlag(MODULE_ID, "groupFacilities") || [];
-        flagFacs.forEach(f => facs.push({ doc: f, name: f.name, isFlag: true }));
-        return facs;
+        const getActorFacs = (a) => {
+            let list = [];
+            a.items.filter(i => i.type === "facility").forEach(i => list.push({ doc: i, name: i.name, isFlag: false, owner: a }));
+            const flagFacs = a.getFlag(MODULE_ID, "groupFacilities") || [];
+            flagFacs.forEach(f => list.push({ doc: f, name: f.name, isFlag: true, owner: a }));
+            return list;
+        };
+ 
+        if (!unified) return getActorFacs(actor);
+ 
+        const combinedId = actor.getFlag(MODULE_ID, "combinedGroupId");
+        if (!combinedId) return getActorFacs(actor);
+ 
+        const group = game.actors.get(combinedId);
+        if (!group) return getActorFacs(actor);
+ 
+        const memberIds = new Set((group.system.members || []).map(m => m.actorId).filter(id => !!id));
+        let allFacs = [];
+        for (const id of memberIds) {
+            const mActor = game.actors.get(id);
+            if (mActor) allFacs.push(...getActorFacs(mActor));
+        }
+        return allFacs;
     }
 
     // --- HELPER: ORDER RESOLUTION ---
@@ -4422,6 +4466,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             // Unified flag reader to ensure reactive data access
             const getFacFlag = (key) => facEntry.isFlag ? (facDoc.flags?.[MODULE_ID]?.[key]) : (facDoc.getFlag(MODULE_ID, key));
+
+            // Initialize wrapper with current state so event resolution sees the most recent values
+            facEntry.isStocked = getFacFlag("isStocked") || false;
+            facEntry.stockedCount = Number(getFacFlag("stockedCount") || 0);
+
+            let isDamaged = getFacFlag("isDamaged") || false;
+            let repairProgress = Number(getFacFlag("repairProgress") || 0);
+            let repairTurns = Number(getFacFlag("repairTurns") || 0);
 
             const isBasic = facDoc.system?.type?.value === "basic";
             let order = isBasic ? "Maintain" : (getFacFlag("order") || "Maintain");
@@ -4593,6 +4645,19 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             }
 
             for (let i = 0; i < turns; i++) {
+                if (isDamaged) {
+                    repairProgress += progIncrement;
+                    if (repairProgress >= repairTurns) {
+                        isDamaged = false;
+                        repairProgress = 0;
+                        repairTurns = 0;
+                        currentResultText = `Repairs are complete; the facility is operational once more.`;
+                    } else {
+                        currentResultText = `The facility is currently shut down for repairs.`;
+                        break; 
+                    }
+                    continue;
+                }
                 if (insufficientReason) {
                     currentResultText = `Skipped: ${insufficientReason}.`;
                     break;
@@ -4656,6 +4721,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                             } else {
                                 localGold -= cost;
                                 isStocked = true;
+                                facEntry.isStocked = true;
                                 facEntry.stockedCount = defenders;
                                 currentResultText = `${getH()} has finished stocking superior equipment for your ${defenders} defenders. Defense rolls will now use <b>d8s</b>.`;
                                 order = "Maintain";
@@ -4977,6 +5043,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         theaterPhase, theaterProgress,
                         stableItemChoice, stableTradeChoice, stableTransferType, stableTransferChoice,
                         stableAnimals: facEntry.stableAnimals || stableAnimals,
+                        isDamaged, repairProgress, repairTurns,
                         stockedCount: facEntry.stockedCount ?? (getFacFlag("stockedCount") || 0),
                         isStocked: facEntry.isStocked ?? isStocked,
                         trainerType,
@@ -5024,6 +5091,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     [`flags.${MODULE_ID}.stableAnimals`]: facEntry.stableAnimals || stableAnimals,
                     [`flags.${MODULE_ID}.stockedCount`]: facEntry.stockedCount ?? (getFacFlag("stockedCount") || 0),
                     [`flags.${MODULE_ID}.isStocked`]: facEntry.isStocked ?? isStocked,
+                    [`flags.${MODULE_ID}.isDamaged`]: isDamaged,
+                    [`flags.${MODULE_ID}.repairProgress`]: repairProgress,
+                    [`flags.${MODULE_ID}.repairTurns`]: repairTurns,
                     [`flags.${MODULE_ID}.trainerType`]: trainerType,
 
                     [`flags.${MODULE_ID}.activeProjectChoice`]: activeProjectChoice,
@@ -5069,7 +5139,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         return { 
             orderSummary, totalGold, items, itemUpdates, 
             itemsToPromote: promotedData, groupFacilities: finalGroupFacilities,
-            effectivelyAllMaintaining
+            effectivelyAllMaintaining,
+            updatedFacilities: facilities // Return the updated facilities array
         };
     }
 
@@ -5877,25 +5948,26 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     // --- HELPER: CHAT ---
-    static async _processEventRoll(roll, actor, isReroll = false) {
+    static async _processEventRoll(roll, actor, isReroll = false, currentFacilitiesState = null) {
         const promptAll = game.settings.get("dnd-2024-bastion-manager", "promptAllEvents");
+        const MODULE_ID = "dnd-2024-bastion-manager";
         let cat = "", desc = "", auto = "";
+
+        // Use unified facilities if combined
+        const facs = currentFacilitiesState || BastionManager._getActorFacilities(actor, true);
         
         let allHirelings = [];
         let specialFacilities = [];
-        if (actor) {
-            const facs = BastionManager._getActorFacilities(actor);
-            for (const fac of facs) {
-                const isBasic = fac.doc.system?.type?.value === "basic";
-                if (!isBasic) specialFacilities.push(fac.name);
-                
-                const hirelings = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.hirelings) : (fac.doc.getFlag("dnd-2024-bastion-manager", "hirelings"));
-                if (Array.isArray(hirelings)) {
-                    let subType = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.subType) : (fac.doc.getFlag("dnd-2024-bastion-manager", "subType"));
-                    let prof = BastionManager._getHirelingProfession(fac.name, subType);
-                    for (const h of hirelings) {
-                        allHirelings.push({ name: h, facility: fac.name, prof: prof });
-                    }
+        for (const fac of facs) {
+            const isBasic = fac.doc.system?.type?.value === "basic";
+            if (!isBasic) specialFacilities.push(fac.name);
+            
+            const hirelings = fac.isFlag ? (fac.doc.flags?.[MODULE_ID]?.hirelings) : (fac.doc.getFlag(MODULE_ID, "hirelings"));
+            if (Array.isArray(hirelings)) {
+                let subType = fac.isFlag ? (fac.doc.flags?.[MODULE_ID]?.subType) : (fac.doc.getFlag(MODULE_ID, "subType"));
+                let prof = BastionManager._getHirelingProfession(fac.name, subType);
+                for (const h of hirelings) {
+                    allHirelings.push({ name: h, facility: fac.name, prof: prof });
                 }
             }
         }
@@ -5907,23 +5979,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const mkBtn = (evt, choice, label) => `<button type="button" data-action="resolveEvent" data-event="${evt}" data-choice="${choice}" style="width: auto; padding: 4px 10px; font-size: 0.95em; background: rgba(0,0,0,0.2); color: var(--color-text-light-primary); border: 1px solid var(--color-border-light-1); border-radius: 4px; cursor: pointer;">${label}</button>`;
         const mkAutoBtn = (evt) => mkBtn(evt, 'auto', 'Automate Roll') + mkBtn(evt, 'manual', 'Resolve Manually');
 
-        // Check for Stocked Armory
-        let armoryFac = null;
-        let stockedCount = 0;
-        let isStockedBool = false;
-        if (actor) {
-            const MODULE_ID = "dnd-2024-bastion-manager";
-            const facs = BastionManager._getActorFacilities(actor);
-            armoryFac = facs.find(f => f.name.includes("Armory"));
-            if (armoryFac) {
-                const flags = armoryFac.isFlag ? armoryFac.doc.flags?.[MODULE_ID] : armoryFac.doc.getFlag(MODULE_ID);
-                stockedCount = flags?.stockedCount || 0;
-                isStockedBool = flags?.isStocked || false;
-            }
-        }
-
         if (roll <= 50) { 
-            cat = "All Is Well"; desc = "Nothing significant happens.";
+            cat = "All Is Well"; desc = "Nothing significant happens. Roll on the following table, fleshing out the details as you see fit.";
             if (promptAll) auto = mkRes(mkAutoBtn('allIsWell'));
             else {
                 const h1 = getRandomHireling();
@@ -5938,13 +5995,13 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     h1 ? `${h1.name} thought they saw a ghost.` : "Someone thought they saw a ghost."
                 ];
                 const fRoll = (await new Roll("1d8").evaluate()).total;
-                auto = `<b>Result:</b> ${flavor[fRoll - 1]}`;
+                auto = flavor[fRoll - 1];
             }
         } else if (roll <= 55) { 
-            cat = "Attack"; desc = "A hostile force attacks your Bastion but is defeated.";
+            cat = "Attack"; desc = "A hostile force attacks your Bastion but is defeated. Roll 6d6; for each die that rolls a 1, one Bastion Defender dies. Remove these Bastion Defenders from your Bastion's roster. If the Bastion has zero Bastion Defenders, one of the Bastion's special facilities (determined randomly) is damaged and forced to shut down. A special facility that shuts down can't be used on your next Bastion turn, after which it is repaired and made operational again at no cost to you.";
             const departing = [];
-            const MODULE_ID = "dnd-2024-bastion-manager";
-            BastionManager._getActorFacilities(actor).forEach(f => {
+
+            facs.forEach(f => {
                 const isPresent = f.isFlag ? f.doc.flags?.[MODULE_ID]?.visitingSpellcaster : f.doc.getFlag(MODULE_ID, "visitingSpellcaster");
                 if (isPresent) departing.push(f.name);
             });
@@ -5952,49 +6009,25 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 auto += `<p style="color: darkred; font-size: 0.85em; margin-top: 5px;"><i class="fa-solid fa-person-running"></i> Visiting spellcaster(s) from <b>${departing.join(", ")}</b> departed immediately due to the chaos.</p>`;
             }
             if (promptAll) auto = mkRes(mkAutoBtn('attack'));
-            else {
-                const facs = BastionManager._getActorFacilities(actor);
-                const totalDefenders = facs.reduce((sum, f) => {
-                    const d = f.isFlag ? f.doc.flags?.[MODULE_ID]?.defenders : f.doc.getFlag(MODULE_ID, "defenders");
-                    return sum + (d?.count || 0);
-                }, 0);
-                const isFullyStocked = stockedCount >= totalDefenders && totalDefenders > 0;
-                
-                const formula = isFullyStocked ? "6d8" : "6d6";
-                const atkRoll = await new Roll(formula).evaluate();
-                const ones = atkRoll.dice[0].results.filter(d => d.result === 1).length;
-                const rollsHtml = `<details style="margin-top: 4px; border: 1px solid rgba(255,255,255,0.1); border-radius: 3px; padding: 2px 5px;"><summary style="cursor: pointer; font-size: 0.85em; color: #bbb;">View Rolls</summary><span style="font-size: 1.1em; color: #eee; font-family: monospace; letter-spacing: 2px;">${atkRoll.dice[0].results.map(r => r.result).join(", ")}</span></details>`;
-                let armoryMsg = isFullyStocked ? `<p style="color: #2e7d32; font-size: 0.85em;"><i class="fa-solid fa-shield-halved"></i> <b>Stocked Armory:</b> Defenders utilized superior equipment (Rolled 6d8).</p>` : "";
-                auto = `${armoryMsg}Rolled ${formula}: <b>${ones}</b> Bastion Defender(s) died. If you have 0 Defenders, a random special facility shuts down (unusable next turn).`; 
-
-                if (stockedCount > 0 && armoryFac) {
-                    const MODULE_ID = "dnd-2024-bastion-manager";
-                    if (armoryFac.isFlag) {
-                        const gf = Array.from(actor.getFlag(MODULE_ID, "groupFacilities") || []);
-                        const target = gf.find(f => f._id === armoryFac.doc._id);
-                        if (target) {
-                            foundry.utils.setProperty(target, `flags.${MODULE_ID}.stockedCount`, 0);
-                            await actor.setFlag(MODULE_ID, "groupFacilities", gf);
-                        }
-                    } else {
-                        await armoryFac.doc.setFlag(MODULE_ID, "isStocked", false);
-                        await armoryFac.doc.setFlag(MODULE_ID, "stockedCount", 0);
-                    }
-                }
+            else { // This branch is for the initial auto-resolution in the chat message
+                const attackRes = await BastionManager._resolveAttackAutomation(actor, facs);
+                auto = attackRes.html;
             }
         } else if (roll <= 58) { 
             const h2 = getRandomHireling();
-            cat = "Criminal Hireling"; desc = h2 ? `${h2.name} ${h2.prof} has a criminal past that comes to light.` : "One of your Bastion's hirelings has a criminal past that comes to light.";
+            cat = "Criminal Hireling"; 
+            const identity = h2 ? `<b>${h2.name} the ${h2.prof}</b>` : "One of your Bastion's hirelings";
+            desc = `${identity} has a criminal past that comes to light when officials or bounty hunters visit your Bastion with a warrant for the hireling's arrest. You can retain the hireling by paying a bribe of 1d6 × 100 GP. Otherwise, the hireling is arrested and taken away. If this loss leaves one of your facilities without any hirelings, that facility can't be used on your next Bastion turn. The hireling is then replaced at no cost to you.`;
             auto = mkRes(`<span style="margin-right: 5px;">Pay 1d6x100 GP to keep ${h2 ? h2.name : "them"}, OR let them be arrested?</span>` + mkBtn('criminal', 'pay', 'Pay Bribe') + mkBtn('criminal', 'arrest', 'Let Arrested'));
         } else if (roll <= 63) { 
-            cat = "Extraordinary Opportunity"; desc = "Your Bastion is given the opportunity to host an important festival, fund research, or appease a noble.";
+            cat = "Extraordinary Opportunity"; desc = "Your Bastion is given the opportunity to host an important festival or celebration, fund the research of a powerful spellcaster, or appease a domineering noble. Work with the DM to determine the details. If you seize the opportunity, you must pay 500 GP to cover costs. In return, your Bastion gains a sudden influx of recognition or attention, prompting the DM to roll again on the Bastion Events table (rerolling this result if it comes up again). If you decline the opportunity, you don't pay the money and nothing else happens.";
             if (isReroll) auto = `Paid <b>500 GP</b> to seize this opportunity.`;
             else auto = mkRes(`<span style="margin-right: 5px;">Pay 500 GP to seize the opportunity?</span>` + mkBtn('opportunity', 'pay', 'Pay 500 GP') + mkBtn('opportunity', 'decline', 'Decline'));
         } else if (roll <= 72) { 
-            cat = "Friendly Visitors"; desc = "Friendly visitors come seeking to use one of your special facilities.";
+            cat = "Friendly Visitors"; desc = "Friendly visitors come to your Bastion, seeking to use one of your special facilities. They offer 1d6 × 100 GP for the brief use of that facility. For example, a knight might want your Smithy to replace a horseshoe or repair a damaged weapon or suit of armor, or sages might need your Arcane Study to help them settle a dispute. Their use of the facility doesn't interrupt any orders you've issued to it.";
             auto = mkRes(`<span style="margin-right: 5px;">Allow use for 1d6x100 GP?</span>` + mkBtn('visitors', 'accept', 'Accept') + mkBtn('visitors', 'decline', 'Decline'));
         } else if (roll <= 76) { 
-            cat = "Guest"; desc = "A Friendly guest comes to stay at your Bastion.";
+            cat = "Guest"; desc = "A Friendly guest comes to stay at your Bastion. Determine the guest by rolling on the following table, and work with your DM to flesh out the details.";
             if (promptAll) auto = mkRes(mkAutoBtn('guest'));
             else {
                 const gRoll = (await new Roll("1d4").evaluate()).total;
@@ -6005,20 +6038,33 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             }
         } else if (roll <= 79) { 
             const f1 = getRandomSpecialFac();
-            cat = "Lost Hirelings"; desc = `The <b>${f1}</b> loses its hirelings.`; 
-            auto = `This facility can't be used on your next Bastion turn (hirelings replaced at no cost after).`; 
+            cat = "Lost Hirelings"; desc = `One of your Bastion's special facilities, the <b>${f1}</b>, loses its hirelings. The cause of their departure is up to you. The facility can't be used on your next Bastion turn, but the hirelings are replaced at no cost to you at that point.`; 
+            auto = `The <b>${f1}</b> is unusable next turn.`; 
         } else if (roll <= 83) { 
             const h3 = getRandomHireling();
-            cat = "Magical Discovery"; desc = h3 ? `${h3.name} ${h3.prof} discovers or accidentally creates an Uncommon magic item at no cost.` : "Your hirelings discover or accidentally create an Uncommon magic item of your choice at no cost."; 
+            cat = "Magical Discovery"; 
+            const actorStr = h3 ? `<b>${h3.name} the ${h3.prof}</b> discovers` : "Your hirelings discover";
+            desc = `${actorStr} or accidentally create an Uncommon magic item of your choice at no cost to you. The magic item must be a Potion or Scroll.`; 
             auto = `Gain one <b>Uncommon Potion</b> or <b>Uncommon Scroll</b> of your choice.`; 
         } else if (roll <= 91) { 
-            cat = "Refugees"; desc = `A group of refugees seeks refuge in your Bastion.`; 
+            cat = "Refugees"; desc = "A group of 2d4 refugees fleeing from a monster attack, a natural disaster, or some other calamity seeks refuge in your Bastion. If your Bastion lacks a basic facility large enough to house them, the refugees camp right outside the Bastion. The refugees offer you 1d6 × 100 GP as payment for your hospitality and protection. They stay until you find them a new home or a hostile force attacks your Bastion."; 
             auto = mkRes(`<span style="margin-right: 5px;">Allow 2d4 refugees to stay for a 1d6x100 GP reward?</span>` + mkBtn('refugees', 'accept', 'Offer Protection') + mkBtn('refugees', 'decline', 'Turn Away'));
         } else if (roll <= 98) { 
-            cat = "Request for Aid"; desc = "Your Bastion is called on to help a local leader."; 
-            auto = mkRes(`<span style="margin-right: 5px;">Send Defenders?</span><input type="number" class="aid-count" value="1" min="1" style="width: 40px; margin-right: 5px; height: 26px; text-align: center;">` + mkBtn('aid', 'send', 'Send Defenders') + mkBtn('aid', 'decline', 'Decline'));
+            cat = "Request for Aid"; desc = "Your Bastion is called on to help a local leader. Perhaps there's a search on for a missing person, or brigands are plaguing the area. If you help, you must dispatch one or more Bastion Defenders. Roll 1d6 for each Bastion Defender you send. If the total is 10 or higher, the problem is solved and you earn a reward of 1d6 × 100 GP. If the total is less than 10, the problem is still solved, but the reward is halved and one of your Bastion Defenders is killed. Remove that Bastion Defender from your Bastion's roster."; 
+            
+            let totalAvailableDefenders = 0;
+            for (const f of facs) {
+                const dData = f.isFlag ? f.doc.flags?.[MODULE_ID]?.defenders : f.doc.getFlag(MODULE_ID, "defenders");
+                totalAvailableDefenders += (dData?.count || 0);
+            }
+
+            if (totalAvailableDefenders === 0) {
+                auto = mkRes(`<span style="color: #a32a22; font-style: italic; margin-right: 10px;"><i class="fa-solid fa-circle-exclamation"></i> No defenders available.</span>` + mkBtn('aid', 'decline', 'Acknowledge'));
+            } else {
+                auto = mkRes(`<span style="margin-right: 5px;">Send Defenders?</span><input type="number" class="aid-count" value="1" min="1" max="${totalAvailableDefenders}" style="width: 40px; margin-right: 5px; height: 26px; text-align: center;">` + mkBtn('aid', 'send', 'Send Defenders') + mkBtn('aid', 'decline', 'Decline'));
+            }
         } else { 
-            cat = "Treasure"; desc = "Your Bastion acquires an art object or magic item."; 
+            cat = "Treasure"; desc = "Your Bastion acquires an art object or a magic item. How the Bastion acquires this treasure is up to you. It might represent an inheritance, a gift from a guest or an admirer, a theft, or a fortunate discovery. If you're in the Bastion, you can claim the treasure immediately; otherwise, it is placed in storage until you can claim it."; 
             if (promptAll) auto = mkRes(mkAutoBtn('treasure'));
             else {
                 const tRoll = (await new Roll("1d100").evaluate()).total;
@@ -6044,27 +6090,43 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             dmHtml += `<div style="margin-bottom: 15px;">
                 <h3 style="margin-bottom: 5px; color: #a32a22; border-bottom: 1px solid #ccc;">${actor.name}</h3>`;
                 
+            // Use the shared rolledEvents map to ensure combined bastions only roll once
+            if (!res.rolledEvents) res.rolledEvents = new Map();
+            const combinedId = actor.getFlag(MODULE_ID, "combinedGroupId");
+
             for (let t = 0; t < turns; t++) {
-                const isManual = game.settings.get(MODULE_ID, "manualEventSelection");
+                const turnKey = `${combinedId}_${t}`;
                 let rollTotal;
-                if (isManual && game.user.isGM) {
-                    rollTotal = await BastionManager._promptEventSelection(actor, t + 1);
+                let isDuplicate = false;
+
+                if (combinedId && res.rolledEvents.has(turnKey)) {
+                    rollTotal = res.rolledEvents.get(turnKey);
+                    isDuplicate = true;
                 } else {
-                    const eventRoll = await new Roll("1d100").evaluate();
-                    rollTotal = eventRoll.total;
+                    const isManual = game.settings.get(MODULE_ID, "manualEventSelection");
+                    if (isManual && game.user.isGM) {
+                        rollTotal = await BastionManager._promptEventSelection(actor, t + 1);
+                    } else {
+                        const eventRoll = await new Roll("1d100").evaluate();
+                        rollTotal = eventRoll.total;
+                    }
+                    if (combinedId) res.rolledEvents.set(turnKey, rollTotal);
                 }
-                
-                const ev = await BastionManager._processEventRoll(rollTotal, actor);
+
+                // Only report the full event details for the "primary" actor in a group
+                if (isDuplicate) continue;
+
+                const ev = await BastionManager._processEventRoll(rollTotal, actor, false, res.updatedFacilities);
                 let eCat = ev.cat; let eDesc = ev.desc; let autoResults = ev.auto;
 
                 let eColor = rollTotal <= 50 ? "#a8d5a2" : (rollTotal <= 58 || (rollTotal >= 77 && rollTotal <= 79) ? "#f28b82" : "#99c1f1");
                 let turnLabel = turns > 1 ? `<b>Turn ${t + 1}:</b> ` : "";
 
                 dmHtml += `
-                    <div style="margin-bottom: 10px; padding: 8px; background: rgba(0,0,0,0.15); border: 1px solid var(--color-border-light-1); border-radius: 4px;">
-                        <p style="margin: 0; font-size: 1.1em; color: ${eColor};">${turnLabel}🎲 <b>${rollTotal}</b> — <em>${eCat}</em></p>
-                        <p style="font-size: 0.95em; color: var(--color-text-light-primary); margin: 6px 0 8px 0;">${eDesc}</p>
-                        ${autoResults ? `<div style="background: rgba(0,0,0,0.3); padding: 8px 10px; border-radius: 3px; font-size: 0.9em; border-left: 3px solid #6c757d; color: var(--color-text-light-primary);">${autoResults}</div>` : ""}
+                    <div style="margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(0,0,0,0.15);">
+                        <p style="margin: 0; font-size: 1.15em; color: ${eColor}; font-weight: bold;">${turnLabel}🎲 ${rollTotal} — ${eCat}</p>
+                        <p style="font-size: 0.95em; margin: 8px 0; line-height: 1.4;">${eDesc}</p>
+                        ${autoResults ? `<div style="margin-top: 8px; border-top: 1px dashed rgba(0,0,0,0.1); padding-top: 5px;">${autoResults}</div>` : ""}
                     </div>`;
 
                 if (eCat !== "All Is Well") {
@@ -6127,13 +6189,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         combinedPubHtml += `</div>`;
         combinedDmHtml += `</div>`;
 
-        // Send a single public chat card summarizing all characters
-        ChatMessage.create({ content: combinedPubHtml });
-
         // Show a single DM whisper/dialog combining all events
         if (hasDmEvents) {
-            // Keep the whispered message for permanent log, but format it cleanly
-            ChatMessage.create({ whisper: ChatMessage.getWhisperRecipients("GM"), content: combinedDmHtml });
             if (game.user.isGM) {
                 new EventResolverApp({ dmHtml: combinedDmHtml }).render({ force: true });
             }
@@ -6159,6 +6216,231 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             ok: { callback: (event, button) => parseInt(button.form.elements.eventRoll.value) },
             rejectClose: false
         });
+    }
+
+    /**
+     * Centralized logic for automating the Attack Bastion event.
+     * Calculates dice, handles deaths, updates graveyard, and returns templated HTML.
+     */
+    static async _resolveAttackAutomation(actor, facs) {
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        const armoryFac = facs.find(f => f.name.toLowerCase().includes("armory"));
+        
+        let stockedCount = 0;
+        let isStockedBool = false;
+        
+        if (armoryFac) {
+            // Read from wrapper property (live update) or fallback to document flags (stored state)
+            const getFlag = (key) => armoryFac.isFlag 
+                ? (armoryFac.doc.flags?.[MODULE_ID]?.[key]) 
+                : (armoryFac.doc.getFlag(MODULE_ID, key));
+
+            stockedCount = Number(armoryFac.stockedCount ?? getFlag("stockedCount") ?? 0) || 0;
+            isStockedBool = !!(armoryFac.isStocked ?? getFlag("isStocked"));
+        }
+
+        const defenderPool = [];
+        facs.forEach(f => {
+            const dData = f.isFlag ? f.doc.flags?.[MODULE_ID]?.defenders : f.doc.getFlag(MODULE_ID, "defenders");
+            const count = dData?.count || 0; 
+            const names = dData?.names || [];
+            for (let i = 0; i < count; i++) {
+                defenderPool.push({ name: names[i] || `Unnamed Defender`, facId: f.isFlag ? f.doc._id : f.doc.id, isFlag: f.isFlag });
+            }
+        });
+
+        const totalDefenders = defenderPool.length;
+        // Executive Decision: Scale dice based on ratio of stock to total defenders.
+        // Fallback: If isStocked is true but count is 0/missing, assume full coverage for existing defenders.
+        const effectiveStock = (isStockedBool && stockedCount === 0) ? totalDefenders : stockedCount;
+        const numD8s = (totalDefenders > 0 && isStockedBool) ? Math.round(6 * Math.clamp(effectiveStock / totalDefenders, 0, 1)) : 0;
+        const numD6s = 6 - numD8s;
+
+        let formula = "";
+        let atkRoll = null;
+        let ones = 0;
+
+        if (totalDefenders > 0) {
+            const diceParts = [];
+            if (numD8s > 0) diceParts.push(`${numD8s}d8`);
+            if (numD6s > 0) diceParts.push(`${numD6s}d6`);
+            formula = diceParts.join(" + ") || "6d6";
+            atkRoll = await new Roll(formula).evaluate();
+            ones = atkRoll.dice.flatMap(d => d.results).filter(r => r.result === 1).length;
+        }
+
+        const deaths = Math.min(totalDefenders, ones);
+        const deceasedNames = [];
+
+        if (deaths > 0) {
+            const shuffled = defenderPool.sort(() => 0.5 - Math.random());
+            const killed = shuffled.slice(0, deaths);
+            const updatesByOwner = {};
+            for (const d of killed) {
+                deceasedNames.push(d.name);
+                const oId = d.owner.id;
+                if (!updatesByOwner[oId]) updatesByOwner[oId] = {};
+                if (!updatesByOwner[oId][d.facId]) updatesByOwner[oId][d.facId] = { isFlag: d.isFlag, deaths: 0, deceased: [] };
+                updatesByOwner[oId][d.facId].deaths++;
+                updatesByOwner[oId][d.facId].deceased.push(d.name);
+            }
+
+            for (const [ownerId, facUpdates] of Object.entries(updatesByOwner)) {
+                const targetActor = game.actors.get(ownerId);
+                if (!targetActor) continue;
+
+                const allGf = Array.from(targetActor.getFlag(MODULE_ID, "groupFacilities") || []);
+                let gfChanged = false;
+                let itemUpdates = [];
+
+                for (const [id, data] of Object.entries(facUpdates)) {
+                    if (data.isFlag) {
+                        const fac = allGf.find(f => f._id === id);
+                        if (fac) {
+                            if (!fac.flags) fac.flags = {}; if (!fac.flags[MODULE_ID]) fac.flags[MODULE_ID] = {};
+                            const current = fac.flags[MODULE_ID].defenders || { count: 0, names: [] };
+                            let updatedNames = [...current.names];
+                            data.deceased.forEach(deadName => {
+                                const idx = updatedNames.indexOf(deadName);
+                                if (idx !== -1) updatedNames.splice(idx, 1);
+                            });
+                            fac.flags[MODULE_ID].defenders = { count: Math.max(0, current.count - data.deaths), names: updatedNames };
+                            gfChanged = true;
+                        }
+                    }
+                    else {
+                    const item = targetActor.items.get(id);
+                    if (item) {
+                        const current = item.getFlag(MODULE_ID, "defenders") || { count: 0, names: [] };
+                        let updatedNames = [...current.names];
+                        data.deceased.forEach(deadName => {
+                                const idx = updatedNames.indexOf(deadName);
+                                if (idx !== -1) updatedNames.splice(idx, 1);
+                            });
+                            itemUpdates.push({ _id: id, [`flags.${MODULE_ID}.defenders`]: { count: Math.max(0, current.count - data.deaths), names: updatedNames } });
+                        }
+                    }
+                }
+            if (gfChanged) await targetActor.setFlag(MODULE_ID, "groupFacilities", allGf);
+                if (itemUpdates.length > 0) await targetActor.updateEmbeddedDocuments("Item", itemUpdates);
+
+                const graveyard = Array.from(targetActor.getFlag(MODULE_ID, "graveyard") || []);
+                const turn = targetActor.getFlag(MODULE_ID, "turnCount") || 0;
+                const date = new Date().toLocaleDateString();
+                facUpdates.deceasedNames?.forEach(n => graveyard.push({ name: n, date, turn })); // This was a mismatch, logic revised below
+                // Re-calculating owner-specific deceased for graveyard
+                const ownerDeceased = Object.values(facUpdates).flatMap(u => u.deceased || []);
+                ownerDeceased.forEach(n => graveyard.push({ name: n, date, turn }));
+                await targetActor.setFlag(MODULE_ID, "graveyard", graveyard);
+            }
+        }
+
+        if (isStockedBool && armoryFac) {
+            const updates = { [`flags.${MODULE_ID}.isStocked`]: false, [`flags.${MODULE_ID}.stockedCount`]: 0 };
+            if (armoryFac.isFlag) {
+                const gf = Array.from(actor.getFlag(MODULE_ID, "groupFacilities") || []);
+                const target = gf.find(f => f._id === armoryFac.doc._id);
+                if (target) {
+                    foundry.utils.setProperty(target, `flags.${MODULE_ID}.isStocked`, false);
+                    foundry.utils.setProperty(target, `flags.${MODULE_ID}.stockedCount`, 0);
+                    await actor.setFlag(MODULE_ID, "groupFacilities", gf);
+                }
+            } else await armoryFac.doc.update(updates);
+        }
+
+        // Departing spellcasters logic
+        const departing = [];
+        facs.forEach(f => {
+            const flags = f.isFlag ? f.doc.flags?.[MODULE_ID] : f.doc.getFlag(MODULE_ID);
+            if (flags?.visitingSpellcaster) departing.push(f.name);
+        });
+
+        if (departing.length > 0 && actor) {
+            const gf = Array.from(actor.getFlag(MODULE_ID, "groupFacilities") || []);
+            let gfChanged = false;
+            for (const fac of gf) {
+                if (fac.flags?.[MODULE_ID]?.visitingSpellcaster) {
+                    foundry.utils.setProperty(fac, `flags.${MODULE_ID}.visitingSpellcaster`, false);
+                    foundry.utils.setProperty(fac, `flags.${MODULE_ID}.spellcasterDaysRemaining`, 0);
+                    gfChanged = true;
+                }
+            }
+            if (gfChanged) await actor.setFlag(MODULE_ID, "groupFacilities", gf);
+            for (const i of actor.items.filter(i => i.type === "facility" && i.getFlag(MODULE_ID, "visitingSpellcaster"))) {
+                await i.update({ [`flags.${MODULE_ID}.visitingSpellcaster`]: false, [`flags.${MODULE_ID}.spellcasterDaysRemaining`]: 0 });
+            }
+        }
+
+        let armoryMsg = numD8s > 0 ? `<p style="color: #2e7d32; font-size: 0.95em; margin-bottom: 4px;"><i class="fa-solid fa-shield-halved"></i> <b>${numD8s === 6 ? "Superior" : "Partial"} Equipment:</b> Defenders utilized armory stock, upgrading <b>${numD8s}</b> dice to d8s.</p>` : "";
+        let spellcasterMsg = departing.length > 0 ? `<p style="color: darkred; font-size: 0.95em; margin-top: 8px; border-top: 1px dashed rgba(255,0,0,0.3); padding-top: 5px;"><i class="fa-solid fa-person-running"></i> Visiting spellcaster(s) from <b>${departing.join(", ")}</b> departed immediately due to the chaos.</p>` : "";
+
+        let definitiveMsg = "";
+        const remaining = totalDefenders - deaths;
+        const nameList = deceasedNames.length > 1 ? deceasedNames.slice(0, -1).join(", ") + " and " + deceasedNames.slice(-1) : (deceasedNames[0] || "an unnamed defender");
+        
+        let diceHtml = "";
+        if (atkRoll) {
+            diceHtml = atkRoll.dice.flatMap(d => d.results.map(r => {
+                const isOne = r.result === 1;
+                const faces = d.faces;
+                return `<div style="position: relative; display: inline-block;">
+                    <span style="display: inline-block; width: 28px; height: 28px; line-height: 28px; text-align: center; background-image: url('icons/svg/d${faces}-grey.svg'); background-size: contain; background-repeat: no-repeat; color: ${isOne ? '#ff4d4d' : 'white'}; font-weight: bold; font-size: 0.95em; margin: 0 2px; filter: drop-shadow(0 0 1px black);" title="d${faces} result">${r.result}</span>
+                </div>`;
+            })).join("");
+        }
+
+        if (totalDefenders === 0) {
+            const specialFacs = facs.filter(f => {
+                const doc = f.doc;
+                const type = f.isFlag ? doc.system?.type?.value : doc.system?.type?.value;
+                const name = f.name.toLowerCase();
+                const basicNames = ["bedroom", "dining room", "parlor", "courtyard", "kitchen", "storage"];
+                return type !== "basic" && !name.includes("basic") && !basicNames.some(bn => name.includes(bn));
+            });
+
+            if (specialFacs.length > 0) {
+                const target = specialFacs[Math.floor(Math.random() * specialFacs.length)];
+                const progIncrement = (game.settings.get(MODULE_ID, "calculationMode") === "days") ? (game.settings.get(MODULE_ID, "daysPerTurn") || 7) : 1;
+                const updates = { [`flags.${MODULE_ID}.isDamaged`]: true, [`flags.${MODULE_ID}.repairProgress`]: 0, [`flags.${MODULE_ID}.repairTurns`]: progIncrement };
+                
+                if (target.isFlag) {
+                    const allGf = Array.from(actor.getFlag(MODULE_ID, "groupFacilities") || []);
+                    const gf = allGf.find(f => f._id === target.doc._id);
+                    if (gf) {
+                        if (!gf.flags) gf.flags = {}; if (!gf.flags[MODULE_ID]) gf.flags[MODULE_ID] = {};
+                        Object.assign(gf.flags[MODULE_ID], { isDamaged: true, repairProgress: 0, repairTurns: progIncrement });
+                        await actor.setFlag(MODULE_ID, "groupFacilities", allGf);
+                    }
+                } else await target.doc.update(updates);
+                definitiveMsg = `No defenders were present to hold the walls. The <b>${target.name}</b> has been damaged and forced to shut down.`;
+            } else {
+                definitiveMsg = `No defenders were present to hold the walls. A special facility has been damaged and forced to shut down.`;
+            }
+        } else if (deaths === 0) {
+            definitiveMsg = `No defenders died in the assault. <b>${remaining}</b> remain to guard the Bastion.`;
+        } else {
+            const dieText = deaths === 1 ? "defender died" : "defenders died";
+            const rememberText = deceasedNames.length ? `<b>${nameList}</b> will be remembered for their service. ` : "";
+            definitiveMsg = `<b>${deaths}</b> ${dieText} in the assault. ${rememberText}<b>${remaining}</b> remain to guard the Bastion.`;
+            if (remaining === 0) definitiveMsg += ` A special facility has been damaged and forced to shut down.`;
+        }
+
+        const html = `
+            <h3 style="border-bottom: 2px solid #a32a22; padding-bottom: 3px; margin-bottom: 8px; margin-top: 10px;"><i class="fa-solid fa-swords"></i> Bastion Attack!</h3>
+            ${armoryMsg}
+            <div style="margin-bottom: 8px;">${definitiveMsg}</div>
+            ${atkRoll ? `
+                <details style="margin: 10px 0; border: none; background: none;">
+                    <summary style="cursor: pointer; font-size: 0.9em; color: #666; font-weight: bold; outline: none; list-style: none;">
+                        <i class="fa-solid fa-dice" style="margin-right: 4px; opacity: 0.7;"></i> Defense Rolls (Formula: ${formula})
+                    </summary>
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 8px; padding-left: 5px;">
+                        ${diceHtml}
+                    </div>
+                </details>
+            ` : ""}
+            ${spellcasterMsg}`;
+        return { html, deaths, deceasedNames };
     }
 }
 
@@ -6226,54 +6508,10 @@ class EventResolverApp extends ApplicationV2 {
                     } else resultText = `<b>Resolved Manually.</b>`;
                 } else if (eventType === "attack") {
                     if (choice === "auto") {
-                        const MODULE_ID = "dnd-2024-bastion-manager";
-                        const facs = BastionManager._getActorFacilities(a);
-                        const armoryFac = facs.find(f => f.name.includes("Armory"));
-                        const aFlags = armoryFac ? (armoryFac.isFlag ? armoryFac.doc.flags?.[MODULE_ID] : armoryFac.doc.getFlag(MODULE_ID)) : null;
-                        const stockedCount = aFlags?.stockedCount || 0;
-                        const isStockedBool = aFlags?.isStocked || false;
-                        const totalDefenders = facs.reduce((sum, f) => {
-                            const d = f.isFlag ? f.doc.flags?.[MODULE_ID]?.defenders : f.doc.getFlag(MODULE_ID, "defenders");
-                            return sum + (d?.count || 0);
-                        }, 0);
-                        const isFullyStocked = isStockedBool && stockedCount >= totalDefenders;
-                        
-                        const formula = isFullyStocked ? "6d8" : "6d6";
-                        const atkRoll = await new Roll(formula).evaluate();
-                        const ones = atkRoll.dice[0].results.filter(d => d.result === 1).length;
-                        const rollsHtml = `<details style="margin-top: 4px; border: 1px solid rgba(255,255,255,0.1); border-radius: 3px; padding: 2px 5px;"><summary style="cursor: pointer; font-size: 0.85em; color: #bbb;">View Rolls</summary><span style="font-size: 1.1em; color: #eee; font-family: monospace; letter-spacing: 2px;">${atkRoll.dice[0].results.map(r => r.result).join(", ")}</span></details>`;
-                        
-                        let armoryMsg = isFullyStocked ? `<p style="color: #2e7d32; font-size: 0.85em; margin-bottom: 2px;"><i class="fa-solid fa-shield-halved"></i> <b>Stocked Armory:</b> Defenders utilized superior equipment (Rolled 6d8).</p>` : "";
-                        resultText = `${armoryMsg}Rolled ${formula}: <b>${ones}</b> Bastion Defender(s) died. If you have 0 Defenders, a random special facility shuts down (unusable next turn).${rollsHtml}`; 
-
                         if (a) {
-                             const gf = Array.from(a.getFlag(MODULE_ID, "groupFacilities") || []);
-                             let gfChanged = false;
-
-                             if (isStockedBool && armoryFac) {
-                                 if (armoryFac.isFlag) {
-                                     const target = gf.find(f => f._id === armoryFac.doc._id);
-                                     if (target) {
-                                         foundry.utils.setProperty(target, `flags.${MODULE_ID}.isStocked`, false);
-                                         foundry.utils.setProperty(target, `flags.${MODULE_ID}.stockedCount`, 0);
-                                         gfChanged = true;
-                                     }
-                                 } else {
-                                     await armoryFac.doc.update({ [`flags.${MODULE_ID}.isStocked`]: false, [`flags.${MODULE_ID}.stockedCount`]: 0 });
-                                 }
-                             }
-
-                             for (const fac of gf) {
-                                 if (fac.flags?.[MODULE_ID]?.visitingSpellcaster) {
-                                     foundry.utils.setProperty(fac, `flags.${MODULE_ID}.visitingSpellcaster`, false);
-                                     foundry.utils.setProperty(fac, `flags.${MODULE_ID}.spellcasterDaysRemaining`, 0);
-                                     gfChanged = true;
-                                 }
-                             }
-                             if (gfChanged) await a.setFlag(MODULE_ID, "groupFacilities", gf);
-                             for (const i of a.items.filter(i => i.type === "facility" && i.getFlag(MODULE_ID, "visitingSpellcaster"))) {
-                                 await i.update({ [`flags.${MODULE_ID}.visitingSpellcaster`]: false, [`flags.${MODULE_ID}.spellcasterDaysRemaining`]: 0 });
-                             }
+                             const facs = BastionManager._getActorFacilities(a);
+                             const attackRes = await BastionManager._resolveAttackAutomation(a, facs);
+                             resultText = attackRes.html;
                         }
                     } else resultText = `<b>Resolved Manually.</b>`;
                 } else if (eventType === "criminal") {
@@ -6313,18 +6551,80 @@ class EventResolverApp extends ApplicationV2 {
                     if (choice === "send") {
                         const input = container.querySelector('input.aid-count');
                         let count = parseInt(input?.value) || 1;
-                        if (count < 1) count = 1;
+                        const maxDefenders = parseInt(input?.max) || count;
+                        // Clamp the count between 1 and the available defenders
+                        count = Math.max(1, Math.min(count, maxDefenders));
+                        
                         const aidRoll = await new Roll(`${count}d6`).evaluate();
                         const dTotal = aidRoll.total;
-                        const aidRollsHtml = `<details style="margin-top: 4px; border: 1px solid rgba(255,255,255,0.1); border-radius: 3px; padding: 2px 5px;"><summary style="cursor: pointer; font-size: 0.85em; color: #bbb;">View Rolls</summary><span style="font-size: 1.1em; color: #eee; font-family: monospace; letter-spacing: 2px;">${aidRoll.dice[0].results.map(r => r.result).join(", ")}</span></details>`;
+                        const diceHtml = aidRoll.dice.flatMap(d => d.results.map(r => {
+                            return `<span style="display: inline-block; width: 28px; height: 28px; line-height: 28px; text-align: center; background-image: url('icons/svg/d${d.faces}-grey.svg'); background-size: contain; background-repeat: no-repeat; color: white; font-weight: bold; font-size: 0.9em; margin: 0 2px; filter: drop-shadow(0 0 1px black);">${r.result}</span>`;
+                        })).join("");
+
+                        const MODULE_ID = "dnd-2024-bastion-manager";
+                        let defenderUpdates = {};
                         if (dTotal >= 10) {
                             const reward = (await new Roll("1d6 * 100").evaluate()).total;
                             if(a) await a.update({"system.currency.gp": Math.floor((a.system.currency?.gp || 0) + reward)});
-                            resultText = `Sent ${count} Defender(s). Rolled <b>${dTotal}</b>. Problem solved, earned <b>${reward} GP</b>.${aidRollsHtml}`;
+                            resultText = `
+                                <h3 style="border-bottom: 2px solid #99c1f1; padding-bottom: 3px; margin-bottom: 8px;"><i class="fa-solid fa-handshake-angle"></i> Request for Aid</h3>
+                                <p>Sent ${count} Defender(s). Total: <b>${dTotal}</b>. Problem solved, earned <b>${reward} GP</b>.</p>
+                                <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-top: 5px;">${diceHtml}</div>
+                            `;
                         } else {
                             const reward = Math.floor((await new Roll("1d6 * 100").evaluate()).total / 2);
                             if(a) await a.update({"system.currency.gp": Math.floor((a.system.currency?.gp || 0) + reward)});
-                            resultText = `Sent ${count} Defender(s). Rolled <b>${dTotal}</b> (Failure). Problem solved, earned <b>${reward} GP</b> (half), and <b>1 Defender died</b>.${aidRollsHtml}`;
+                            // Deduct 1 defender from a random facility
+                            const facs = BastionManager._getActorFacilities(a, true);
+                            const defenderFacs = facs.filter(f => {
+                                const dData = f.isFlag ? f.doc.flags?.[MODULE_ID]?.defenders : f.doc.getFlag(MODULE_ID, "defenders");
+                                return (dData?.count || 0) > 0;
+                            });
+
+                            if (defenderFacs.length > 0) {
+                                const targetFac = defenderFacs[Math.floor(Math.random() * defenderFacs.length)];
+                                const dData = targetFac.isFlag ? targetFac.doc.flags?.[MODULE_ID]?.defenders : targetFac.doc.getFlag(MODULE_ID, "defenders");
+                                const currentCount = dData.count;
+                                const currentNames = dData.names;
+                                
+                                const deceasedName = currentNames.length > 0 ? currentNames[Math.floor(Math.random() * currentNames.length)] : "an unnamed defender";
+                                const updatedNames = currentNames.filter(n => n !== deceasedName); // Remove one instance
+
+                                if (targetFac.isFlag) {
+                                    const gf = Array.from(targetFac.owner.getFlag(MODULE_ID, "groupFacilities") || []);
+                                    const fac = gf.find(f => f._id === (targetFac.doc._id || targetFac.doc.id));
+                                    if (fac) {
+                                        foundry.utils.setProperty(fac, `flags.${MODULE_ID}.defenders`, {
+                                            count: Math.max(0, currentCount - 1),
+                                            names: updatedNames
+                                        });
+                                        await targetFac.owner.setFlag(MODULE_ID, "groupFacilities", gf);
+                                    }
+                                } else {
+                                    await targetFac.owner.items.get(targetFac.doc.id).setFlag(MODULE_ID, "defenders", {
+                                        count: Math.max(0, currentCount - 1),
+                                        names: updatedNames
+                                    });
+                                }
+                                // Add to graveyard
+                                const graveyard = Array.from(targetFac.owner.getFlag(MODULE_ID, "graveyard") || []);
+                                const turn = targetFac.owner.getFlag(MODULE_ID, "turnCount") || 0;
+                                const date = new Date().toLocaleDateString();
+                                graveyard.push({ name: deceasedName, date, turn });
+                                await targetFac.owner.setFlag(MODULE_ID, "graveyard", graveyard);
+
+                                resultText = `
+                                    <h3 style="border-bottom: 2px solid #f28b82; padding-bottom: 3px; margin-bottom: 8px;"><i class="fa-solid fa-handshake-angle"></i> Request for Aid</h3>
+                                    <p>Sent ${count} Defender(s). Total: <b>${dTotal}</b> (Failure). Problem solved, earned <b>${reward} GP</b> (half), and <b>1 Defender died</b> (${deceasedName}).</p>
+                                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-top: 5px;">${diceHtml}</div>
+                                `;
+                            } else {
+                                resultText = `
+                                    <h3 style="border-bottom: 2px solid #f28b82; padding-bottom: 3px; margin-bottom: 8px;"><i class="fa-solid fa-handshake-angle"></i> Request for Aid</h3>
+                                    <p>Sent ${count} Defender(s). Total: <b>${dTotal}</b> (Failure). Problem solved, earned <b>${reward} GP</b> (half), but no defenders were present to die.</p>
+                                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-top: 5px;">${diceHtml}</div>
+                                `;
+                            }
                         }
                     } else resultText = `You declined to send aid.`;
                 } else if (eventType === "treasure") {
