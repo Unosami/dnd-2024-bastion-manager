@@ -462,6 +462,15 @@ Hooks.once("init", () => {
         default: 7
     });
 
+    game.settings.register(MODULE_ID, "scaleWeekToTurnLength", {
+        name: "Scale Weekly Durations to Turn Length",
+        hint: "If enabled, facility durations described as 7, 14, or 21 days (weeks) will automatically scale to match your 'Days per Bastion Turn' setting.",
+        scope: "world",
+        config: true,
+        type: Boolean,
+        default: false
+    });
+
     game.settings.register(MODULE_ID, "autoNameHirelings", {
         name: "Auto-Generate Hireling Names",
         hint: "If enabled, leaving a hireling name field blank will result in a name being automatically generated.",
@@ -501,6 +510,15 @@ Hooks.once("init", () => {
     game.settings.register(MODULE_ID, "promptAllEvents", {
         name: "Prompt for Every Event",
         hint: "If enabled, the DM will be asked if they want to automate or manually resolve every single Bastion event that occurs.",
+        scope: "world",
+        config: true,
+        type: Boolean,
+        default: false
+    });
+
+    game.settings.register(MODULE_ID, "manualEventSelection", {
+        name: "Manually Choose Bastion Events",
+        hint: "If enabled, the DM will be prompted to select a specific event whenever a Bastion event occurs instead of rolling randomly.",
         scope: "world",
         config: true,
         type: Boolean,

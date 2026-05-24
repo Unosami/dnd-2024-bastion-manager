@@ -150,6 +150,18 @@
                         <span style="font-size: 0.85em; color: #555; font-style: italic; display: block;">(Hirelings: {{this.hirelings}})</span>
                     {{/if}}
 
+                    {{#if this.isArmory}}
+                        <div style="margin-top: 2px;">
+                            {{#if (and this.isStocked this.isFullyStocked)}}
+                                <span style="font-size: 0.7em; background: #2e7d32; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold;"><i class="fa-solid fa-shield-check"></i> STOCK-READY</span>
+                            {{else if this.stockedCount}}
+                                <span style="font-size: 0.7em; background: #ef6c00; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold;" title="Requires Trade order to equip new defenders."><i class="fa-solid fa-shield-halved"></i> PARTIAL ({{this.stockedCount}})</span>
+                            {{else}}
+                                <span style="font-size: 0.7em; background: #666; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold; opacity: 0.8;"><i class="fa-solid fa-shield-slash"></i> UNSTOCKED</span>
+                            {{/if}}
+                        </div>
+                    {{/if}}
+
                     <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 1px;">
                         <div style="font-size: 0.65em; color: #666;">
                             <i class="fa-solid fa-layer-group"></i> Layout: 
