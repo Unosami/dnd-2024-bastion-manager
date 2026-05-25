@@ -225,6 +225,21 @@
                                                 {{/if}}
                                             </div>
                                         {{/if}}
+                                {{#if (and this.isGreenhouse (not this.isBuilding))}}
+                                    <div style="font-size: 0.8em; color: #2e7d32; margin-top: 4px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 4px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <span><i class="fa-solid fa-seedling"></i> <b>Magical Fruits:</b> {{this.greenhouseFruitCount}} / 3</span>
+                                            <div style="display: flex; gap: 4px;">
+                                                {{#if (gt this.greenhouseFruitCount 0)}}
+                                                    <button type="button" data-action="consumeGreenhouseFruit" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 0 6px; font-size: 0.8em; height: 18px;" title="Harvest one fruit to inventory">Harvest</button>
+                                                {{/if}}
+                                                <button type="button" data-action="refreshGreenhouseFruits" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 0 4px; font-size: 0.8em; height: 18px;" title="Reset fruits (Daily at Dawn)"><i class="fa-solid fa-sun"></i></button>
+                                            </div>
+                                        </div>
+                                        <p style="font-size: 0.9em; opacity: 0.8; margin: 2px 0; font-style: italic;">Benefit: <i>Lesser Restoration</i>.</p>
+                                    </div>
+                                {{/if}}
+
                                         {{#if (and this.showArcaneFocusSelect (not this.isContinuingProject))}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                             <select class="arcane-study-focus-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
@@ -698,6 +713,19 @@
                                     <div style="font-size: 0.8em; color: #a32a22; margin-top: 2px;">
                                         <i class="fa-solid fa-wand-sparkles"></i> <b>Passive:</b> Spell slot refreshment (Level 5 or lower) after Short Rest.
                                     </div>
+                                {{/if}}
+
+                                {{#if this.isGreenhouse}}
+                                    {{#if this.showPoisonSelect}}
+                                        <div style="display: flex; align-items: center; gap: 4px; margin-top: 4px;">
+                                            <label style="font-size: 0.85em; flex-shrink: 0;">Poison:</label>
+                                            <select class="greenhouse-poison-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
+                                                {{#each poisonOptions}}
+                                                    <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.value}}</option>
+                                                {{/each}}
+                                            </select>
+                                        </div>
+                                    {{/if}}
                                 {{/if}}
 
                     {{#if (and (eq this.itemName "Workshop") (not this.isBuilding))}}

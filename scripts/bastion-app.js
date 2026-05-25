@@ -267,6 +267,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             toggleAdvanceMode: BastionManager.onToggleAdvanceMode,
             theaterAction: BastionManager.onTheaterAction,
             castSpellcasterSpell: BastionManager.onCastSpellcasterSpell,
+            consumeGreenhouseFruit: BastionManager.onConsumeGreenhouseFruit,
+            refreshGreenhouseFruits: BastionManager.onRefreshGreenhouseFruits,
             renameStableAnimal: BastionManager.onRenameStableAnimal,
             viewGraveyard: BastionManager.onViewGraveyard,
         }
@@ -791,13 +793,21 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 let label = formattedOrder;
                 if (formattedOrder === "Empower" && fac.name.includes("Theater")) label = "Empower: Theatrical Event";
                 if (formattedOrder === "Trade" && fac.name.includes("Armory")) label = "Trade: Stock Armory";
-                if (formattedOrder !== "Maintain") availableOrders.push(label);
+                if (formattedOrder === "Harvest" && fac.name.includes("Greenhouse")) {
+                    availableOrders.push("Harvest: Healing Herbs", "Harvest: Poison");
+                } else if (formattedOrder !== "Maintain") {
+                    availableOrders.push(label);
+                }
             }
 
             BASTION_ORDERS.forEach(order => {
                 let label = order;
                 if (order === "Empower" && fac.name.includes("Theater")) label = "Empower: Theatrical Event";
                 if (order === "Trade" && fac.name.includes("Armory")) label = "Trade: Stock Armory";
+                if (order === "Harvest" && fac.name.includes("Greenhouse")) {
+                    availableOrders.push("Harvest: Healing Herbs", "Harvest: Poison");
+                    return;
+                }
 
                 if (order === "Maintain" || availableOrders.includes(label)) return;
                 const lowerOrder = order.toLowerCase();
@@ -841,6 +851,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let currentUIOrder = (currentOrder === "Craft" && craftChoice) ? `Craft: ${craftChoice}` : currentOrder;
             if (currentOrder === "Empower" && fac.name.includes("Theater")) currentUIOrder = "Empower: Theatrical Event";
             if (currentOrder === "Trade" && fac.name.includes("Armory")) currentUIOrder = "Trade: Stock Armory";
+            if (currentOrder === "Harvest" && fac.name.includes("Greenhouse")) {
+                currentUIOrder = `Harvest: ${craftChoice || "Healing Herbs"}`;
+            }
             
             let safeOrder = availableOrders.includes(currentUIOrder) ? currentUIOrder : "Maintain";
             if (progress > 0) safeOrder = "Continue Project";
@@ -868,7 +881,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const isSacristyCrafting = fac.name.includes("Sacristy") && isCraftingOrPaused;
             const isScriptoriumCrafting = fac.name.includes("Scriptorium") && isCraftingOrPaused;
             const isGardenHarvesting = fac.name.includes("Garden") && safeOrder === "Harvest";
+            const isGreenhouseHarvesting = fac.name.includes("Greenhouse") && (safeOrder.startsWith("Harvest") || isPausedProjectInQueue || progress > 0);
             const isSmithyCrafting = fac.name.includes("Smithy") && isCraftingOrPaused;
+
+            const greenhousePoisonChoice = getFacFlag("greenhousePoisonChoice") || "Assassin's Blood";
+            const poisonOptions = ["Assassin's Blood", "Malice", "Pale Tincture", "Truth Serum"].map(p => ({ value: p, selected: p === greenhousePoisonChoice }));
 
             // --- Storehouse Specific Logic (Moved below safeOrder) ---
             const isStorehouse = fac.name.includes("Storehouse");
@@ -1135,6 +1152,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const isSanctuary = fac.name.includes("Sanctuary");
             const isScriptorium = fac.name.includes("Scriptorium");
             const isSacristy = fac.name.includes("Sacristy");
+            const isGreenhouse = fac.name.includes("Greenhouse");
 
             if (isArcaneStudy) {
                 const effCraft = (progress > 0) ? getFacFlag("craftChoice") : storedCraftChoice;
@@ -1193,6 +1211,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         currentGoldCost = opt.price;
                     }
                 }
+            } else if (isGreenhouse) {
+                currentMaxCraftTurns = calculationMode === "days" ? BastionManager._getEffectiveDays(7) : 1;
             }
 
             // Build displayQueue for Logistics Panel
@@ -1206,6 +1226,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 else if (isSanctuary) activeLabel = sacredFocusChoice;
                 else if (isSacristy) activeLabel = (craftChoice === "Magic Item (Relic)") ? relicItemChoice : (craftChoice === "Holy Water" ? "Holy Water" : "");
                 else if (fac.name.includes("Scriptorium")) activeLabel = (craftChoice === "Spell Scroll") ? scrollChoice : (craftChoice === "Book Replica" ? "Book Replica" : "Paperwork");
+                else if (isGreenhouse) activeLabel = (craftChoice === "Harvest: Poison") ? greenhousePoisonChoice : "Potion of Healing (Greater)";
 
                 displayQueue.push({
                     label: activeLabel || craftChoice,
@@ -1332,6 +1353,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 sacredFocusChoice: sacredFocusChoice, // This is the currently selected sacred focus in the UI
                 sacredFocusOptions: sacredFocusOptions,
                 sacredFocusUuid: sacredFocusUuid,
+                isGreenhouse,
+                isGreenhouseHarvesting,
+                greenhousePoisonChoice,
+                greenhouseFruitCount: getFacFlag("fruitCount") ?? 3,
+                showPoisonSelect: isGreenhouseHarvesting && (craftChoice === "Harvest: Poison" || (isPausedProjectInQueue && firstQueueItem?.craftType === "Harvest: Poison")),
+                poisonOptions,
                 progressLabel: progressLabel,
                 isGardenHarvesting: isGardenHarvesting,
                 isVastGarden: isVastGarden,
@@ -1469,7 +1496,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
         facilities.forEach(fac => {
             // Only populate utilities from finished facilities
-            if (fac.isBuilding) return;
+            if (!fac || fac.isBuilding) return;
 
             const name = fac.itemName || "";
             const subType = fac.subType || "";
@@ -1678,16 +1705,16 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             }
         }
 
-        const specialFacilitiesBuilt = facilities.filter(f => !f.isBasic);
-        const basicFacilitiesBuilt = facilities.filter(f => f.isBasic);
-        const isNewBastion = (this.actor.type === "character" || this.actor.type === "npc") && facilities.filter(f => !f.isInherited).length === 0;
+        const specialFacilitiesBuilt = facilities.filter(f => f && !f.isBasic);
+        const basicFacilitiesBuilt = facilities.filter(f => f && f.isBasic);
+        const isNewBastion = (this.actor.type === "character" || this.actor.type === "npc") && facilities.filter(f => f && !f.isInherited).length === 0;
         
         const allActiveQueues = facilities.filter(f => f.craftQueue?.length > 0);
 
         // Calculate Expected Outputs for Next Turn
         const expectedOutputs = [];
         for (const fac of facilities) {
-            if (fac.isBuilding) continue;
+            if (!fac || fac.isBuilding) continue;
 
             const currentOrder = fac.orderOptions?.find(o => o.selected)?.value;
             const isCraftOrder = currentOrder?.startsWith("Craft");
@@ -1979,6 +2006,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
                 if (val === "Empower: Theatrical Event") {
                     newOrder = "Empower";
+                } else if (val.startsWith("Harvest: ")) {
+                    newOrder = "Harvest";
                 } else if (val === "Trade: Stock Armory") {
                     newOrder = "Trade";
                 } else if (val.includes(": ")) {
@@ -1996,8 +2025,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 if (facContext && facContext.progress > 0 && facContext.safeOrder !== val) {
                     const pausedProject = {
                         craftType: facContext.craftChoice,
-                        choice: facContext.activeProjectChoice || facContext.magicItemChoice || facContext.focusChoice || facContext.sacredFocusChoice || facContext.smithyItemChoice || facContext.armamentItemChoice || facContext.workshopItemChoice || facContext.relicItemChoice || facContext.scrollChoice || "Blank Book",
-                        label: facContext.activeProjectChoice || facContext.magicItemChoice || facContext.focusChoice || facContext.sacredFocusChoice || facContext.smithyItemChoice || facContext.armamentItemChoice || facContext.workshopItemChoice || facContext.relicItemChoice || facContext.scrollChoice || "Blank Book",
+                        choice: facContext.activeProjectChoice || facContext.magicItemChoice || facContext.focusChoice || facContext.sacredFocusChoice || facContext.smithyItemChoice || facContext.armamentItemChoice || facContext.workshopItemChoice || facContext.relicItemChoice || facContext.scrollChoice || facContext.greenhousePoisonChoice || "Blank Book",
+                        label: facContext.activeProjectChoice || facContext.magicItemChoice || facContext.focusChoice || facContext.sacredFocusChoice || facContext.smithyItemChoice || facContext.armamentItemChoice || facContext.workshopItemChoice || facContext.relicItemChoice || facContext.scrollChoice || facContext.greenhousePoisonChoice || "Blank Book",
                         goldCost: facContext.currentGoldCost || 0,
                         timeCost: facContext.maxCraftTurns || 1,
                         currentProgress: facContext.progress || 0,
@@ -2194,6 +2223,23 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 } else {
                     await this.actor.items.get(ds.itemId)?.setFlag(MODULE_ID, "stableTransferChoice", ev.target.value);
                 }
+            });
+        });
+
+        this.element.querySelectorAll('.greenhouse-poison-select').forEach(select => {
+            select.addEventListener('change', async (ev) => {
+                const ds = ev.target.dataset;
+                const val = ev.target.value;
+                if (ds.isFlag === "true") {
+                    const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+                    const fac = gf.find(f => f._id === ds.itemId);
+                    if (fac) foundry.utils.setProperty(fac, `flags.${MODULE_ID}.greenhousePoisonChoice`, val);
+                    await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+                } else {
+                    const item = this.actor.items.get(ds.itemId);
+                    if (item) await item.setFlag(MODULE_ID, "greenhousePoisonChoice", val);
+                }
+                this.render();
             });
         });
 
@@ -2640,8 +2686,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (facContext && facContext.craftChoice) {
             pausedProject = {
                 craftType: facContext.craftChoice,
-                choice: facContext.activeProjectChoice || facContext.magicItemChoice || facContext.focusChoice || facContext.sacredFocusChoice || facContext.smithyItemChoice || facContext.armamentItemChoice || facContext.workshopItemChoice || facContext.relicItemChoice || facContext.scrollChoice || "Blank Book",
-                label: facContext.activeProjectChoice || facContext.magicItemChoice || facContext.focusChoice || facContext.sacredFocusChoice || facContext.smithyItemChoice || facContext.armamentItemChoice || facContext.workshopItemChoice || facContext.relicItemChoice || facContext.scrollChoice || "Blank Book",
+                choice: facContext.activeProjectChoice || facContext.magicItemChoice || facContext.focusChoice || facContext.sacredFocusChoice || facContext.smithyItemChoice || facContext.armamentItemChoice || facContext.workshopItemChoice || facContext.relicItemChoice || facContext.scrollChoice || facContext.greenhousePoisonChoice || "Blank Book",
+                label: facContext.activeProjectChoice || facContext.magicItemChoice || facContext.focusChoice || facContext.sacredFocusChoice || facContext.smithyItemChoice || facContext.armamentItemChoice || facContext.workshopItemChoice || facContext.relicItemChoice || facContext.scrollChoice || facContext.greenhousePoisonChoice || "Blank Book",
                 goldCost: facContext.currentGoldCost || 0,
                 timeCost: facContext.maxCraftTurns || 1,
                 currentProgress: facContext.progress || 0,
@@ -2660,12 +2706,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             [`flags.${MODULE_ID}.craftQueue`]: queue,
             // Clear all possible sub-choices first
             [`flags.${MODULE_ID}.focusChoice`]: "", [`flags.${MODULE_ID}.magicItemChoice`]: "", [`flags.${MODULE_ID}.sacredFocusChoice`]: "", [`flags.${MODULE_ID}.relicItemChoice`]: "", [`flags.${MODULE_ID}.scrollChoice`]: "",
-            [`flags.${MODULE_ID}.smithyItemChoice`]: "", [`flags.${MODULE_ID}.armamentItemChoice`]: "", [`flags.${MODULE_ID}.workshopItemChoice`]: ""
+            [`flags.${MODULE_ID}.smithyItemChoice`]: "", [`flags.${MODULE_ID}.armamentItemChoice`]: "", [`flags.${MODULE_ID}.workshopItemChoice`]: "", [`flags.${MODULE_ID}.greenhousePoisonChoice`]: ""
         };
             // Added scrollChoice
             
         // Map the item's choice back to the facility's specific selection flag
-        const choiceMap = { "Arcane Focus": "focusChoice", "Magic Item (Arcana)": "magicItemChoice", "Druidic Focus": "sacredFocusChoice", "Holy Symbol": "sacredFocusChoice", "Smith's Tools": "smithyItemChoice", "Magic Item (Armament)": "armamentItemChoice", "Adventuring Gear": "workshopItemChoice", "Magic Item (Implement)": "workshopItemChoice", "Magic Item (Relic)": "relicItemChoice", "Spell Scroll": "scrollChoice" };
+        const choiceMap = { "Arcane Focus": "focusChoice", "Magic Item (Arcana)": "magicItemChoice", "Druidic Focus": "sacredFocusChoice", "Holy Symbol": "sacredFocusChoice", "Smith's Tools": "smithyItemChoice", "Magic Item (Armament)": "armamentItemChoice", "Adventuring Gear": "workshopItemChoice", "Magic Item (Implement)": "workshopItemChoice", "Magic Item (Relic)": "relicItemChoice", "Spell Scroll": "scrollChoice", "Harvest: Poison": "greenhousePoisonChoice" };
         if (choiceMap[promotedItem.craftType]) updates[`flags.${MODULE_ID}.${choiceMap[promotedItem.craftType]}`] = promotedItem.choice;
 
         if (isFlag) {
@@ -2699,8 +2745,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             
             const pausedProject = {
                 craftType: fac.craftChoice,
-                choice: fac.activeProjectChoice || fac.magicItemChoice || fac.focusChoice || fac.sacredFocusChoice || fac.smithyItemChoice || fac.armamentItemChoice || fac.workshopItemChoice || fac.relicItemChoice || fac.scrollChoice || "Blank Book",
-                label: fac.activeProjectChoice || fac.magicItemChoice || fac.focusChoice || fac.sacredFocusChoice || fac.smithyItemChoice || fac.armamentItemChoice || fac.workshopItemChoice || fac.relicItemChoice || fac.scrollChoice || "Blank Book",
+                choice: fac.activeProjectChoice || fac.magicItemChoice || fac.focusChoice || fac.sacredFocusChoice || fac.smithyItemChoice || fac.armamentItemChoice || fac.workshopItemChoice || fac.relicItemChoice || fac.scrollChoice || fac.greenhousePoisonChoice || "Blank Book",
+                label: fac.activeProjectChoice || fac.magicItemChoice || fac.focusChoice || fac.sacredFocusChoice || fac.smithyItemChoice || fac.armamentItemChoice || fac.workshopItemChoice || fac.relicItemChoice || fac.scrollChoice || fac.greenhousePoisonChoice || "Blank Book",
                 goldCost: fac.currentGoldCost || 0,
                 timeCost: fac.maxCraftTurns || 1,
                 currentProgress: fac.progress,
@@ -2722,6 +2768,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 [`flags.${MODULE_ID}.workshopItemChoice`]: "",
                 [`flags.${MODULE_ID}.relicItemChoice`]: "",
                 [`flags.${MODULE_ID}.scrollChoice`]: "",
+                [`flags.${MODULE_ID}.greenhousePoisonChoice`]: "",
                 [`flags.${MODULE_ID}.craftQueue`]: currentQueue
             };
 
@@ -3043,6 +3090,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 else if (craftChoice === "Paperwork") choice = getFlag("paperworkTitle");
             } else if (name.includes("Stable")) {
                 choice = getFlag("stableItemChoice");
+            } else if (name.includes("Greenhouse")) {
+                if (craftChoice === "Harvest: Poison") choice = getFlag("greenhousePoisonChoice");
+                else choice = "Potion of Healing (Greater)";
             } else if (name.includes("Sanctuary")) {
             choice = getFlag("sacredFocusChoice");
         }
@@ -3140,7 +3190,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 [`flags.${MODULE_ID}.focusChoice`]: "", [`flags.${MODULE_ID}.magicItemChoice`]: "",
                 [`flags.${MODULE_ID}.sacredFocusChoice`]: "", [`flags.${MODULE_ID}.smithyItemChoice`]: "",
                 [`flags.${MODULE_ID}.armamentItemChoice`]: "", [`flags.${MODULE_ID}.workshopItemChoice`]: "",
-                [`flags.${MODULE_ID}.relicItemChoice`]: "", [`flags.${MODULE_ID}.scrollChoice`]: "",
+                [`flags.${MODULE_ID}.relicItemChoice`]: "", [`flags.${MODULE_ID}.scrollChoice`]: "", [`flags.${MODULE_ID}.greenhousePoisonChoice`]: "",
                 [`flags.${MODULE_ID}.bookTitle`]: "", [`flags.${MODULE_ID}.paperworkTitle`]: "", [`flags.${MODULE_ID}.paperworkQty`]: 50
             }; // Added scrollChoice
 
@@ -4442,6 +4492,74 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         ui.notifications.info(`<b>${spellcasterName}</b> has cast their spell and departed.`);
     }
 
+    static async onConsumeGreenhouseFruit(event, target) {
+        const ds = target.dataset;
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        const actor = this.actor;
+
+        let fac;
+        if (ds.isFlag === "true") {
+            const gf = actor.getFlag(MODULE_ID, "groupFacilities") || [];
+            fac = gf.find(f => f._id === ds.itemId);
+        } else {
+            fac = actor.items.get(ds.itemId);
+        }
+        if (!fac) return;
+
+        const getFlag = (key) => ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.[key] : fac.getFlag(MODULE_ID, key);
+        const currentCount = getFlag("fruitCount") ?? 3;
+
+        if (currentCount <= 0) return ui.notifications.warn("There are no fruits left to harvest today.");
+
+        // Fetch Item from compendium
+        const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+        const entry = (await outPack?.getIndex())?.find(i => i.name === "Magical Fruit");
+        if (entry) {
+            const doc = await outPack.getDocument(entry._id);
+            await actor.createEmbeddedDocuments("Item", [doc.toObject()]);
+        } else {
+            // Fallback if compendium item missing
+            await actor.createEmbeddedDocuments("Item", [{
+                name: "Magical Fruit", type: "consumable", img: "icons/consumables/fruit/berry-leaf-clover-green.webp",
+                system: { description: { value: "A creature that eats this fruit gains the benefit of a Lesser Restoration spell. Magic expires in 24 hours." }, quantity: 1 }
+            }]);
+        }
+
+        const newCount = currentCount - 1;
+        if (ds.isFlag === "true") {
+            const gf = actor.getFlag(MODULE_ID, "groupFacilities") || [];
+            const targetFac = gf.find(f => f._id === ds.itemId);
+            foundry.utils.setProperty(targetFac, `flags.${MODULE_ID}.fruitCount`, newCount);
+            await actor.setFlag(MODULE_ID, "groupFacilities", gf);
+        } else {
+            await fac.setFlag(MODULE_ID, "fruitCount", newCount);
+        }
+
+        ui.notifications.info("Harvested 1 Magical Fruit.");
+        this.render();
+    }
+
+    static async onRefreshGreenhouseFruits(event, target) {
+        const ds = target.dataset;
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        const actor = this.actor;
+
+        if (ds.isFlag === "true") {
+            const gf = actor.getFlag(MODULE_ID, "groupFacilities") || [];
+            const fac = gf.find(f => f._id === ds.itemId);
+            if (fac) {
+                foundry.utils.setProperty(fac, `flags.${MODULE_ID}.fruitCount`, 3);
+                await actor.setFlag(MODULE_ID, "groupFacilities", gf);
+            }
+        } else {
+            const item = actor.items.get(ds.itemId);
+            if (item) await item.setFlag(MODULE_ID, "fruitCount", 3);
+        }
+
+        ui.notifications.info("Dawn arrives: The magical plant has regrown its fruits.");
+        this.render();
+    }
+
     static async onToggleReady(event, target) {
         const MODULE_ID = "dnd-2024-bastion-manager";
         const current = this.actor.getFlag(MODULE_ID, "isReady") || false;
@@ -4772,6 +4890,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let paperworkTitle = getFacFlag("paperworkTitle");
             let paperworkQty = getFacFlag("paperworkQty");
             let stableItemChoice = getFacFlag("stableItemChoice");
+            let greenhouseFruitCount = getFacFlag("fruitCount") ?? 3;
+            let greenhousePoisonChoice = getFacFlag("greenhousePoisonChoice");
             let theaterPhase = getFacFlag("theaterPhase") || "Idle";
             let theaterProgress = Number(getFacFlag("theaterProgress") || 0);
             let stableTradeChoice = getFacFlag("stableTradeChoice");
@@ -4811,6 +4931,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     sacredFocusChoice = next.choice;
                 } else if (facName.includes("Sacristy")) {
                     relicItemChoice = next.choice;
+                    } else if (facName.includes("Greenhouse")) {
+                        if (craftChoice === "Harvest: Poison") greenhousePoisonChoice = next.choice;
+                        else craftChoice = "Harvest: Healing Herbs";
                   } else if (facName.includes("Scriptorium")) {
                     if (craftChoice === "Spell Scroll") scrollChoice = next.choice;
                     else if (craftChoice === "Book Replica") bookTitle = next.choice;
@@ -4893,6 +5016,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     else if (facDoc.name.includes("Smithy")) { if (craftChoice === "Smith's Tools") smithyItemChoice = resumedProject.choice; else armamentItemChoice = resumedProject.choice; }
                     else if (facDoc.name.includes("Sanctuary")) { sacredFocusChoice = resumedProject.choice; }
                     else if (facDoc.name.includes("Workshop")) { workshopItemChoice = resumedProject.choice; }
+                    else if (facDoc.name.includes("Greenhouse")) {
+                        if (craftChoice === "Harvest: Poison") greenhousePoisonChoice = resumedProject.choice;
+                    }
                     else if (facDoc.name.includes("Scriptorium")) {
                         if (craftChoice === "Spell Scroll") scrollChoice = resumedProject.choice;
                         else if (craftChoice === "Book Replica") bookTitle = resumedProject.choice;
@@ -5048,13 +5174,19 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         localGold += tradeRes.gold; currentResultText = tradeRes.text.replace("The hirelings", getPs());
                     }
                 } else if (order === "Harvest") {
-                    let harvestRes = await BastionManager._handleHarvest(facDoc.name, subType, facEntry, false, getH());
-                    if (harvestRes.item) items.push(harvestRes.item);
-                    currentResultText = harvestRes.text;
-                    if (facDoc.name.includes("Garden") && facSize === "Vast" && facSubType2) {
-                        let harvestRes2 = await BastionManager._handleHarvest(facDoc.name, facSubType2, facEntry, true, getH());
-                        if (harvestRes2.item) items.push(harvestRes2.item);
-                        currentResultText += ` and ${harvestRes2.text}`;
+                    if (facName.includes("Greenhouse")) {
+                        // Treat Greenhouse Harvest like Crafting with progress
+                        order = "Craft"; i--; // Re-inject into craft logic loop
+                        continue;
+                    } else {
+                        let harvestRes = await BastionManager._handleHarvest(facDoc.name, subType, facEntry, false, getH());
+                        if (harvestRes.item) items.push(harvestRes.item);
+                        currentResultText = harvestRes.text;
+                        if (facDoc.name.includes("Garden") && facSize === "Vast" && facSubType2) {
+                            let harvestRes2 = await BastionManager._handleHarvest(facDoc.name, facSubType2, facEntry, true, getH());
+                            if (harvestRes2.item) items.push(harvestRes2.item);
+                            currentResultText += ` and ${harvestRes2.text}`;
+                        }
                     }
                 } else if (order === "Research") {
                     let resRes = await BastionManager._handleResearch(facDoc.name, facEntry, subType, getH());
@@ -5072,6 +5204,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                             else magicItemChoice = next.choice;
                         } else if (facName.includes("Workshop")) {
                             workshopItemChoice = next.choice;
+                        } else if (facName.includes("Greenhouse")) {
+                            if (craftChoice === "Harvest: Poison") greenhousePoisonChoice = next.choice;
                         } else if (facName.includes("Smithy")) {
                             if (craftChoice === "Smith's Tools") smithyItemChoice = next.choice;
                             else armamentItemChoice = next.choice;
@@ -5099,8 +5233,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     const isWorkshop = facName.includes("Workshop");
                     const isSacristy = facName.includes("Sacristy");
                     const isScriptorium = facName.includes("Scriptorium");
+                    const isGreenhouse = facName.includes("Greenhouse");
                     
-                    const isMagicCraft = ["Magic Item (Arcana)", "Magic Item (Armament)", "Magic Item (Implement)", "Magic Item (Relic)", "Spell Scroll"].includes(craftChoice);
+                    const isMagicCraft = ["Magic Item (Arcana)", "Magic Item (Armament)", "Magic Item (Implement)", "Magic Item (Relic)", "Spell Scroll", "Harvest: Healing Herbs", "Harvest: Poison"].includes(craftChoice);
                     const isMundaneLongCraft = (isSmithy && craftChoice === "Smith's Tools") || (isWorkshop && craftChoice === "Adventuring Gear");
 
                     // 1. Determine Costs and Time Requirements
@@ -5115,6 +5250,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                                        (isScriptorium && craftChoice === "Spell Scroll") ? scrollChoice : // Scriptorium
                                        (isScriptorium && craftChoice === "Book Replica") ? bookTitle :
                                        (isScriptorium && craftChoice === "Paperwork") ? paperworkTitle :
+                                       (isGreenhouse && craftChoice === "Harvest: Poison") ? greenhousePoisonChoice :
                                        (isSacristy && craftChoice === "Magic Item (Relic)") ? relicItemChoice :
                                        (isScriptorium && craftChoice === "Spell Scroll") ? scrollChoice : craftChoice;
                     
@@ -5143,6 +5279,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                             const days = reqs.days;
                             materialCost = reqs.gp;
                             turnsNeeded = calculationMode === "days" ? days : Math.max(1, Math.ceil(days / daysPerTurn));
+                        } else if (isGreenhouse) {
+                            materialCost = 0;
+                            turnsNeeded = calculationMode === "days" ? BastionManager._getEffectiveDays(7) : 1;
                         } else {
                             let p = entry?.system?.price?.value ?? entry?.system?.price ?? 0;
                             if (typeof p === "string") p = parseFloat(p.replace(/[^0-9.]/g, ""));
@@ -5208,6 +5347,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                             else if (isWorkshop) workshopItemChoice = next.choice;
                             else if (isSanctuary) sacredFocusChoice = next.choice;
                             else if (isSacristy) relicItemChoice = next.choice;
+                            else if (isGreenhouse && craftChoice === "Harvest: Poison") greenhousePoisonChoice = next.choice;
                             if (isScriptorium && craftChoice === "Spell Scroll") scrollChoice = next.choice;
                             if (isScriptorium && craftChoice === "Book Replica") bookTitle = next.choice;
                             if (isScriptorium && craftChoice === "Paperwork") paperworkTitle = next.choice;
@@ -5297,10 +5437,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         targetSubType2, upgradeTurns, smithyItemChoice, armamentItemChoice,
                         relicItemChoice, scrollChoice, activeProjectChoice, craftQueue, storedGp, autoNextAction,
                         bookTitle, paperworkTitle, paperworkQty,
+                        greenhousePoisonChoice,
                         theaterPhase, theaterProgress,
                         stableItemChoice, stableTradeChoice, stableTransferType, stableTransferChoice,
                         stableAnimals: facEntry.stableAnimals || stableAnimals,
                         isDamaged, repairProgress, repairTurns,
+                        // Automatic Fruit Refresh: A turn is 7 days, 
+                        // so fruits always reset to full during turn advancement.
+                        fruitCount: facName.includes("Greenhouse") ? 3 : greenhouseFruitCount,
                         stockedCount: facEntry.stockedCount ?? (getFacFlag("stockedCount") || 0),
                         isStocked: facEntry.isStocked ?? isStocked,
                         trainerType,
@@ -5335,6 +5479,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     [`flags.${MODULE_ID}.craftQueue`]: craftQueue,
                     [`flags.${MODULE_ID}.relicItemChoice`]: relicItemChoice,
                     [`flags.${MODULE_ID}.scrollChoice`]: scrollChoice, // Added scrollChoice
+                    [`flags.${MODULE_ID}.greenhousePoisonChoice`]: greenhousePoisonChoice,
                     [`flags.${MODULE_ID}.bookTitle`]: bookTitle,
                     [`flags.${MODULE_ID}.paperworkTitle`]: paperworkTitle,
                     [`flags.${MODULE_ID}.paperworkQty`]: paperworkQty,
@@ -5347,6 +5492,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     [`flags.${MODULE_ID}.stableTransferChoice`]: stableTransferChoice,
                     [`flags.${MODULE_ID}.stableAnimals`]: facEntry.stableAnimals || stableAnimals,
                     [`flags.${MODULE_ID}.stockedCount`]: facEntry.stockedCount ?? (getFacFlag("stockedCount") || 0),
+                    [`flags.${MODULE_ID}.fruitCount`]: facName.includes("Greenhouse") ? 3 : greenhouseFruitCount,
                     [`flags.${MODULE_ID}.isStocked`]: facEntry.isStocked ?? isStocked,
                     [`flags.${MODULE_ID}.isDamaged`]: isDamaged,
                     [`flags.${MODULE_ID}.repairProgress`]: repairProgress,
@@ -5637,6 +5783,25 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 return { text: `${hString} finishes producing the requested paperwork.` };
             }
             return { text: `Executed Craft order.` };
+        } else if (baseName.includes("Greenhouse")) {
+            const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+            if (!outPack) return { text: "Error: Output compendium missing." };
+            const index = await outPack.getIndex();
+
+            if (craftChoice === "Harvest: Healing Herbs") {
+                const entry = index.find(i => i.name === "Potion of Healing (Greater)");
+                if (entry) {
+                    const doc = await outPack.getDocument(entry._id);
+                    return { text: `${hString} has completed the harvest of a <b>Potion of Healing (Greater)</b>.`, item: doc.toObject() };
+                }
+            } else if (craftChoice === "Harvest: Poison") {
+                const poisonName = itemChoiceOverride;
+                const entry = index.find(i => i.name.toLowerCase() === poisonName?.toLowerCase());
+                if (entry) {
+                    const doc = await outPack.getDocument(entry._id);
+                    return { text: `${hString} has successfully extracted one application of <b>${poisonName}</b>.`, item: doc.toObject() };
+                }
+            }
         }
 
         return { text: `Executed Craft order.` };

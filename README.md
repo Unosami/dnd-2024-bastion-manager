@@ -1,6 +1,6 @@
 <h1>README</h1>
 <h3>Difficult to Automate</h3>
-Some facilities have systems that were difficult to automate, or introduced unneeded complexity when trying to do so. Below are some facilities that were left relatively simple and why.
+---
 
 Teleportation Circle
 - Populating a list of all possible spells the Spellcaster can cast runs up against SRD.
