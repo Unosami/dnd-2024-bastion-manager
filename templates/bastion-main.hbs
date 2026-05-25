@@ -158,6 +158,24 @@
                         <span style="font-size: 0.85em; color: #555; font-style: italic; display: block;">(Hirelings: {{this.hirelings}})</span>
                     {{/if}}
 
+                    {{#if (and this.isGreenhouse (not this.isBuilding))}}
+                        <div style="font-size: 0.8em; color: #2e7d32; margin-top: 4px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 4px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span><i class="fa-solid fa-seedling"></i> <b>Magical Fruits:</b> {{this.greenhouseFruitCount}} / 3</span>
+                                <div style="display: flex; gap: 4px;">
+                                    {{#if this.fruitUuid}}
+                                        <button type="button" data-action="previewItem" data-uuid="{{this.fruitUuid}}" style="width: auto; padding: 0 4px; font-size: 0.8em; height: 18px;" title="View Fruit Details"><i class="fa-solid fa-eye"></i></button>
+                                    {{/if}}
+                                    {{#if (gt this.greenhouseFruitCount 0)}}
+                                        <button type="button" data-action="consumeGreenhouseFruit" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 0 6px; font-size: 0.8em; height: 18px;" title="Harvest one fruit to inventory">Harvest</button>
+                                    {{/if}}
+                                    <button type="button" data-action="refreshGreenhouseFruits" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 0 4px; font-size: 0.8em; height: 18px;" title="Reset fruits (Daily at Dawn)"><i class="fa-solid fa-sun"></i></button>
+                                </div>
+                            </div>
+                            <p style="font-size: 0.9em; opacity: 0.8; margin: 2px 0; font-style: italic;">Benefit: <i>Lesser Restoration</i>.</p>
+                        </div>
+                    {{/if}}
+
                     {{#if this.isArmory}}
                         <div style="margin-top: 2px;">
                             {{#if (and this.isStocked this.isFullyStocked)}}
@@ -225,21 +243,6 @@
                                                 {{/if}}
                                             </div>
                                         {{/if}}
-                                {{#if (and this.isGreenhouse (not this.isBuilding))}}
-                                    <div style="font-size: 0.8em; color: #2e7d32; margin-top: 4px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 4px;">
-                                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                                            <span><i class="fa-solid fa-seedling"></i> <b>Magical Fruits:</b> {{this.greenhouseFruitCount}} / 3</span>
-                                            <div style="display: flex; gap: 4px;">
-                                                {{#if (gt this.greenhouseFruitCount 0)}}
-                                                    <button type="button" data-action="consumeGreenhouseFruit" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 0 6px; font-size: 0.8em; height: 18px;" title="Harvest one fruit to inventory">Harvest</button>
-                                                {{/if}}
-                                                <button type="button" data-action="refreshGreenhouseFruits" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 0 4px; font-size: 0.8em; height: 18px;" title="Reset fruits (Daily at Dawn)"><i class="fa-solid fa-sun"></i></button>
-                                            </div>
-                                        </div>
-                                        <p style="font-size: 0.9em; opacity: 0.8; margin: 2px 0; font-style: italic;">Benefit: <i>Lesser Restoration</i>.</p>
-                                    </div>
-                                {{/if}}
-
                                         {{#if (and this.showArcaneFocusSelect (not this.isContinuingProject))}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                             <select class="arcane-study-focus-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
@@ -724,7 +727,19 @@
                                                     <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.value}}</option>
                                                 {{/each}}
                                             </select>
+                                            {{#if this.greenhousePoisonUuid}}
+                                                <button type="button" data-action="previewItem" data-uuid="{{this.greenhousePoisonUuid}}" style="width: auto; padding: 0 4px; font-size: 0.8em; height: 18px;" title="View Poison Details"><i class="fa-solid fa-eye"></i></button>
+                                            {{/if}}
                                         </div>
+                                    {{else}}
+                                        {{#if (eq this.craftChoice "Healing Herbs")}}
+                                            {{#if this.greenhouseHealingHerbsUuid}}
+                                                <div style="font-size: 0.8em; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                                                    <i class="fa-solid fa-mortar-pestle"></i> <b>Harvesting:</b> Potion of Greater Healing
+                                                    <button type="button" data-action="previewItem" data-uuid="{{this.greenhouseHealingHerbsUuid}}" style="width: auto; padding: 0 4px; font-size: 0.8em; height: 18px;" title="View Potion Details"><i class="fa-solid fa-eye"></i></button>
+                                                </div>
+                                            {{/if}}
+                                        {{/if}}
                                     {{/if}}
                                 {{/if}}
 
@@ -749,7 +764,7 @@
                                     <span class="spellcaster-tag" style="background: rgba(0,100,200,0.2); padding: 2px 8px; border-radius: 10px; border: 1px solid #0078d4; color: #82cfff;">
                                         <b>{{#if this.spellcasterName}}{{this.spellcasterName}}{{else}}Friendly Wizard{{/if}}</b>
                                     </span>
-                                    <span style="color: #bbb; font-style: italic;">({{this.spellcasterDaysRemaining}} days left, Max Level: {{this.maxSpellLevel}})</span>
+                                    <span style="color: #bbb; font-style: italic;">({{this.spellcasterDisplayTime}} {{this.spellcasterTimeUnit}} left, Max Level: {{this.maxSpellLevel}})</span>
                                 </div>
                             {{else}}
                                 <span style="font-style: italic; opacity: 0.6;">None present</span>

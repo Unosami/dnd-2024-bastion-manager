@@ -617,7 +617,13 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         // Dynamic Garden Configuration from Compendium
         let dynamicGardenTypes = [];
         const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+        const outIndex = outPack ? await outPack.getIndex({fields: ["name", "uuid", "folder", "system.rarity", "system.price", "system.quantity", "system.requirements.level", "system.size", "system.properties", "system.description.value"]}) : [];
         let gardenRoot = null;
+        let greenhouseRoot = null;
+        let greenhouseFolderIds = [];
+        let poisonsFolderId = null;
+        let healingFolderId = null;
+        let fruitFolderId = null;
 
         if (outPack?.folders) {
             gardenRoot = outPack.folders.get("HYjssa08njsoKbTO") || outPack.folders.find(f => f.name.toLowerCase().trim() === "garden");
@@ -625,7 +631,19 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 dynamicGardenTypes = outPack.folders.filter(f => String(f.folder?.id || f.folder || f.parentId) === String(gardenRoot.id))
                     .map(f => ({ id: f.id, name: f.name }));
             }
+            greenhouseRoot = outPack.folders.find(f => f.name.toLowerCase().trim() === "greenhouse");
+            if (greenhouseRoot) {
+                greenhouseFolderIds = BastionManager._getAllSubfolderIds(outPack, greenhouseRoot.id);
+                // Identify specific subfolders for Greenhouse filtering
+                const subfolders = outPack.folders.filter(f => (f.parentId || f.folder?.id || f.folder) === greenhouseRoot.id);
+                poisonsFolderId = subfolders.find(f => f.name.toLowerCase().includes("poison"))?.id;
+                healingFolderId = subfolders.find(f => f.name.toLowerCase().includes("herb"))?.id;
+                fruitFolderId = subfolders.find(f => f.name.toLowerCase().includes("fruit"))?.id;
+            }
         }
+
+        const fruitEntry = outIndex.find(i => (fruitFolderId ? (i.folder?.id || i.folder) === fruitFolderId : true) && (i.name === "Fruit of Restoration" || i.name === "Magical Fruit"));
+        const fruitUuid = fruitEntry?.uuid;
 
         const hasActiveOrder = rawFacilities.some(fac => {
             if (fac.isInherited) return false;
@@ -736,6 +754,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const theaterDieSize = actorLevel >= 17 ? "d10" : (actorLevel >= 13 ? "d8" : "d6");
 
             const spellcasterDaysRemaining = getFacFlag("spellcasterDaysRemaining") || 0;
+            const spellcasterDisplayTime = calculationMode === "days" ? spellcasterDaysRemaining : Math.ceil(spellcasterDaysRemaining / daysPerTurn);
+            const spellcasterTimeUnit = (calculationMode === "days") 
+                ? (spellcasterDisplayTime === 1 ? "day" : "days") 
+                : (spellcasterDisplayTime === 1 ? "turn" : "turns");
             const spellcasterName = getFacFlag("spellcasterName") || "";
             const maxSpellLevel = actorLevel >= 17 ? 8 : 4;
 
@@ -793,9 +815,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 let label = formattedOrder;
                 if (formattedOrder === "Empower" && fac.name.includes("Theater")) label = "Empower: Theatrical Event";
                 if (formattedOrder === "Trade" && fac.name.includes("Armory")) label = "Trade: Stock Armory";
-                if (formattedOrder === "Harvest" && fac.name.includes("Greenhouse")) {
-                    availableOrders.push("Harvest: Healing Herbs", "Harvest: Poison");
-                } else if (formattedOrder !== "Maintain") {
+                
+                if (formattedOrder !== "Maintain" && !availableOrders.includes(label)) {
                     availableOrders.push(label);
                 }
             }
@@ -804,10 +825,6 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 let label = order;
                 if (order === "Empower" && fac.name.includes("Theater")) label = "Empower: Theatrical Event";
                 if (order === "Trade" && fac.name.includes("Armory")) label = "Trade: Stock Armory";
-                if (order === "Harvest" && fac.name.includes("Greenhouse")) {
-                    availableOrders.push("Harvest: Healing Herbs", "Harvest: Poison");
-                    return;
-                }
 
                 if (order === "Maintain" || availableOrders.includes(label)) return;
                 const lowerOrder = order.toLowerCase();
@@ -817,6 +834,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             });
 
             if (fac.name.includes("Garden")) availableOrders.push("Change Type");
+
+            // Greenhouse Harvest Expansion
+            if (availableOrders.includes("Harvest") && fac.name.includes("Greenhouse")) {
+                const idx = availableOrders.indexOf("Harvest");
+                availableOrders.splice(idx, 1, "Harvest: Healing Herbs", "Harvest: Poison");
+            }
 
             // Specialized Crafting Expansion
             if (availableOrders.includes("Craft")) {
@@ -1226,7 +1249,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 else if (isSanctuary) activeLabel = sacredFocusChoice;
                 else if (isSacristy) activeLabel = (craftChoice === "Magic Item (Relic)") ? relicItemChoice : (craftChoice === "Holy Water" ? "Holy Water" : "");
                 else if (fac.name.includes("Scriptorium")) activeLabel = (craftChoice === "Spell Scroll") ? scrollChoice : (craftChoice === "Book Replica" ? "Book Replica" : "Paperwork");
-                else if (isGreenhouse) activeLabel = (craftChoice === "Harvest: Poison") ? greenhousePoisonChoice : "Potion of Healing (Greater)";
+                else if (isGreenhouse) activeLabel = (craftChoice === "Poison") ? greenhousePoisonChoice : "Potion of Healing (Greater)";
 
                 displayQueue.push({
                     label: activeLabel || craftChoice,
@@ -1355,10 +1378,20 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 sacredFocusUuid: sacredFocusUuid,
                 isGreenhouse,
                 isGreenhouseHarvesting,
+                fruitUuid,
                 greenhousePoisonChoice,
                 greenhouseFruitCount: getFacFlag("fruitCount") ?? 3,
-                showPoisonSelect: isGreenhouseHarvesting && (craftChoice === "Harvest: Poison" || (isPausedProjectInQueue && firstQueueItem?.craftType === "Harvest: Poison")),
-                poisonOptions,
+                showPoisonSelect: isGreenhouseHarvesting && (craftChoice === "Poison" || (isPausedProjectInQueue && firstQueueItem?.craftType === "Poison") || (progress > 0 && craftChoice === "Poison")),
+                poisonOptions: (function() {
+                    let opts = ["Assassin's Blood", "Malice", "Pale Tincture", "Truth Serum"].map(p => ({ value: p, selected: p === greenhousePoisonChoice }));
+                    if (poisonsFolderId) {
+                        const poisons = outIndex.filter(i => (i.folder?.id || i.folder) === poisonsFolderId);
+                        if (poisons.length > 0) opts = poisons.map(p => ({ value: p.name, selected: p.name === greenhousePoisonChoice, uuid: p.uuid }));
+                    }
+                    return opts;
+                })(),
+                greenhousePoisonUuid: poisonsFolderId ? outIndex.find(i => i.name.toLowerCase() === greenhousePoisonChoice.toLowerCase() && (i.folder?.id || i.folder) === poisonsFolderId)?.uuid : null,
+                greenhouseHealingHerbsUuid: healingFolderId ? outIndex.find(i => (i.name === "Potion of Healing (Greater)" || i.name === "Potion of Greater Healing") && (i.folder?.id || i.folder) === healingFolderId)?.uuid : null,
                 progressLabel: progressLabel,
                 isGardenHarvesting: isGardenHarvesting,
                 isVastGarden: isVastGarden,
@@ -1433,6 +1466,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 theaterDieSize,
                 visitingSpellcaster,
                 spellcasterDaysRemaining,
+                spellcasterDisplayTime,
+                spellcasterTimeUnit,
                 spellcasterName,
                 maxSpellLevel,
                 isSpellcasterPresent: visitingSpellcaster && spellcasterDaysRemaining > 0,
@@ -2006,8 +2041,6 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
                 if (val === "Empower: Theatrical Event") {
                     newOrder = "Empower";
-                } else if (val.startsWith("Harvest: ")) {
-                    newOrder = "Harvest";
                 } else if (val === "Trade: Stock Armory") {
                     newOrder = "Trade";
                 } else if (val.includes(": ")) {
@@ -4513,14 +4546,21 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
         // Fetch Item from compendium
         const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
-        const entry = (await outPack?.getIndex())?.find(i => i.name === "Magical Fruit");
-        if (entry) {
+        const entry = (await outPack?.getIndex())?.find(i => i.name === "Fruit of Restoration" || i.name === "Magical Fruit");
+        const itemName = entry?.name || "Fruit of Restoration";
+
+        let existing = actor.items.find(i => i.name === itemName && i.type === "consumable");
+        if (existing) {
+            await existing.update({ "system.quantity": (existing.system.quantity || 1) + 1 });
+        } else if (entry) {
             const doc = await outPack.getDocument(entry._id);
-            await actor.createEmbeddedDocuments("Item", [doc.toObject()]);
+            const itemData = doc.toObject();
+            itemData.system.quantity = 1;
+            await actor.createEmbeddedDocuments("Item", [itemData]);
         } else {
             // Fallback if compendium item missing
             await actor.createEmbeddedDocuments("Item", [{
-                name: "Magical Fruit", type: "consumable", img: "icons/consumables/fruit/berry-leaf-clover-green.webp",
+                name: "Fruit of Restoration", type: "consumable", img: "icons/consumables/fruit/berry-leaf-clover-green.webp",
                 system: { description: { value: "A creature that eats this fruit gains the benefit of a Lesser Restoration spell. Magic expires in 24 hours." }, quantity: 1 }
             }]);
         }
@@ -5234,8 +5274,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     const isSacristy = facName.includes("Sacristy");
                     const isScriptorium = facName.includes("Scriptorium");
                     const isGreenhouse = facName.includes("Greenhouse");
-                    
-                    const isMagicCraft = ["Magic Item (Arcana)", "Magic Item (Armament)", "Magic Item (Implement)", "Magic Item (Relic)", "Spell Scroll", "Harvest: Healing Herbs", "Harvest: Poison"].includes(craftChoice);
+                    let greenhousePoisonChoice = getFacFlag("greenhousePoisonChoice") || "Assassin's Blood";
+                    const isMagicCraft = ["Magic Item (Arcana)", "Magic Item (Armament)", "Magic Item (Implement)", "Magic Item (Relic)", "Spell Scroll", "Healing Herbs", "Poison"].includes(craftChoice);
                     const isMundaneLongCraft = (isSmithy && craftChoice === "Smith's Tools") || (isWorkshop && craftChoice === "Adventuring Gear");
 
                     // 1. Determine Costs and Time Requirements
@@ -5250,7 +5290,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                                        (isScriptorium && craftChoice === "Spell Scroll") ? scrollChoice : // Scriptorium
                                        (isScriptorium && craftChoice === "Book Replica") ? bookTitle :
                                        (isScriptorium && craftChoice === "Paperwork") ? paperworkTitle :
-                                       (isGreenhouse && craftChoice === "Harvest: Poison") ? greenhousePoisonChoice :
+                                       (isGreenhouse && craftChoice === "Poison") ? greenhousePoisonChoice :
+                                       (isGreenhouse && craftChoice === "Healing Herbs") ? "Potion of Healing (Greater)" :
                                        (isSacristy && craftChoice === "Magic Item (Relic)") ? relicItemChoice :
                                        (isScriptorium && craftChoice === "Spell Scroll") ? scrollChoice : craftChoice;
                     
@@ -5279,9 +5320,6 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                             const days = reqs.days;
                             materialCost = reqs.gp;
                             turnsNeeded = calculationMode === "days" ? days : Math.max(1, Math.ceil(days / daysPerTurn));
-                        } else if (isGreenhouse) {
-                            materialCost = 0;
-                            turnsNeeded = calculationMode === "days" ? BastionManager._getEffectiveDays(7) : 1;
                         } else {
                             let p = entry?.system?.price?.value ?? entry?.system?.price ?? 0;
                             if (typeof p === "string") p = parseFloat(p.replace(/[^0-9.]/g, ""));
@@ -5332,8 +5370,18 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
                     // 4. Completion Handler
                     if (progress >= turnsNeeded) {
-                        const specificChoice = isWorkshop ? workshopItemChoice : (isSmithy ? (craftChoice === "Smith's Tools" ? smithyItemChoice : armamentItemChoice) : (isArcane ? (craftChoice === "Arcane Focus" ? focusChoice : magicItemChoice) : (isSanctuary ? sacredFocusChoice : (isSacristy ? relicItemChoice : (isScriptorium ? (craftChoice === "Spell Scroll" ? scrollChoice : (craftChoice === "Book Replica" ? bookTitle : paperworkTitle)) : null)))));
-                        let craftRes = await BastionManager._handleCraft(facDoc.name, facEntry, craftChoice, specificChoice, actor.system.currency?.gp || 0, getH());
+                        let specificChoice = null;
+                        if (isWorkshop) specificChoice = workshopItemChoice;
+                        else if (isSmithy) specificChoice = (craftChoice === "Smith's Tools") ? smithyItemChoice : armamentItemChoice;
+                        else if (isArcane) specificChoice = (craftChoice === "Arcane Focus") ? focusChoice : magicItemChoice;
+                        else if (isSanctuary) specificChoice = sacredFocusChoice;
+                        else if (isSacristy) specificChoice = relicItemChoice;
+                        else if (isScriptorium) {
+                            if (craftChoice === "Spell Scroll") specificChoice = scrollChoice;
+                            else if (craftChoice === "Book Replica") specificChoice = bookTitle;
+                            else if (craftChoice === "Paperwork") specificChoice = paperworkTitle;
+                        }
+                        else if (isGreenhouse) specificChoice = greenhousePoisonChoice;                        let craftRes = await BastionManager._handleCraft(facDoc.name, facEntry, craftChoice, specificChoice, actor.system.currency?.gp || 0, getH());
                         if (craftRes.item) items.push(craftRes.item);
                         
                         currentResultText = currentResultText ? `${currentResultText} | ${craftRes.text}` : craftRes.text;
@@ -5357,10 +5405,15 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                             progress = next.isPausedProject ? next.currentProgress : 0; // Restore progress if it was a paused project
                             currentResultText += `<br><span style="color: #2e7d32; font-weight: bold;"><i class="fa-solid fa-circle-check"></i> ${getH()} immediately begins work on the next project: ${next.label}.</span>`;
                         } else {
+                            if (isGreenhouse) {
+                                order = "Harvest"; // Preserve repeatable harvest order
+                                currentResultText += `<br><span style="color: #2e7d32; font-weight: bold;"><i class="fa-solid fa-seedling"></i> Harvest complete. ${getH()} continues to tend the plants for the next cycle.</span>`;
+                            } else {
                             order = "Maintain";
                             craftChoice = "";
                             activeProjectChoice = "";
                             currentResultText += `<br><span style="color: #a32a22; font-weight: bold;"><i class="fa-solid fa-circle-exclamation"></i> Work is complete; ${getH(false)} awaits new orders.</span>`;
+                            }
                         }
                     } else {
                         const progressLabel = calculationMode === "days" ? "Days" : "Turns";
@@ -5390,7 +5443,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                             const roll = (await new Roll("1d2").evaluate()).total;
                             if (roll === 2) {
                                 visitingSpellcaster = true;
-                                spellcasterDaysRemaining = 14;
+                                    spellcasterDaysRemaining = BastionManager._getEffectiveDays(14);
                                 spellcasterName = BastionManager._generateSpellcasterName();
                                 currentResultText = `Invitation accepted! <b>${spellcasterName}</b> has arrived via the Teleportation Circle.`;
                             } else currentResultText = `${getH()} sent out invitations, but no spellcasters were available to visit this week.`;
@@ -5786,20 +5839,26 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         } else if (baseName.includes("Greenhouse")) {
             const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
             if (!outPack) return { text: "Error: Output compendium missing." };
-            const index = await outPack.getIndex();
+            const index = await outPack.getIndex({fields: ["folder", "name", "uuid"]});
+            const greenhouseFolder = outPack.folders.find(f => f.name.toLowerCase().trim() === "greenhouse");
+            const greenhouseFolderIds = greenhouseFolder ? BastionManager._getAllSubfolderIds(outPack, greenhouseFolder.id) : [];
 
-            if (craftChoice === "Harvest: Healing Herbs") {
-                const entry = index.find(i => i.name === "Potion of Healing (Greater)");
+            if (craftChoice === "Harvest: Healing Herbs" || craftChoice === "Healing Herbs") {
+                const entry = index.find(i => (i.name === "Potion of Healing (Greater)" || i.name === "Potion of Greater Healing") && (greenhouseFolder ? greenhouseFolderIds.includes(i.folder?.id || i.folder) : true));
                 if (entry) {
                     const doc = await outPack.getDocument(entry._id);
-                    return { text: `${hString} has completed the harvest of a <b>Potion of Healing (Greater)</b>.`, item: doc.toObject() };
+                    const item = doc.toObject();
+                    item.system.quantity = 1;
+                    return { text: `${hString} has completed the harvest of a <b>${entry.name}</b>.`, item: item };
                 }
-            } else if (craftChoice === "Harvest: Poison") {
+            } else if (craftChoice === "Harvest: Poison" || craftChoice === "Poison") {
                 const poisonName = itemChoiceOverride;
-                const entry = index.find(i => i.name.toLowerCase() === poisonName?.toLowerCase());
+                const entry = index.find(i => i.name.toLowerCase() === poisonName?.toLowerCase() && (greenhouseFolder ? greenhouseFolderIds.includes(i.folder?.id || i.folder) : true));
                 if (entry) {
                     const doc = await outPack.getDocument(entry._id);
-                    return { text: `${hString} has successfully extracted one application of <b>${poisonName}</b>.`, item: doc.toObject() };
+                    const item = doc.toObject();
+                    item.system.quantity = 1;
+                    return { text: `${hString} has successfully extracted one application of <b>${entry.name}</b>.`, item };
                 }
             }
         }
