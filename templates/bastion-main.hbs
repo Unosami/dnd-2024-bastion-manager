@@ -476,6 +476,12 @@
                                     </div>
                                 {{/if}}
 
+                                {{#if (and this.isArmory this.isTradeOrder)}}
+                                    <div style="font-size: 0.85em; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(0,0,0,0.1); color: #a32a22; font-weight: bold;">
+                                        <i class="fa-solid fa-coins"></i> Expected Cost: {{this.armoryStockCost}} GP
+                                    </div>
+                                {{/if}}
+
                 </div>
                 {{#if this.isTheater}}
                     <div style="font-size: 0.9em; color: #eee; border: 2px solid {{this.theaterPhaseColor}}; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px;">

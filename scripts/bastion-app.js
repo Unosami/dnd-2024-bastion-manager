@@ -52,6 +52,176 @@ const FACILITY_CONFIG = {
     }
 };
 
+class SpellSelectionApp extends ApplicationV2 {
+    static DEFAULT_OPTIONS = {
+        id: "bastion-spell-selection",
+        classes: ["bastion-app", "bastion-spell-picker"],
+        window: { title: "Teleportation Circle: Wizard Magic", icon: "fa-solid fa-wand-sparkles", resizable: true },
+        position: { width: 850, height: 750 },
+    };
+
+    constructor(actor, spells, maxLevel, resolve, options = {}) {
+        super(options);
+        this.actor = actor;
+        this.allSpells = spells;
+        this.maxLevel = maxLevel;
+        this.resolve = resolve;
+        this.uiState = {
+            search: "",
+            level: "all",
+            school: "",
+            sort: { column: "level", direction: 1 },
+            selectedUuid: null
+        };
+    }
+
+    static async pickSpell(actor, spells, maxLevel) {
+        return new Promise(resolve => {
+            const app = new SpellSelectionApp(actor, spells, maxLevel, resolve);
+            app.render({force: true});
+        });
+    }
+
+    _getSpellData(s) {
+        const schools = CONFIG.DND5E.spellSchools;
+        const activationTypes = CONFIG.DND5E.abilityActivationTypes;
+        const distUnits = CONFIG.DND5E.distanceUnits;
+        const school = schools[s.system.school]?.label || s.system.school;
+        const time = `${s.system.activation.cost || ""} ${activationTypes[s.system.activation.type] || s.system.activation.type}`.trim();
+        const props = Array.from(s.system.properties || []);
+        const componentMap = { vocal: "V", somatic: "S", material: "M" };
+        const components = props.filter(p => componentMap[p]).map(p => {
+            if (p === "material") {
+                const mat = s.system.materials?.value;
+                return mat ? `M (${mat})` : "M";
+            }
+            return componentMap[p];
+        }).join(", ");
+        const cost = s.system.materials?.cost || 0;
+        const range = s.system.range.units === "touch" || s.system.range.units === "self" 
+            ? distUnits[s.system.range.units] 
+            : `${s.system.range.value || ""} ${distUnits[s.system.range.units] || s.system.range.units}`.trim();
+        let source = "Unknown";
+        const src = s.system.source;
+        if (typeof src === "string") source = src;
+        else if (src?.custom) source = src.custom;
+        else if (src?.book) source = src.book;
+        else if (src?.label) source = src.label;
+        return { ...s, schoolLabel: school, timeLabel: time, rangeLabel: range, sourceLabel: source, costLabel: cost > 0 ? `${cost} GP` : "", components };
+    }
+
+    async _prepareContext() {
+        const schools = CONFIG.DND5E.spellSchools;
+        let spells = this.allSpells.map(s => this._getSpellData(s));
+        let filtered = spells.filter(s => {
+            if (this.uiState.level !== "all" && s.system.level !== parseInt(this.uiState.level)) return false;
+            if (this.uiState.school && s.system.school !== this.uiState.school) return false;
+            if (this.uiState.search && !s.name.toLowerCase().includes(this.uiState.search.toLowerCase())) return false;
+            return true;
+        });
+        filtered.sort((a, b) => {
+            let valA, valB;
+            switch(this.uiState.sort.column) {
+                case "level": valA = a.system.level; valB = b.system.level; break;
+                case "name": valA = a.name; valB = b.name; break;
+                case "time": valA = a.timeLabel; valB = b.timeLabel; break;
+                case "school": valA = a.schoolLabel; valB = b.schoolLabel; break;
+                case "range": valA = a.rangeLabel; valB = b.rangeLabel; break;
+                case "source": valA = a.sourceLabel; valB = b.sourceLabel; break;
+                case "cost": valA = a.system.materials?.cost || 0; valB = b.system.materials?.cost || 0; break;
+            }
+            if (valA < valB) return -1 * this.uiState.sort.direction;
+            if (valA > valB) return 1 * this.uiState.sort.direction;
+            if (a.name < b.name) return -1;
+            if (a.name > b.name) return 1;
+            return 0;
+        });
+        const selected = filtered.find(s => s.uuid === this.uiState.selectedUuid) || null;
+        if ( selected ) {
+            selected.enrichedDescription = await foundry.applications.ux.TextEditor.implementation.enrichHTML(selected.system.description.value, {
+                async: true,
+                secrets: this.actor.isOwner,
+                relativeTo: this.actor
+            });
+        }
+        return { spells: filtered, uiState: this.uiState, selected, schools, maxLevel: this.maxLevel };
+    }
+
+    async _renderHTML(context) {
+        const { spells, uiState: state, selected, schools, maxLevel } = context;
+        const rows = spells.map(s => {
+            const isSelected = s.uuid === state.selectedUuid;
+            return `<tr class="spell-row ${isSelected ? 'selected' : ''}" data-uuid="${s.uuid}" style="cursor: pointer; ${isSelected ? 'background: rgba(0, 100, 200, 0.2);' : ''}">
+                <td style="text-align: center; padding: 5px;">${s.system.level === 0 ? 'C' : s.system.level}</td>
+                <td style="padding: 5px;"><b>${s.name}</b></td>
+                <td style="padding: 5px;">${s.timeLabel}</td>
+                <td style="padding: 5px;">${s.schoolLabel}</td>
+                <td style="padding: 5px;">${s.rangeLabel}</td>
+                <td style="padding: 5px; color: #a32a22; font-weight: bold;">${s.costLabel}</td>
+                <td style="font-size: 0.85em; opacity: 0.8; padding: 5px;">${s.sourceLabel}</td>
+            </tr>`;
+        }).join("");
+        const schoolOptions = Object.entries(schools).map(([k, v]) => `<option value="${k}" ${state.school === k ? 'selected' : ''}>${v.label}</option>`).join("");
+        let levelOptions = `<option value="all" ${state.level === "all" ? 'selected' : ''}>All Levels</option>`;
+        for(let l=0; l<=maxLevel; l++) levelOptions += `<option value="${l}" ${state.level === String(l) ? 'selected' : ''}>Level ${l === 0 ? 'Cantrip' : l}</option>`;
+        const sortIcon = (col) => {
+            if (state.sort.column !== col) return '<i class="fa-solid fa-sort" style="opacity: 0.3;"></i>';
+            return state.sort.direction === 1 ? '<i class="fa-solid fa-sort-up"></i>' : '<i class="fa-solid fa-sort-down"></i>';
+        };
+        return `
+        <div style="display: flex; flex-direction: column; height: 100%; gap: 10px; font-family: var(--font-primary);">
+            <div class="filters" style="display: flex; gap: 10px; align-items: center; background: rgba(0,0,0,0.05); padding: 8px; border-radius: 4px;">
+                <div style="flex: 1; position: relative;"><i class="fa-solid fa-search" style="position: absolute; left: 8px; top: 50%; transform: translateY(-50%); opacity: 0.5;"></i><input type="text" class="search-input" value="${state.search}" placeholder="Search spells..." style="padding-left: 28px; width: 100%;"></div>
+                <select class="level-filter" style="width: 120px;">${levelOptions}</select>
+                <select class="school-filter" style="width: 150px;"><option value="">All Schools</option>${schoolOptions}</select>
+            </div>
+            <div class="table-container" style="flex: 1; overflow-y: auto; border: 1px solid #ccc; border-radius: 4px;">
+                <table style="width: 100%; border-collapse: collapse; margin: 0;"><thead style="position: sticky; top: 0; background: #333; color: #fff; z-index: 10; box-shadow: 0 1px 2px rgba(0,0,0,0.1);"><tr style="text-align: left;">
+                    <th data-sort="level" style="width: 50px; cursor: pointer; padding: 5px;">Lvl ${sortIcon('level')}</th>
+                    <th data-sort="name" style="cursor: pointer; padding: 5px;">Name ${sortIcon('name')}</th>
+                    <th data-sort="time" style="cursor: pointer; padding: 5px;">Cast Time ${sortIcon('time')}</th>
+                    <th data-sort="school" style="cursor: pointer; padding: 5px;">School ${sortIcon('school')}</th>
+                    <th data-sort="range" style="cursor: pointer; padding: 5px;">Range ${sortIcon('range')}</th>
+                    <th data-sort="cost" style="cursor: pointer; padding: 5px;">Cost ${sortIcon('cost')}</th>
+                    <th data-sort="source" style="cursor: pointer; padding: 5px;">Source ${sortIcon('source')}</th>
+                </tr></thead><tbody>${rows}</tbody></table>
+            </div>
+            <div class="preview-area" style="height: 220px; border: 1px solid #ccc; border-radius: 4px; background: rgba(0,0,0,0.02); padding: 10px; overflow-y: auto;">
+                ${selected ? `
+                    <div style="display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; border-bottom: 1px solid #ccc; padding-bottom: 8px;">
+                        <img src="${selected.img}" width="48" height="48" style="border: none; border-radius: 4px;">
+                        <div style="flex: 1;">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%;">
+                                <h2 style="margin: 0; border: none;">${selected.name}</h2>
+                                <p style="margin: 0; font-weight: bold; opacity: 0.6; font-size: 0.85em; text-align: right; margin-left: 10px; padding-top: 4px;">${selected.components}</p>
+                            </div>
+                            <p style="margin: 0; font-style: italic; opacity: 0.8;">Level ${selected.system.level === 0 ? 'Cantrip' : selected.system.level} ${selected.schoolLabel}</p>
+                        </div>
+                    </div>
+                    <div style="font-size: 0.9em; line-height: 1.4;">${selected.enrichedDescription}</div>
+                ` : `<p style="text-align: center; margin-top: 80px; opacity: 0.5; font-style: italic;">Select a spell from the table to see details.</p>`}
+            </div>
+            <div class="actions" style="display: flex; justify-content: flex-end; gap: 10px; padding-top: 5px;">
+                <button type="button" class="cancel-btn" style="width: auto; padding: 0 20px;">Cancel</button>
+                <button type="button" class="confirm-btn" style="width: auto; padding: 0 20px; font-weight: bold;" ${!selected ? 'disabled' : ''}><i class="fa-solid fa-wand-magic-sparkles"></i> Cast & Dismiss</button>
+            </div>
+        </div>`;
+    }
+
+    _onRender(context, options) {
+        const el = this.element;
+        el.querySelectorAll('.spell-row').forEach(row => row.addEventListener('click', () => { this.uiState.selectedUuid = row.dataset.uuid; this.render(); }));
+        el.querySelectorAll('th[data-sort]').forEach(th => th.addEventListener('click', () => { const col = th.dataset.sort; if (this.uiState.sort.column === col) this.uiState.sort.direction *= -1; else { this.uiState.sort.column = col; this.uiState.sort.direction = 1; } this.render(); }));
+        el.querySelector('.search-input').addEventListener('input', (ev) => { this.uiState.search = ev.target.value; this.render(); });
+        el.querySelector('.level-filter').addEventListener('change', (ev) => { this.uiState.level = ev.target.value; this.render(); });
+        el.querySelector('.school-filter').addEventListener('change', (ev) => { this.uiState.school = ev.target.value; this.render(); });
+        el.querySelector('.confirm-btn').addEventListener('click', () => { this.resolve(this.uiState.selectedUuid); this.close(); });
+        el.querySelector('.cancel-btn').addEventListener('click', () => { this.resolve(null); this.close(); });
+    }
+
+    _replaceHTML(result, content) { content.innerHTML = result; }
+}
+
 export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     constructor(actor, options = {}) { 
         super(options); 
@@ -496,6 +666,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         let totalDefenders = 0;
         let allDefenderNames = [];
 
+        const totalBastionDefenders = rawFacilities.reduce((sum, f) => {
+            const dData = f.isFlag ? (f.sourceDoc.flags?.[MODULE_ID]?.defenders) : (f.sourceDoc.getFlag(MODULE_ID, "defenders"));
+            return sum + (dData?.count || 0);
+        }, 0);
+
         const facilities = await Promise.all(rawFacilities.map(async fac => {
             const getFacFlag = (key) => fac.isFlag ? (fac.sourceDoc.flags?.[MODULE_ID]?.[key]) : (fac.sourceDoc.getFlag(MODULE_ID, key));
             
@@ -615,12 +790,15 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 const formattedOrder = systemOrder.charAt(0).toUpperCase() + systemOrder.slice(1).toLowerCase();
                 let label = formattedOrder;
                 if (formattedOrder === "Empower" && fac.name.includes("Theater")) label = "Empower: Theatrical Event";
+                if (formattedOrder === "Trade" && fac.name.includes("Armory")) label = "Trade: Stock Armory";
                 if (formattedOrder !== "Maintain") availableOrders.push(label);
             }
 
             BASTION_ORDERS.forEach(order => {
                 let label = order;
                 if (order === "Empower" && fac.name.includes("Theater")) label = "Empower: Theatrical Event";
+                if (order === "Trade" && fac.name.includes("Armory")) label = "Trade: Stock Armory";
+
                 if (order === "Maintain" || availableOrders.includes(label)) return;
                 const lowerOrder = order.toLowerCase();
                 if (safeProps.some(p => p.includes(lowerOrder))) {
@@ -662,6 +840,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let craftChoice = fac.isFlag ? (fac.sourceDoc.flags?.[MODULE_ID]?.craftChoice || "") : (fac.sourceDoc.getFlag(MODULE_ID, "craftChoice") || "");
             let currentUIOrder = (currentOrder === "Craft" && craftChoice) ? `Craft: ${craftChoice}` : currentOrder;
             if (currentOrder === "Empower" && fac.name.includes("Theater")) currentUIOrder = "Empower: Theatrical Event";
+            if (currentOrder === "Trade" && fac.name.includes("Armory")) currentUIOrder = "Trade: Stock Armory";
             
             let safeOrder = availableOrders.includes(currentUIOrder) ? currentUIOrder : "Maintain";
             if (progress > 0) safeOrder = "Continue Project";
@@ -942,6 +1121,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 return null;
             };
 
+            let armoryStockCost = 0;
+            if (fac.name.includes("Armory")) {
+                armoryStockCost = 100 + (100 * totalBastionDefenders);
+                if (rawFacilities.some(f => f.name.includes("Smithy"))) armoryStockCost = Math.floor(armoryStockCost / 2);
+            }
+
              let currentMaxCraftTurns = 0;
             let currentGoldCost = 0;
             const isArcaneStudy = fac.name.includes("Arcane Study");
@@ -1201,9 +1386,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 workshopItemUuid: workshopItemUuid,
                 isStable: isStable,
                 isArmory: fac.name.includes("Armory"),
+                armoryStockCost: armoryStockCost,
                 stockedCount: getFacFlag("stockedCount") || 0,
                 isStocked: getFacFlag("isStocked") || false,
-                isFullyStocked: (getFacFlag("isStocked") || false) && (getFacFlag("stockedCount") || 0) >= totalDefenders,
+                isFullyStocked: (getFacFlag("isStocked") || false) && (getFacFlag("stockedCount") || 0) >= totalBastionDefenders,
                 isStableTrade: isStableTrade,
                 isTeleportationCircle,
                 isTheater,
@@ -1793,6 +1979,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
                 if (val === "Empower: Theatrical Event") {
                     newOrder = "Empower";
+                } else if (val === "Trade: Stock Armory") {
+                    newOrder = "Trade";
                 } else if (val.includes(": ")) {
                     const parts = val.split(": ");
                     newOrder = parts[0];
@@ -4128,27 +4316,82 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     static async onCastSpellcasterSpell(event, target) {
         const ds = target.dataset;
         const MODULE_ID = "dnd-2024-bastion-manager";
+        const actor = this.actor;
         
         let fac;
         if (ds.isFlag === "true") {
-            const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+            const gf = actor.getFlag(MODULE_ID, "groupFacilities") || [];
             fac = gf.find(f => f._id === ds.itemId);
         } else {
-            fac = this.actor.items.get(ds.itemId);
+            fac = actor.items.get(ds.itemId);
         }
         if (!fac) return;
 
-        const spellcasterName = ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.spellcasterName : fac.getFlag(MODULE_ID, "spellcasterName");
+        // 1. Determine Capacity based on Actor Level
+        const actorLevel = (actor.type === "character" || actor.type === "npc") ? (actor.system.details?.level || 1) : 1;
+        const maxLevel = actorLevel >= 17 ? 8 : 4;
+
+        // 2. Fetch Spells from Compendium
+        const pack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+        const folder = pack?.folders.find(f => f.name.toLowerCase().trim() === "teleportation circle");
+        
+        if ( !pack || !folder ) {
+            console.error("Bastion Manager | Teleportation Circle folder missing in output compendium.");
+            return ui.notifications.error("Teleportation Circle spell list not found. Ensure the compendium is correctly initialized.");
+        }
+
+        const index = await pack.getIndex({ fields: ["system.level", "system.school", "system.activation", "system.range", "system.source", "system.materials.cost", "system.materials.value", "system.properties", "folder", "img", "system.description.value"] });
+        const availableSpells = index.filter(i => {
+            const itemFolderId = i.folder?.id || i.folder;
+            return itemFolderId === folder.id && i.system.level <= maxLevel;
+        });
+
+        if (availableSpells.length === 0) return ui.notifications.warn("No Wizard spells of appropriate level found in the Teleportation Circle compendium.");
+
+        // 3. Open Advanced Spell Picker
+        const selectedUuid = await SpellSelectionApp.pickSpell(actor, availableSpells, maxLevel);
+
+        if (!selectedUuid) return;
+
+        const spellDoc = await fromUuid(selectedUuid);
+        if (!spellDoc) return;
+
+        // 4. Handle Material Costs
+        const cost = Number(spellDoc.system.materials?.cost || 0);
+        const currentGold = Number(actor.system.currency?.gp || 0);
+        if ( cost > currentGold ) {
+            return ui.notifications.error(`You cannot afford the ${cost} GP material component for ${spellDoc.name}.`);
+        }
+        if ( cost > 0 ) await actor.update({"system.currency.gp": currentGold - cost});
+
+        // Parse components for chat card - include specific material text
+        const props = Array.from(spellDoc.system.properties || []); 
+        const componentMap = { vocal: "V", somatic: "S", material: "M" }; 
+        const components = props.filter(p => componentMap[p]).map(p => { 
+            if (p === "material") {
+                const mat = spellDoc.system.materials?.value; 
+                return mat ? `M (${mat})` : "M";
+            }
+            return componentMap[p];
+        }).join(", ");
+
+        // 5. Record Cast and Process Dismissal
+        const getFlag = (key) => ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.[key] : fac.getFlag(MODULE_ID, key);
+        let spellcasterName = getFlag("spellcasterName") || "The visiting wizard";
+        if (spellcasterName === "Friendly Wizard") spellcasterName = "The visiting wizard";
+
         const updates = { [`flags.${MODULE_ID}.visitingSpellcaster`]: false, [`flags.${MODULE_ID}.spellcasterDaysRemaining`]: 0, [`flags.${MODULE_ID}.spellcasterName`]: "" }; 
         
         if (ds.isFlag === "true") {
-            const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+            const gf = actor.getFlag(MODULE_ID, "groupFacilities") || [];
             const targetFac = gf.find(f => f._id === ds.itemId);
             for (let [k,v] of Object.entries(updates)) foundry.utils.setProperty(targetFac, k, v);
-            await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+            await actor.setFlag(MODULE_ID, "groupFacilities", gf);
         } else {
             await fac.update(updates);
         }
+
+        this.render();
 
         let quotes = [
             "Farewell! My magic is spent, but your hospitality was most welcome.",
@@ -4174,15 +4417,29 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const quote = quotes[Math.floor(Math.random() * quotes.length)];
 
         await ChatMessage.create({
-            speaker: ChatMessage.getSpeaker({actor: this.actor}),
+            speaker: ChatMessage.getSpeaker({actor: actor}),
             content: `<div class="bastion-chat-card">
-                <h3 style="border-bottom: 2px solid #005a9e; padding-bottom: 3px; color: #004578;"><i class="fa-solid fa-wand-magic-sparkles"></i> Spellcaster Departure</h3>
-                <p><b>${spellcasterName || 'A friendly wizard'}</b> has cast their final spell and departed the Teleportation Circle.</p>
+                <h3 style="border-bottom: 2px solid #005a9e; padding-bottom: 3px; color: #004578;"><i class="fa-solid fa-wand-magic-sparkles"></i> ${spellcasterName} casts ${spellDoc.name}</h3>
+                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
+                    <img src="${spellDoc.img}" width="32" height="32" style="border: none; border-radius: 4px;">
+                    <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+                        <b>Level ${spellDoc.system.level === 0 ? 'Cantrip' : spellDoc.system.level} Wizard Spell</b>
+                        <span style="font-size: 0.85em; opacity: 0.7; font-weight: bold; text-align: right;">
+                            ${cost > 0 ? `<span style="color: #a32a22; margin-right: 8px;">[Cost: ${cost} GP]</span>` : ""}
+                            ${components}
+                        </span>
+                    </div>
+                </div>
+                <div style="font-size: 0.9em; max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.05); padding: 5px; border-radius: 4px; border: 1px solid #ccc; margin-bottom: 10px;">
+                    ${spellDoc.system.description.value}
+                </div>
+                <hr>
+                <p><b>${spellcasterName}</b> has cast their final spell and departed the Teleportation Circle.</p>
                 <blockquote style="font-style: italic; border-left: 3px solid #ccc; padding-left: 10px; margin: 10px 0;">"${quote}"</blockquote>
             </div>`
         });
 
-        ui.notifications.info(`<b>${spellcasterName || 'The spellcaster'}</b> has cast their spell and departed.`);
+        ui.notifications.info(`<b>${spellcasterName}</b> has cast their spell and departed.`);
     }
 
     static async onToggleReady(event, target) {
@@ -4994,7 +5251,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                             if (roll === 2) {
                                 visitingSpellcaster = true;
                                 spellcasterDaysRemaining = 14;
-                                spellcasterName = BastionManager._generateRandomName();
+                                spellcasterName = BastionManager._generateSpellcasterName();
                                 currentResultText = `Invitation accepted! <b>${spellcasterName}</b> has arrived via the Teleportation Circle.`;
                             } else currentResultText = `${getH()} sent out invitations, but no spellcasters were available to visit this week.`;
                         }
@@ -5907,6 +6164,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         }
         if (toCreate.length > 0) await actor.createEmbeddedDocuments("Item", toCreate);
         if (toUpdate.length > 0) await actor.updateEmbeddedDocuments("Item", toUpdate);
+    }
+
+    static _generateSpellcasterName() {
+        const titles = ["the Magnificent", "the Conjurer", "the Wise", "the Eternal", "the Architect", "the Weaver", "the Gazer", "the Archmage", "the Adept", "the Radiant", "the Shadow", "the Timeless", "the Resplendent", "the Unfettered"];
+        const title = titles[Math.floor(Math.random() * titles.length)];
+        return `${this._generateRandomName()} ${title}`;
     }
 
     static _generateRandomName() {
