@@ -9,14 +9,10 @@ EVENTS:
 
 Next I want to start fleshing out the other facility outputs:
 ARMORY
-- I would like the Armory to display the expected cost when the trade order is selected.
 - Stocking the armory does nothing if there are no bastion defenders. The facility should throw a warning to that effect if being built without an attached facility that provides defenders.
-- Defenders can be used for all parts of a combined bastion. This should be taken into account with Armory costs and Attack events.
 
 
 TELEPORTATION CIRCLE 
-- [bug] The teleportation circle visiting wizard should be cleared form the ui as soon as the button is resolved. (pressed, or follow-up prompt cleared if there is one)
-- Perhaps some way to type in gold costs for material components? Or better yet, drag and drop a spell item onto the facility to determine the spell to cast.
 - A cool way to display the glyphs of the specific bastion's teleportation circle? (So Extra)
     
 THEATER
@@ -34,13 +30,13 @@ THEATER
     - Doors and Windows
 
 UI Improvements
-- Founding Your Bastion window needs scroll functionality when long.
-    - Show all input options in the same dialog rather than clicking through all of the options when creating a facility or advancing a turn.
+    GRID
     - Change the grid layout to populate the squares with relevent furnishings. (ambitious)
-    - Change the grid layout of combined bastions to have each player be a color and their facilities be different shades of that color. (Or some way to distinguish who owns what without text)
-    - The option of Structure shapes/outlines? Tower, shrine, fortified keep, lodge vs village(current freeform)
+    - Change the grid layout of combined bastions to have each player be a color and their facilities be different shades of that color. (Or some way to distinguish who owns what without text) (Might be done already?)
+    - The option of Structure shapes/outlines? Tower, shrine, fortified keep, lodge vs village(current freeform) Prefabs.
+    - Combine both walls buttons into a single wall dropdown, like with doors. 
 
-- Calendar compatibility
+Calendar compatibility
     - Make the module track days using Simple Calendar rather than internally? (Only works if Simple Calendar gets an update to be compatible with current versions of Foundry)
 
 - Homebrew (not hardcoded, I want them to be like submodules?):
@@ -51,5 +47,5 @@ UI Improvements
 
 ---
 Known Bugs:
-
-
+- At the end need to go back and do a blanket "Make sure The Horizon reflects all facilities"
+- 
