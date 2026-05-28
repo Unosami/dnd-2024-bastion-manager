@@ -558,7 +558,8 @@ Hooks.on("updateActor", (actor, changes) => {
     }
 });
 
-Hooks.once("ready", () => {
+Hooks.once("ready", async () => {
+    await BastionManager.loadProfessions();
     game.socket.on("module.dnd-2024-bastion-manager", (data) => {
         if (data.action === "globalAdvance") {
             for (const app of foundry.applications.instances.values()) {

@@ -231,6 +231,30 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         this._changingOrders = new Set();
         this._advanceMode = "global";
     }
+
+    static _professionsMap = null;
+
+    /**
+     * Loads the professions reference file and parses it into a searchable map.
+     */
+    static async loadProfessions() {
+        try {
+            const response = await fetch("modules/dnd-2024-bastion-manager/Resources/Professions Reference");
+            if (!response.ok) return;
+            const text = await response.text();
+            this._professionsMap = {};
+            const lines = text.split('\n');
+            for (let line of lines) {
+                const parts = line.split('-').map(p => p.trim());
+                if (parts.length === 2) {
+                    this._professionsMap[parts[0]] = parts[1];
+                }
+            }
+        } catch (err) {
+            console.error("Bastion Manager | Failed to load professions reference.", err);
+        }
+    }
+
     static DEFAULT_OPTIONS = {
         id: "bastion-manager", classes: ["bastion-app"], tag: "form",
         window: { title: "Bastion Management", icon: "fa-solid fa-chess-rook", resizable: true },
@@ -856,6 +880,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 availableOrders.splice(idx, 1, "Craft: Alchemist's Supplies", "Craft: Poison");
             }
 
+            if (availableOrders.includes("Research") && fac.name.includes("Trophy Room")) {
+                const idx = availableOrders.indexOf("Research");
+                availableOrders.splice(idx, 1, "Research: Lore", "Research: Trinket Trophy");
+            }
+
             if (fac.name.includes("Garden")) availableOrders.push("Change Type");
 
             // Greenhouse Harvest Expansion
@@ -901,12 +930,15 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (currentOrder === "Harvest" && fac.name.includes("Greenhouse")) {
                 currentUIOrder = `Harvest: ${craftChoice || "Healing Herbs"}`;
             }
+            if (currentOrder === "Research" && fac.name.includes("Trophy Room")) {
+                currentUIOrder = `Research: ${craftChoice || "Lore"}`;
+            }
             if (currentOrder === "Craft" && fac.name.includes("Laboratory")) {
                 currentUIOrder = `Craft: ${craftChoice || "Alchemist's Supplies"}`;
             }
             
             let safeOrder = availableOrders.includes(currentUIOrder) ? currentUIOrder : "Maintain";
-            if (progress > 0) safeOrder = "Continue Project";
+            if (progress > 0 && !fac.name.includes("Garden")) safeOrder = "Continue Project";
             
             // Default to Progress Queue if it exists and no other order is active
             if (safeOrder === "Maintain" && rawQueue.length > 0) safeOrder = "Progress Queue";
@@ -947,7 +979,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             const hasOrders = availableOrders.length > 1;
 
-            const isLibraryResearching = fac.name.includes("Library") && safeOrder === "Research";
+            const isLibraryResearching = (fac.name.includes("Library") && safeOrder === "Research") || (fac.name.includes("Trophy Room") && safeOrder.includes("Lore"));
             const libraryTopic = fac.isFlag ? (fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.libraryTopic || "") : (fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "libraryTopic") || "");
 
             const craftQueue = rawQueue.map((q, idx) => {
@@ -5318,6 +5350,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 } else if (order === "Research") {
                     let resRes = await BastionManager._handleResearch(facDoc.name, facEntry, subType, getH());
                     currentResultText = resRes.text;
+                    if (resRes.item) items.push(resRes.item);
                 } else if (order === "Craft" || order === "Progress Queue" || order === "Continue Project") {
                     // Robust Queue Advancement: If idle or explicitly processing queue, pull next project
                     if ((!craftChoice || order === "Progress Queue") && progress === 0 && craftQueue.length > 0) {
@@ -6283,15 +6316,40 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     static async _handleResearch(baseName, fac, subType, hString = "The hireling") {
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        const getFacFlag = (key) => fac.isFlag ? (fac.doc.flags?.[MODULE_ID]?.[key]) : (fac.doc.getFlag(MODULE_ID, key));
+
         if (baseName === "Library") {
-            const topic = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.libraryTopic) : (fac.doc.getFlag("dnd-2024-bastion-manager", "libraryTopic"));
+            const topic = getFacFlag("libraryTopic");
             const topicText = topic ? `<b>${topic}</b>` : `a topic`;
             return { text: `${hString} has finished researching ${topicText}, obtaining up to 3 accurate pieces of information.` };
 
         } else if (baseName === "Archive") {
             return { text: `${hString} searches the archive for helpful lore, gaining knowledge as if they cast <i>Legend Lore</i>.` };
         } else if (baseName === "Trophy Room") {
-            return { text: `${hString} studies the trophies in the room and discovers new insights.` };
+            const researchChoice = getFacFlag("craftChoice") || "Lore";
+            if (researchChoice === "Trinket Trophy") {
+                const roll = (await new Roll("1d2").evaluate()).total;
+                if (roll === 2) { // Even success
+                    const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+                    const index = await outPack?.getIndex({fields: ["folder", "system.rarity"]});
+                    const folder = outPack?.folders.find(f => f.name.toLowerCase().includes("implement"));
+                    
+                    if (index && folder) {
+                        const possible = index.filter(i => (i.folder?.id || i.folder) === folder.id && i.system.rarity?.toLowerCase() === "common");
+                        if (possible.length > 0) {
+                            const chosen = possible[Math.floor(Math.random() * possible.length)];
+                            const doc = await outPack.getDocument(chosen._id);
+                            const item = doc.toObject();
+                            return { text: `${hString} searched through the trophies and discovered a useful trinket: <b>${item.name}</b>!`, item };
+                        }
+                    }
+                    return { text: `${hString} found a valuable implement among the trophies, but no specific item data was found in the compendium.` };
+                }
+                return { text: `${hString} spent the week searching the trophies but found nothing of immediate use (Roll: ${roll}).` };
+            }
+            const topic = getFacFlag("libraryTopic");
+            return { text: `${hString} studied the trophies to research <b>${topic || "a significant topic"}</b>, discovering up to 3 accurate pieces of information.` };
         } else if (baseName === "Pub") {
             return { text: `${hString} taps into their local spy network to gather rumors and information.` };
         }
@@ -6500,35 +6558,28 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     static _getHirelingProfession(facName, subType) {
-        const name = facName.toLowerCase();
-        if (name.includes("garden")) {
-            if (subType === "Herb") return "the Herbalist";
-            if (subType === "Food") return "the Farmer";
-            if (subType === "Poison") return "the Botanical Toxicologist";
-            if (subType === "Decorative") return "the Florist";
-            return "the Gardener";
+        if (!this._professionsMap) return "(Hireling)";
+        const name = facName.trim();
+        const sub = subType?.trim();
+
+        // 1. Check for specialization match first: "Garden (Herb)"
+        if (sub) {
+            const specKey = `${name} (${sub})`;
+            if (this._professionsMap[specKey]) return `the ${this._professionsMap[specKey]}`;
         }
-        if (name.includes("arcane study")) return "the Arcanist";
-        if (name.includes("library")) return "the Librarian";
-        if (name.includes("barrack")) return "the Recruiter";
-        if (name.includes("sanctuary")) return "the Sanctuary Caretaker";
-        if (name.includes("smithy")) return "the Smith";
-        if (name.includes("training area")) return "the Training Partner";
-        if (name.includes("storehouse")) return "the Quartermaster";
-        if (name.includes("workshop")) return "the Artisan";
-        if (name.includes("armory")) return "the Armorer";
-        if (name.includes("teleportation circle")) return "the Gatekeeper";
-        if (name.includes("observatory")) return "the Astronomer";
-        if (name.includes("theater")) return "the Stage Manager";
-        if (name.includes("scriptorium")) return "the Scribe";
-        if (name.includes("pub")) return "the Barkeep";
-        if (name.includes("reliquary")) return "the Relic Keeper";
-        if (name.includes("gaming room")) return "the Croupier";
-        if (name.includes("menagerie")) return "the Beastmaster";
-        if (name.includes("greenhouse")) return "the Horticulturist";
-        if (name.includes("laboratory")) return "the Alchemist";
-        
-        // Fallback for custom or basic facilities
+
+        // 2. Check for exact name match: "Library"
+        if (this._professionsMap[name]) return `the ${this._professionsMap[name]}`;
+
+        // 3. Robust partial match fallback
+        const lowerName = name.toLowerCase();
+        const entry = Object.entries(this._professionsMap).find(([k]) => {
+            const lowerK = k.toLowerCase();
+            return lowerName.includes(lowerK) || lowerK.includes(lowerName);
+        });
+
+        if (entry) return `the ${entry[1]}`;
+
         return "(Hireling)";
     }
 
@@ -6773,6 +6824,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         
         combinedPubHtml += `</div>`;
         combinedDmHtml += `</div>`;
+
+        // Post the public turn recap to the chat log
+        await ChatMessage.create({ content: combinedPubHtml });
 
         // Show a single DM whisper/dialog combining all events
         if (hasDmEvents) {
