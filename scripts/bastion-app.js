@@ -708,6 +708,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const facilities = await Promise.all(rawFacilities.map(async fac => {
             const getFacFlag = (key) => fac.isFlag ? (fac.sourceDoc.flags?.[MODULE_ID]?.[key]) : (fac.sourceDoc.getFlag(MODULE_ID, key));
             
+            const rawQueue = getFacFlag("craftQueue") || [];
             const isBasic = isBasicFac(fac.sourceDoc);
             let facSize = getFacFlag("size");
             if (facSize === undefined) facSize = isBasic ? "Roomy" : null;
@@ -5023,7 +5024,13 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let order = isBasic ? "Maintain" : (getFacFlag("order") || "Maintain");
             let subType = getFacFlag("subType");
             let progress = Number(getFacFlag("progress") || 0);
+            let craftChoice = getFacFlag("craftChoice");
+            let craftQueue = getFacFlag("craftQueue") || [];
             
+            // Synchronize 'Progress Queue' behavior with UI display fallback:
+            // If order is Maintain but there is a queue and no active progress, treat as Progress Queue.
+            if (order === "Maintain" && craftQueue.length > 0 && progress === 0) order = "Progress Queue";
+
             // Use || instead of ?? to ensure null values from construction don't fallback to truthy defaults 
             // unless the construction flag itself is missing.
             let facSize = getFacFlag("size");
@@ -5054,8 +5061,6 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 return isCap ? `<b>The ${hJob}s</b>` : `<b>the ${hJob}s</b>`;
             };
 
-            let craftChoice = getFacFlag("craftChoice");
-            let craftQueue = getFacFlag("craftQueue") || [];
             let focusChoice = getFacFlag("focusChoice");
             let magicItemChoice = getFacFlag("magicItemChoice");
             let sacredFocusChoice = getFacFlag("sacredFocusChoice");
@@ -5323,17 +5328,17 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
                         if (facName.includes("Arcane Study")) {
                             if (craftChoice === "Arcane Focus") focusChoice = next.choice;
-                            else magicItemChoice = next.choice;
+                            else if (craftChoice === "Magic Item (Arcana)") magicItemChoice = next.choice;
                         } else if (facName.includes("Workshop")) {
                             workshopItemChoice = next.choice;
                         } else if (facName.includes("Greenhouse")) {
-                            if (craftChoice === "Harvest: Poison") greenhousePoisonChoice = next.choice;
+                            if (craftChoice === "Poison" || craftChoice === "Harvest: Poison") greenhousePoisonChoice = next.choice;
                         } else if (facName.includes("Laboratory")) {
-                            if (craftChoice === "Poison") laboratoryPoisonChoice = next.choice; else laboratoryAlchemistChoice = next.choice;
+                            if (craftChoice === "Poison") laboratoryPoisonChoice = next.choice; else if (craftChoice === "Alchemist's Supplies") laboratoryAlchemistChoice = next.choice;
                         } else if (facName.includes("Smithy")) {
                             if (craftChoice === "Smith's Tools") smithyItemChoice = next.choice;
-                            else armamentItemChoice = next.choice;
-                        } else if (facName.includes("Sanctuary")) {
+                            else if (craftChoice === "Magic Item (Armament)") armamentItemChoice = next.choice;
+                        } else if (isSanctuary) {
                             sacredFocusChoice = next.choice;
                         } else if (facName.includes("Sacristy")) {
                             relicItemChoice = next.choice;
