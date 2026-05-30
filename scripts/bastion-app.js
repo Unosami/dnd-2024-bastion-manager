@@ -294,6 +294,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             consumeGreenhouseFruit: BastionManager.onConsumeGreenhouseFruit,
             refreshGreenhouseFruits: BastionManager.onRefreshGreenhouseFruits,
             renameStableAnimal: BastionManager.onRenameStableAnimal,
+            toggleMeditation: BastionManager.onToggleMeditation,
             viewGraveyard: BastionManager.onViewGraveyard,
         }
     };
@@ -691,6 +692,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const neglectWarning = !disableNeglect && (neglectCounter > 0 && !hasActiveOrder);
 
         const ratio = Math.min(neglectCounter / actorLevel, 1);
+
+        // Meditation Chamber Global State
+        const innerPeaceActive = this.actor.getFlag(MODULE_ID, "innerPeaceActive") || false;
+        const fortifiedSaves = this.actor.getFlag(MODULE_ID, "fortifiedSaves") || [];
+
         const r = Math.floor(255 - (116 * ratio));
         const g = Math.floor(165 * (1 - ratio));
         const neglectColor = `rgb(${r}, ${g}, 0)`;
@@ -766,6 +772,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const isTeleportationCircle = fac.name.includes("Teleportation Circle");
             const visitingSpellcaster = getFacFlag("visitingSpellcaster") || false;
             const isTheater = fac.name.includes("Theater");
+            const isMeditationChamber = fac.name.includes("Meditation Chamber");
+
             const theaterPhase = isTheater ? (getFacFlag("theaterPhase") || "Idle") : "Idle";
             const theaterProgress = isTheater ? Number(getFacFlag("theaterProgress") || 0) : 0;
             const theaterProgressPct = isTheater ? Math.round((Math.min(theaterProgress, 14) / 14) * 100) : 0;
@@ -1571,6 +1579,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 isStableTrade: isStableTrade,
                 isTeleportationCircle,
                 isTheater,
+                isMeditationChamber,
                 theaterPhase,
                 theaterProgress,
                 theaterProgressPct,
@@ -2025,7 +2034,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             selectedId, combinedGroup, wallCost, wallTime,
             totalWallSquaresAllowed, placedWallSquares, structIds: STRUCT_IDS, readyCount, totalBastions, isReady,
             gridBackground, selectedOpening: this._selectedOpeningType || "Door", neglectWarning, neglectColor, neglectCounter, actorLevel,
-            sectionStates: this._sectionStates
+            sectionStates: this._sectionStates,
+            innerPeaceActive, fortifiedSaves
         };
         return this.context;
     }
@@ -2834,6 +2844,50 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     static onSelectFacilityLayout(event, target) {
         const id = target.dataset.itemId;
         this._selectedFacilityId = this._selectedFacilityId === id ? null : id;
+        this.render();
+    }
+
+    static async onToggleMeditation(event, target) {
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        const actor = this.actor;
+        
+        const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+        if (!outPack) return ui.notifications.error("Meditation Chamber error: Output compendium missing.");
+
+        const folderId = "MHEBG1MAdvgjzJk1";
+        const index = await outPack.getIndex({ fields: ["folder"] });
+        const folderItems = index.filter(i => (i.folder?.id || i.folder) === folderId);
+
+        if (folderItems.length < 2) {
+            return ui.notifications.error("The Meditation Chamber benefits folder is missing or incomplete in the compendium.");
+        }
+
+        // Clean up any existing meditation rewards first
+        const existingIds = actor.getFlag(MODULE_ID, "activeMeditationItems") || [];
+        if (existingIds.length > 0) {
+            const toDelete = actor.items.filter(i => existingIds.includes(i.id)).map(i => i.id);
+            if (toDelete.length > 0) await actor.deleteEmbeddedDocuments("Item", toDelete);
+        }
+
+        // Randomly pick 2 unique benefits
+        const shuffled = [...folderItems].sort(() => 0.5 - Math.random());
+        const selected = shuffled.slice(0, 2);
+
+        const toCreate = [];
+        for (const s of selected) {
+            const doc = await outPack.getDocument(s._id);
+            const itemData = doc.toObject();
+            toCreate.push(itemData);
+        }
+
+        const createdItems = await actor.createEmbeddedDocuments("Item", toCreate);
+        const newIds = createdItems.map(i => i.id);
+        const saveNames = createdItems.map(i => i.name.replace("Meditation: ", "").replace(" Save", ""));
+
+        await actor.setFlag(MODULE_ID, "activeMeditationItems", newIds);
+        await actor.setFlag(MODULE_ID, "fortifiedSaves", saveNames);
+
+        ui.notifications.info(`${actor.name} has finished a week of meditation and gained inner focus: ${saveNames.join(" and ")}.`);
         this.render();
     }
 
@@ -5078,7 +5132,20 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         }
         if (layoutChanged) await layoutActor.setFlag(MODULE_ID, "layout", layout);
 
+        // --- Meditation Item Cleanup ---
+        const meditationItemIds = actor.getFlag(MODULE_ID, "activeMeditationItems") || [];
+        if (meditationItemIds.length > 0) {
+            const itemsToRemove = actor.items.filter(i => meditationItemIds.includes(i.id)).map(i => i.id);
+            if (itemsToRemove.length > 0) {
+                await actor.deleteEmbeddedDocuments("Item", itemsToRemove);
+                orderSummary += `<li style="margin-bottom: 6px; padding: 4px; background: rgba(130,207,255,0.1); border-radius: 3px;"><i class="fa-solid fa-brain"></i> <b>Meditation:</b> Your inner focus has faded. Saving throw benefits have been removed.</li>`;
+            }
+            await actor.unsetFlag(MODULE_ID, "activeMeditationItems");
+            await actor.unsetFlag(MODULE_ID, "fortifiedSaves");
+        }
+
         // Handle Defensive Wall Progress
+
         let wallDays = actor.getFlag(MODULE_ID, "pendingWallDays") || 0;
         if (wallDays > 0) {
             let wallCount = actor.getFlag(MODULE_ID, "completedWalls") || 0;
@@ -5635,12 +5702,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     }
                 } else if (order === "Empower") {
                     let empRes = await BastionManager._handleEmpower(facDoc.name, facEntry, actor, theaterPhase, theaterProgress, getH(), getPs());
-                    currentResultText = empRes.text;
-                    if (empRes.theaterPhase) {
-                        theaterPhase = empRes.theaterPhase;
-                        theaterProgress = empRes.theaterProgress;
+                    if (empRes) {
+                        currentResultText = empRes.text;
+                        if (empRes.theaterPhase) {
+                            theaterPhase = empRes.theaterPhase;
+                            theaterProgress = empRes.theaterProgress;
+                        }
                     }
-                }
+                 }
             }
             
             // Handle Background Upgrade Progress
@@ -5680,6 +5749,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         // Automatic Fruit Refresh: A turn is 7 days, 
                         // so fruits always reset to full during turn advancement.
                         fruitCount: facName.includes("Greenhouse") ? 3 : greenhouseFruitCount,
+                        innerPeaceActive: actor.getFlag(MODULE_ID, "innerPeaceActive") || false,
                         stockedCount: facEntry.stockedCount ?? (getFacFlag("stockedCount") || 0),
                         isStocked: facEntry.isStocked ?? isStocked,
                         trainerType,
@@ -6148,7 +6218,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const days = BastionManager._getEffectiveDays(7);
             return { text: `${psString} conduct training exercises led by ${trainerLabel} for ${days} days. Any character that trained here for 8 hours a day gains the associated benefit for ${days} days.${benefitText}` };
         } else if (baseName === "Meditation Chamber") {
-            return { text: `${psString} use the Meditation Chamber to gain inner peace. The next time you roll for a Bastion event, you can roll twice and choose either result.` };
+            await actor.setFlag("dnd-2024-bastion-manager", "innerPeaceActive", true);
+            return { text: `The hireling uses the Meditation Chamber to gain inner peace. The next time you roll for a Bastion event, you can roll twice and choose either result.` };
         } else if (baseName === "Observatory") {
             const DialogV2 = foundry.applications.api.DialogV2;
             let accept = await DialogV2.confirm({ window: { title: `Empower: Observatory` }, content: `<p>Roll 1d2 to explore the eldritch mysteries of the stars?</p>`, rejectClose: false });
@@ -6808,20 +6879,40 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             dmHtml += `<div style="margin-bottom: 15px;">
                 <h3 style="margin-bottom: 5px; color: #a32a22; border-bottom: 1px solid #ccc;">${actor.name}</h3>`;
                 
-            // Use the shared rolledEvents map to ensure combined bastions only roll once
-            if (!res.rolledEvents) res.rolledEvents = new Map();
             const combinedId = actor.getFlag(MODULE_ID, "combinedGroupId");
+            const hasInnerPeace = actor.getFlag(MODULE_ID, "innerPeaceActive") || false;
+            let innerPeaceUsedThisTurn = false;
+
+            if (!res.rolledEvents) res.rolledEvents = new Map();
 
             for (let t = 0; t < turns; t++) {
                 const turnKey = `${combinedId}_${t}`;
                 let rollTotal;
+                let roll2 = null;
                 let isDuplicate = false;
 
                 if (combinedId && res.rolledEvents.has(turnKey)) {
-                    rollTotal = res.rolledEvents.get(turnKey);
+                    const stored = res.rolledEvents.get(turnKey);
+                    if (typeof stored === "object") {
+                        rollTotal = stored.r1;
+                        roll2 = stored.r2;
+                    } else rollTotal = stored;
                     isDuplicate = true;
                 } else {
                     const isManual = game.settings.get(MODULE_ID, "manualEventSelection");
+                    
+                    if (hasInnerPeace && !innerPeaceUsedThisTurn) {
+                        const r1 = (await new Roll("1d100").evaluate()).total;
+                        const r2 = (await new Roll("1d100").evaluate()).total;
+                        rollTotal = r1;
+                        roll2 = r2;
+                        innerPeaceUsedThisTurn = true;
+                        if (combinedId) res.rolledEvents.set(turnKey, { r1, r2 });
+                    } else {
+                        rollTotal = (await new Roll("1d100").evaluate()).total;
+                        if (combinedId) res.rolledEvents.set(turnKey, rollTotal);
+                    }
+
                     if (isManual && game.user.isGM) {
                         rollTotal = await BastionManager._promptEventSelection(actor, t + 1);
                     } else {
@@ -6834,26 +6925,45 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 // Only report the full event details for the "primary" actor in a group
                 if (isDuplicate) continue;
 
-                const ev = await BastionManager._processEventRoll(rollTotal, actor, false, null);
-                let eCat = ev.cat; let eDesc = ev.desc; let autoResults = ev.auto;
-
-                let eColor = rollTotal <= 50 ? "#a8d5a2" : (rollTotal <= 58 || (rollTotal >= 77 && rollTotal <= 79) ? "#f28b82" : "#99c1f1");
                 let turnLabel = turns > 1 ? `<b>Turn ${t + 1}:</b> ` : "";
+                
+                const ev = await BastionManager._processEventRoll(rollTotal, actor, false, null);
+                let eColor = rollTotal <= 50 ? "#a8d5a2" : (rollTotal <= 58 || (rollTotal >= 77 && rollTotal <= 79) ? "#f28b82" : "#99c1f1");
 
                 dmHtml += `
                     <div style="margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(0,0,0,0.15);">
-                        <p style="margin: 0; font-size: 1.15em; color: ${eColor}; font-weight: bold;">${turnLabel}🎲 ${rollTotal} — ${eCat}</p>
-                        <p style="font-size: 0.95em; margin: 8px 0; line-height: 1.4;">${eDesc}</p>
-                        ${autoResults ? `<div style="margin-top: 8px; border-top: 1px dashed rgba(0,0,0,0.1); padding-top: 5px;">${autoResults}</div>` : ""}
-                    </div>`;
+                        ${roll2 ? `<div style="background: rgba(130,207,255,0.1); border: 1px solid #82cfff; padding: 5px; border-radius: 4px; margin-bottom: 10px; font-size: 0.9em;"><i class="fa-solid fa-brain"></i> <b>Inner Peace:</b> Choose one of the two following events.</div>` : ""}
+                        <p style="margin: 0; font-size: 1.15em; color: ${eColor}; font-weight: bold;">${turnLabel}🎲 ${rollTotal} — ${ev.cat}</p>
+                        <p style="font-size: 0.95em; margin: 8px 0; line-height: 1.4;">${ev.desc}</p>
+                        ${ev.auto ? `<div style="margin-top: 8px; border-top: 1px dashed rgba(0,0,0,0.1); padding-top: 5px;">${ev.auto}</div>` : ""}`;
 
-                if (eCat !== "All Is Well") {
-                    let existingEvent = publicSummaryEvents.find(e => e.cat === eCat);
+                if (roll2) {
+                    const ev2 = await BastionManager._processEventRoll(roll2, actor, false, null);
+                    let eColor2 = roll2 <= 50 ? "#a8d5a2" : (roll2 <= 58 || (roll2 >= 77 && roll2 <= 79) ? "#f28b82" : "#99c1f1");
+                    dmHtml += `
+                        <div style="margin-top: 15px; padding-top: 10px; border-top: 2px solid #82cfff;">
+                            <p style="margin: 0; font-size: 1.15em; color: ${eColor2}; font-weight: bold;">🎲 ${roll2} — ${ev2.cat}</p>
+                            <p style="font-size: 0.95em; margin: 8px 0; line-height: 1.4;">${ev2.desc}</p>
+                            ${ev2.auto ? `<div style="margin-top: 8px; border-top: 1px dashed rgba(0,0,0,0.1); padding-top: 5px;">${ev2.auto}</div>` : ""}
+                        </div>`;
+                }
+
+                dmHtml += `</div>`;
+
+                if (ev.cat !== "All Is Well") {
+                    let existingEvent = publicSummaryEvents.find(e => e.cat === ev.cat);
                     if (existingEvent) existingEvent.count++;
-                    else publicSummaryEvents.push({ cat: eCat, count: 1 });
+                    else publicSummaryEvents.push({ cat: ev.cat, count: 1 });
+                }
+                if (roll2) {
+                    publicSummaryEvents.push({ cat: "Choice of Two Events", count: 1 });
                 }
             }
+
             dmHtml += `</div>`;
+            
+            if (innerPeaceUsedThisTurn) await actor.setFlag(MODULE_ID, "innerPeaceActive", false);
+
 
             let notableEventsStr = publicSummaryEvents.length > 0 
                 ? publicSummaryEvents.map(e => e.count > 1 ? `${e.cat} (x${e.count})` : e.cat).join(", ") 

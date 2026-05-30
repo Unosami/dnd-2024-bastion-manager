@@ -2,6 +2,9 @@ Bastion Module notes:
 GENERAL
 - Move hireling and defender name pools to seperate editable files.
 - Make Bastion Name Editable. This should also be doable for combined bastions.
+- Have individual bastions show the descrepancy between their turn and the global turn. 
+- For new characters, have the DM be able to jump the turn count up to the global amount (without production). Or perhaps, have new facilities start at the global turn count?
+
 
 EVENTS:
 - Combined Bastions should all share a single bastion event, rather than generating one-per bastion per Maintenance turn.

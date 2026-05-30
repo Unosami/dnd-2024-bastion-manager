@@ -22,6 +22,12 @@
                 </span>
             {{/if}}
 
+            {{#if fortifiedSaves.length}}
+                <span style="color: #4a86e8; font-weight: bold; display: flex; align-items: center; gap: 4px;" title="Advantage on {{#each fortifiedSaves}}{{this}}{{#unless @last}}, {{/unless}}{{/each}} saves.">
+                    <i class="fa-solid fa-shield-halved"></i> Fortified
+                </span>
+            {{/if}}
+
             {{#if (ne actor.type "group")}}
                 <button type="button" data-action="toggleCombine" style="width: auto; padding: 2px 8px; font-size: 0.75em; {{#if combinedGroup}}color: green; font-weight: bold;{{/if}}" 
                     title="{{#if combinedGroup}}Combined with {{combinedGroup.name}}{{else}}Combine this Bastion with a shared Group Bastion{{/if}}">
@@ -598,6 +604,26 @@
                                 </li>
                             {{/each}}
                         </ul>
+                    </div>
+                {{/if}}
+
+                {{#if this.isMeditationChamber}}
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid #82cfff; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                            <span><i class="fa-solid fa-brain"></i> <b>Inner Peace:</b></span>
+                            {{#if ../innerPeaceActive}}
+                                <span style="color: #4caf50; font-weight: bold;">ACTIVE</span>
+                            {{else}}
+                                <span style="opacity: 0.6; font-style: italic;">Requires Empower</span>
+                            {{/if}}
+                        </div>
+                        <hr style="opacity: 0.1; margin: 5px 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span><b>Fortify Self:</b></span>
+                            <button type="button" data-action="toggleMeditation" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 24px;">
+                                Meditation
+                            </button>
+                        </div>
                     </div>
                 {{/if}}
 
