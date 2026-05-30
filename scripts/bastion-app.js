@@ -258,7 +258,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     static DEFAULT_OPTIONS = {
         id: "bastion-manager", classes: ["bastion-app"], tag: "form",
         window: { title: "Bastion Management", icon: "fa-solid fa-chess-rook", resizable: true },
-        position: { width: 850, height: 600 },
+        position: { width: 880, height: 600 },
         actions: { 
             buildFromDropdown: BastionManager.onBuildFromDropdown, 
             deleteFacility: BastionManager.onDeleteFacility, 
@@ -885,6 +885,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 availableOrders.splice(idx, 1, "Research: Lore", "Research: Trinket Trophy");
             }
 
+            if (availableOrders.includes("Research") && fac.name.includes("Archive")) {
+                const idx = availableOrders.indexOf("Research");
+                availableOrders.splice(idx, 1, "Research: Helpful Lore");
+            }
+
             if (fac.name.includes("Garden")) availableOrders.push("Change Type");
 
             // Greenhouse Harvest Expansion
@@ -933,6 +938,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (currentOrder === "Research" && fac.name.includes("Trophy Room")) {
                 currentUIOrder = `Research: ${craftChoice || "Lore"}`;
             }
+            if (currentOrder === "Research" && fac.name.includes("Archive")) {
+                currentUIOrder = "Research: Helpful Lore";
+            }
             if (currentOrder === "Craft" && fac.name.includes("Laboratory")) {
                 currentUIOrder = `Craft: ${craftChoice || "Alchemist's Supplies"}`;
             }
@@ -979,7 +987,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             const hasOrders = availableOrders.length > 1;
 
-            const isLibraryResearching = (fac.name.includes("Library") && safeOrder === "Research") || (fac.name.includes("Trophy Room") && safeOrder.includes("Lore"));
+            const isLibraryResearching = (fac.name.includes("Library") && safeOrder === "Research") || (fac.name.includes("Trophy Room") && safeOrder.includes("Lore")) || (fac.name.includes("Archive") && safeOrder === "Research: Helpful Lore");
             const libraryTopic = fac.isFlag ? (fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.libraryTopic || "") : (fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "libraryTopic") || "");
 
             const craftQueue = rawQueue.map((q, idx) => {
@@ -1415,6 +1423,16 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const placedSquares = Object.values(layoutData).filter(id => id === fac.id).length;
             const isLayoutActive = selectedId === fac.id;
 
+            // --- Archive Specific State ---
+            const isArchive = fac.name.includes("Archive");
+            const archiveBooks = getFacFlag("archiveBooks") || [];
+            const archiveBooksFolderId = "1gNhp4TlPZmeUuND";
+
+            const archiveBooksList = archiveBooks.map(b => {
+                const entry = outIndex.find(i => i.name === b && (i.folder?.id || i.folder) === archiveBooksFolderId);
+                return { name: b, desc: entry?.system?.description?.value || "<i>Benefit unknown.</i>" };
+            });
+
             // Facility Color (random but consistent for layout)
             const colorSeed = fac.id.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
             const hue = colorSeed % 360;
@@ -1441,6 +1459,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 isOrderChanging: isOrderChanging,
                 isSelectionDisabled: isSelectionDisabled,
                 isLibraryResearching: isLibraryResearching,
+                isArchive: isArchive,
+                archiveBooks: archiveBooks,
+                archiveBooksList: archiveBooksList,
                 libraryTopic: libraryTopic,
                 isArcaneStudyCrafting: isArcaneStudyCrafting,
                 craftChoice: craftChoice, // This is the currently selected craft choice in the UI
@@ -3968,6 +3989,27 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                               </div>`;
             subType2SelectionNeeded = true;
         }
+
+        if (name.includes("Archive") && (upgradeData.to === "Vast" || showSizeSelect)) {
+            const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+            const booksFolderId = "1gNhp4TlPZmeUuND";
+            const index = await outPack.getIndex({fields: ["folder"]});
+            const allBooks = index.filter(i => (i.folder?.id || i.folder) === booksFolderId);
+            
+            const existingBooks = facFlags.archiveBooks || [];
+            const availableBooks = allBooks.filter(b => !existingBooks.includes(b.name));
+            const bookOptions = availableBooks.map(b => `<option value="${b.name}">${b.name}</option>`).join("");
+            
+            promptContent += `<div id="archive-upgrade-container" style="margin-top: 10px; border-top: 1px solid #ccc; padding-top: 10px; ${upgradeData.to !== "Vast" ? 'display: none;' : ''}">
+                                <p>A Vast Archive gains two additional reference books. Select them from the available collection:</p>
+                                <div class="form-group"><label>Book 2:</label><select name="archiveBook2" style="width: 100%;">${bookOptions}</select></div>
+                                <div class="form-group"><label>Book 3:</label><select name="archiveBook3" style="width: 100%;">${bookOptions}</select></div>
+                              </div>`;
+            html.querySelector('.enlarge-size-select')?.addEventListener('change', (ev) => {
+                html.querySelector('#archive-upgrade-container').style.display = ev.target.value === "Vast" ? "block" : "none";
+            });
+        }
+
         promptContent += `</div>`;
 
         const confirmData = await DialogV2.prompt({
@@ -4001,6 +4043,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         if (!gf.flags) gf.flags = {}; if (!gf.flags["dnd-2024-bastion-manager"]) gf.flags["dnd-2024-bastion-manager"] = {};
                         gf.flags["dnd-2024-bastion-manager"].size = upgradeData.to;
                         if (confirmData.subType2) gf.flags["dnd-2024-bastion-manager"].subType2 = confirmData.subType2; // confirmData.subType2 will be null or a value
+                        if (confirmData.archiveBook2) gf.flags["dnd-2024-bastion-manager"].archiveBooks = [...(gf.flags["dnd-2024-bastion-manager"].archiveBooks || []), confirmData.archiveBook2, confirmData.archiveBook3];
                         await this.actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacilities);
                     }
                 } else {
@@ -4015,8 +4058,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 "targetSize": upgradeData.to,
                 "upgradeProgress": 0,
                 "upgradeTurns": upgradeData.turns,
-                "targetSubType2": confirmData.subType2 // confirmData.subType2 will be null or a value
+                "targetSubType2": confirmData.subType2
             };
+
+            if (confirmData.archiveBook2 && confirmData.archiveBook3) {
+                const books = Array.from(facFlags.archiveBooks || []);
+                books.push(confirmData.archiveBook2, confirmData.archiveBook3);
+                updateObj.archiveBooks = books;
+            }
 
             if (ds.isFlag === "true") {
                 const groupFacilities = this.actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
@@ -4217,6 +4266,20 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             `;
         }
 
+        if (itemDoc.name.includes("Archive")) {
+            const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+            const booksFolderId = "1gNhp4TlPZmeUuND";
+            const index = await outPack.getIndex({fields: ["folder"]});
+            const books = index.filter(i => (i.folder?.id || i.folder) === booksFolderId);
+            const bookOptions = books.map(b => `<option value="${b.name}">${b.name}</option>`).join("");
+            promptContent += `
+                <div style="margin-bottom: 10px;">
+                    <p>Select your Archive's starting Reference Book:</p>
+                    <select name="archiveBook1" style="width: 100%;">${bookOptions}</select>
+                </div>
+            `;
+        }
+
         const isStable = itemDoc.name.includes("Stable");
         if (isStable) {
             promptContent += `
@@ -4320,6 +4383,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (isStable) {
                 const animals = [formData.startingLargeMount || "Riding Horse", "Pony", "Mule"];
                 foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.stableAnimals`, animals);
+            }
+
+            if (itemDoc.name.includes("Archive") && formData.archiveBook1) {
+                const books = [formData.archiveBook1];
+                foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.archiveBooks`, books);
             }
 
             if (turns > 0) {
@@ -5106,6 +5174,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let paperworkTitle = getFacFlag("paperworkTitle");
             let paperworkQty = getFacFlag("paperworkQty");
             let stableItemChoice = getFacFlag("stableItemChoice");
+            let archiveBooks = getFacFlag("archiveBooks") || [];
             let greenhouseFruitCount = getFacFlag("fruitCount") ?? 3;
             let greenhousePoisonChoice = getFacFlag("greenhousePoisonChoice") || "Assassin's Blood";
             let laboratoryPoisonChoice = getFacFlag("laboratoryPoisonChoice") || "Burnt Othur Fumes";
@@ -5602,6 +5671,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         targetSubType2, upgradeTurns, smithyItemChoice, armamentItemChoice,
                         relicItemChoice, scrollChoice, activeProjectChoice, craftQueue, storedGp, autoNextAction,
                         bookTitle, paperworkTitle, paperworkQty,
+                        archiveBooks,
                         greenhousePoisonChoice,
                         theaterPhase, theaterProgress,
                         stableItemChoice, stableTradeChoice, stableTransferType, stableTransferChoice,
@@ -5650,6 +5720,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     [`flags.${MODULE_ID}.bookTitle`]: bookTitle,
                     [`flags.${MODULE_ID}.paperworkTitle`]: paperworkTitle,
                     [`flags.${MODULE_ID}.paperworkQty`]: paperworkQty,
+                    [`flags.${MODULE_ID}.archiveBooks`]: archiveBooks,
                     [`flags.${MODULE_ID}.theaterPhase`]: theaterPhase,
                     [`flags.${MODULE_ID}.theaterProgress`]: theaterProgress,
                     
@@ -6191,7 +6262,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
         let title = "Theater Production";
         let body = `A production is underway in <b>${actor.name}'s</b> Bastion!`;
-        let hint = "Characters are invited to join as Composers, Directors, or Performers to contribute to the show's success.";
+        let hint = "Characters are invited to join as Directors, or Performers to contribute to the show's success.";
         
         if (type === "writer") {
             title = "Call for Composer/Writer";
@@ -6325,7 +6396,18 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             return { text: `${hString} has finished researching ${topicText}, obtaining up to 3 accurate pieces of information.` };
 
         } else if (baseName === "Archive") {
-            return { text: `${hString} searches the archive for helpful lore, gaining knowledge as if they cast <i>Legend Lore</i>.` };
+            const topic = getFacFlag("libraryTopic");
+            const topicText = topic ? ` regarding <b>${topic}</b>` : "";
+
+            const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+            const loreFolderId = "EDXX8ZLlRg2wbXb9";
+            const index = await outPack?.getIndex({fields: ["folder"]});
+            const loreItem = index?.find(i => (i.folder?.id || i.folder) === loreFolderId);
+            const loreLink = loreItem ? `@UUID[${loreItem.uuid}]{Legend Lore}` : "<i>Legend Lore</i>";
+
+            let loreText = `${hString} searches the archive for helpful lore${topicText}, gaining knowledge as if they cast ${loreLink}.`;
+            loreText += `<div style="margin-top: 5px; font-size: 0.85em; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 5px; opacity: 0.8;"><i>Legend Lore:</i> If the topic is of legendary importance, you learn a brief summary of its significant lore. If not, the search yields no information.</div>`;
+            return { text: loreText };
         } else if (baseName === "Trophy Room") {
             const researchChoice = getFacFlag("craftChoice") || "Lore";
             if (researchChoice === "Trinket Trophy") {

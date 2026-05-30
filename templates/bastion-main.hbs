@@ -1,6 +1,6 @@
 <div class="bastion-manager-container" style="display: flex; gap: 15px; height: 100%; overflow: hidden;">
     
-    <div class="bastion-sidebar" style="flex: 0 0 380px; overflow-y: auto; padding-right: 10px; border-right: 1px solid #ccc; display: flex; flex-direction: column;">
+    <div class="bastion-sidebar" style="flex: 0 0 400px; overflow-y: auto; padding-right: 10px; border-right: 1px solid #ccc; display: flex; flex-direction: column;">
     <div class="sidebar-content-column">
     <div class="bastion-header" style="text-align: center; margin-bottom: 5px;">
         <h2 style="margin-bottom: 5px; line-height: 1.2;">{{actor.name}}'s Bastion</h2>
@@ -207,19 +207,21 @@
                     </div>
 
                     {{#if this.hasOrders}}
-                        <div style="font-size: 0.85em; margin-top: 2px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+                        <div style="font-size: 0.85em; margin-top: 2px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; width: 100%;">
                             {{#if this.showOrderDropdown}}
                                 <label>Order: </label>
-                                <select class="facility-order-select" data-item-id="{{this.id}}" data-item-name="{{this.itemName}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" {{#if this.isOrderDisabled}}disabled{{/if}}>
+                                <select class="facility-order-select" data-item-id="{{this.id}}" data-item-name="{{this.itemName}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" {{#if this.isOrderDisabled}}disabled{{/if}} style="flex: 1;">
                                     {{#each this.orderOptions}}
                                         <option value="{{this.value}}" {{#if this.selected}}selected{{/if}} style="font-size: 0.9em;">{{this.label}}</option>
                                     {{/each}}
                                 </select>
                                 {{#if this.isLibraryResearching}}
-                                    <input type="text" class="library-topic-input" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" value="{{this.libraryTopic}}" placeholder="Enter topic..." style="height: 20px; font-size: 0.85em; width: 120px;">
+                                    <div style="width: 100%;">
+                                        <input type="text" class="library-topic-input" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" value="{{this.libraryTopic}}" placeholder="Enter topic..." style="height: 20px; font-size: 0.85em; width: 100%; box-sizing: border-box;">
+                                    </div>
                                 {{/if}}
                                 {{#if this.isArcaneStudyCrafting}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; {{#if this.isContinuingProject}}display: none;{{/if}}">
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; width: 100%; {{#if this.isContinuingProject}}display: none;{{/if}}">
                                         {{#if (and this.showArcanaItemSelect (not this.isContinuingProject))}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                                 <select class="arcane-study-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
@@ -272,7 +274,7 @@
                                     </div>
                                 {{/if}}
                                 {{#if this.isSanctuaryCrafting}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; {{#if this.isContinuingProject}}display: none;{{/if}}">
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; width: 100%; {{#if this.isContinuingProject}}display: none;{{/if}}">
                                         {{#if this.showSacredFocusSelect}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                                 <select class="sanctuary-focus-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
@@ -291,7 +293,7 @@
                                     </div>
                                 {{/if}}
                                 {{#if this.isScriptoriumCrafting}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; {{#if this.isContinuingProject}}display: none;{{/if}}">
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; width: 100%; {{#if this.isContinuingProject}}display: none;{{/if}}">
                                         {{#if (eq this.craftChoice "Spell Scroll")}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                                 <select class="scriptorium-scroll-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
@@ -325,7 +327,7 @@
                                     </div>
                                 {{/if}}
                                 {{#if this.isSmithyCrafting}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; {{#if this.isContinuingProject}}display: none;{{/if}}">
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; width: 100%; {{#if this.isContinuingProject}}display: none;{{/if}}">
                                         {{#if (and this.showSmithyItemSelect (not this.isContinuingProject))}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                                 <select class="smithy-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
@@ -383,7 +385,7 @@
                                     </div>
                                 {{/if}}
                                 {{#if this.isWorkshopCrafting}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; {{#if this.isContinuingProject}}display: none;{{/if}}">
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; width: 100%; {{#if this.isContinuingProject}}display: none;{{/if}}">
                                         {{#if (and this.showWorkshopItemSelect (not this.isContinuingProject))}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                                 <select class="workshop-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
@@ -419,7 +421,7 @@
                                 {{/if}}
 
                                 {{#if (and this.isTrainingArea (eq this.safeOrder "Empower"))}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px; width: 100%;">
                                         <div style="display: flex; align-items: center; gap: 4px;">
                                             <label style="font-size: 0.85em; flex-shrink: 0;">Trainer:</label>
                                             <select class="training-trainer-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
@@ -438,7 +440,7 @@
                                 {{/if}}
 
                                 {{#if this.isStableTrade}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px; width: 100%;">
                                         <div style="display: flex; gap: 4px; align-items: center;">
                                             <select class="stable-trade-choice" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 20px; font-size: 0.85em; flex: 0 0 60px;">
                                                 <option value="buy" {{#if (eq this.stableTradeChoice "buy")}}selected{{/if}}>Buy</option>
@@ -455,11 +457,11 @@
                                 {{/if}}
 
                                 {{#if this.isStable}}
-                                    <div class="bastion-fence-divider" style="margin: 10px 0; height: 6px; width: 100%; background: repeating-linear-gradient(90deg, #5D2E0A 0px, #5D2E0A 4px, #8B4513 4px, #8B4513 20px, #5D2E0A 20px, #5D2E0A 24px); border-top: 2px solid #3d1e07; border-bottom: 2px solid #3d1e07; opacity: 0.8;" title="Stable Partition"></div>
+                                    <div class="bastion-fence-divider" style="margin: 10px 0; height: 6px; width: 100%; background: repeating-linear-gradient(90deg, #5D2E0A 0px, #5D2E0A 4px, #8B4513 4px, #8B4513 20px, #5D2E0A 20px, #5D2E0A 24px); border-top: 2px solid #3d1e07; border-bottom: 2px solid #3d1e07; opacity: 0.8; flex: 0 0 100%;" title="Stable Partition"></div>
                                 {{/if}}
 
                                 {{#if this.isStable}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;" title="Instant Animal Transfer">
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px; width: 100%;" title="Instant Animal Transfer">
                                         <div style="display: flex; gap: 4px; align-items: center;">
                                             <select class="stable-transfer-type" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 20px; font-size: 0.85em; flex: 0 0 65px;">
                                                 <option value="claim" {{#if (eq this.stableTransferType "claim")}}selected{{/if}}>Claim</option>
@@ -479,7 +481,7 @@
                                 {{/if}}
 
                                 {{#if (and this.isStorehouse this.isTradeOrder)}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 4px;">
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 4px; width: 100%;">
                                         <div style="display: flex; gap: 4px; align-items: center;">
                                             <select class="storehouse-trade-choice" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" 
                                                     style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isAutoTrade}}disabled style="opacity: 0.5;"{{/if}}>
@@ -504,14 +506,14 @@
                                 {{/if}}
 
                                 {{#if (and this.isArmory this.isTradeOrder)}}
-                                    <div style="font-size: 0.85em; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(0,0,0,0.1); color: #a32a22; font-weight: bold;">
+                                    <div style="font-size: 0.85em; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(0,0,0,0.1); color: #a32a22; font-weight: bold; width: 100%;">
                                         <i class="fa-solid fa-coins"></i> Expected Cost: {{this.armoryStockCost}} GP
                                     </div>
                                 {{/if}}
-
                 </div>
+
                 {{#if this.isTheater}}
-                    <div style="font-size: 0.9em; color: #eee; border: 2px solid {{this.theaterPhaseColor}}; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px;">
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid {{this.theaterPhaseColor}}; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
                         <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px;">
                             <span><i class="fa-solid fa-masks-theater"></i> <b>Production Status:</b> <span style="color: #82cfff;">{{this.theaterPhase}}</span></span>
                             <div style="display: flex; gap: 5px; flex-wrap: nowrap;">
@@ -580,6 +582,22 @@
                         {{#if (eq this.theaterPhase "Performing")}}
                             <div style="color: #4caf50; font-weight: bold; margin-top: 6px;"><i class="fa-solid fa-circle-play"></i> Show is Live! (Award: {{this.theaterDieSize}} die)</div>
                         {{/if}}
+                    </div>
+                {{/if}}
+
+                {{#if (and this.isArchive (not this.isBuilding))}}
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid #005a9e; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
+                        <div style="margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 2px;">
+                            <i class="fa-solid fa-book-sparkles"></i> <b>Reference Library:</b> Reference books provide benefits while in the Bastion.
+                        </div>
+                        <ul style="list-style: none; padding-left: 0; margin: 0;">
+                            {{#each this.archiveBooksList}}
+                                <li style="margin-top: 4px;">
+                                    <div style="color: #82cfff; font-weight: bold; font-size: 0.95em;"><i class="fa-solid fa-book" style="font-size: 0.8em;"></i> {{this.name}}</div>
+                                    <div style="font-style: italic; opacity: 0.85; padding-left: 12px; line-height: 1.2; font-size: 0.95em;">{{{this.desc}}}</div>
+                                </li>
+                            {{/each}}
+                        </ul>
                     </div>
                 {{/if}}
 
@@ -859,7 +877,7 @@
                 </div>
                 </div>
                 
-                <div style="display: flex; gap: 2px; align-items: center; flex-shrink: 0;">
+                <div style="display: flex; flex-direction: column; gap: 4px; align-items: center; flex-shrink: 0; padding-left: 10px;">
                     {{#if this.isEnlargeable}}
                         <button type="button" data-action="upgradeFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 6px; color: darkgoldenrod;" title="Enlarge Facility">
                             <i class="fa-solid fa-arrow-up-right-dots"></i>
@@ -912,13 +930,13 @@
                             <b style="font-size: 0.9em;">{{this.name}}</b>
                             <span style="font-size: 0.65em; background: #ddd; color: #333; padding: 1px 4px; border-radius: 2px;">{{this.size}}</span>
                         </div>
-                        <div style="display: flex; gap: 2px;">
+                        <div style="display: flex; gap: 4px; align-items: center; flex-shrink: 0;">
                             {{#if this.isEnlargeable}}
-                                <button type="button" data-action="upgradeFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="padding: 2px 4px; font-size: 0.7em; color: darkgoldenrod;" title="Enlarge"><i class="fa-solid fa-arrow-up-right-dots"></i></button>
+                                <button type="button" data-action="upgradeFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 6px; color: darkgoldenrod;" title="Enlarge"><i class="fa-solid fa-arrow-up-right-dots"></i></button>
                             {{/if}}
-                            <button type="button" data-action="selectFacilityLayout" data-item-id="{{this.id}}" style="padding: 2px 4px; font-size: 0.7em; {{#if this.isLayoutActive}}background: #444; color: white;{{/if}}" title="Layout"><i class="fa-solid fa-pen-ruler"></i></button>
+                            <button type="button" data-action="selectFacilityLayout" data-item-id="{{this.id}}" style="width: auto; padding: 2px 6px; {{#if this.isLayoutActive}}background: #444; color: white;{{else}}color: #444;{{/if}}" title="Layout"><i class="fa-solid fa-pen-ruler"></i></button>
                             {{#unless this.isInherited}}
-                                <button type="button" data-action="deleteFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="padding: 2px 4px; font-size: 0.7em; color: darkred;" title="Demolish"><i class="fa-solid fa-trash"></i></button>
+                                <button type="button" data-action="deleteFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 6px; color: darkred;" title="Demolish"><i class="fa-solid fa-trash"></i></button>
                             {{/unless}}
                         </div>
                     </div>
