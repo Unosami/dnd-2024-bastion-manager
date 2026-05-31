@@ -6,9 +6,6 @@ const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applicat
  * Since v13 sheets don't always trigger hooks on tab swap, we watch the DOM.
  */
 const integrateBastionDashboard = (bastionTab) => {
-    // 1. Prevent duplicates
-    if (bastionTab.querySelector(".bastion-manager-suite")) return;
-
     // 2. Identify the Actor (Foundry v13 / ApplicationV2 support)
     // We check both the modern instances list and the legacy windows list
     const app = Array.from(foundry.applications.instances.values()).find(a => a.element?.contains(bastionTab))
@@ -17,8 +14,6 @@ const integrateBastionDashboard = (bastionTab) => {
     const actor = app?.document || app?.actor;
     if (!actor || actor.documentName !== "Actor") return;
     if (!["character", "npc", "group"].includes(actor.type)) return;
-
-    console.log(`Bastion Manager | Integrating dashboard for ${actor.name}`);
 
     const MODULE_ID = "dnd-2024-bastion-manager";
     const combinedId = actor.getFlag(MODULE_ID, "combinedGroupId");
@@ -31,32 +26,223 @@ const integrateBastionDashboard = (bastionTab) => {
     }
 
     // 3. Create the Suite UI using the native 2024 Cream/Gold theme variables
-    const suite = document.createElement("div");
-    suite.className = "bastion-manager-suite";
-    suite.style.cssText = "margin: 5px 0 15px 0; border: 1px solid var(--dnd5e-color-gold); border-radius: 5px; background: var(--dnd5e-color-cream); padding: 12px; font-family: var(--dnd5e-font-roboto); color: var(--dnd5e-color-black); box-shadow: 0 0 5px rgba(0,0,0,0.1);";
-    
-    suite.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <i class="fa-solid fa-chess-rook" style="font-size: 2em; color: var(--dnd5e-color-iron);"></i>
-                <div>
-                    <h3 style="margin: 0; border: none; font-size: 1.1em; font-weight: bold; text-transform: uppercase;">Bastion Management</h3>
-                    <div style="font-size: 0.9em; opacity: 0.8;">Module Tracking: <b>Turn ${turnCount}</b></div>
+    if (!bastionTab.querySelector(".bastion-manager-suite")) {
+        const suite = document.createElement("div");
+        suite.className = "bastion-manager-suite";
+        suite.style.cssText = "margin: 5px 0 15px 0; border: 1px solid var(--dnd5e-color-gold); border-radius: 5px; background: var(--dnd5e-color-cream); padding: 12px; font-family: var(--dnd5e-font-roboto); color: var(--dnd5e-color-black); box-shadow: 0 0 5px rgba(0,0,0,0.1);";
+        
+        suite.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <i class="fa-solid fa-chess-rook" style="font-size: 2em; color: var(--dnd5e-color-iron);"></i>
+                    <div>
+                        <h3 style="margin: 0; border: none; font-size: 1.1em; font-weight: bold; text-transform: uppercase;">Bastion Management</h3>
+                        <div style="font-size: 0.9em; opacity: 0.8;">Module Tracking: <b>Turn ${turnCount}</b></div>
+                    </div>
                 </div>
+                <button type="button" class="launch-bastion-dashboard" style="width: auto; padding: 6px 15px; font-weight: bold; background: var(--dnd5e-color-iron); color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    <i class="fa-solid fa-gauge-high"></i> Launch Advanced Controls
+                </button>
             </div>
-            <button type="button" class="launch-bastion-dashboard" style="width: auto; padding: 6px 15px; font-weight: bold; background: var(--dnd5e-color-iron); color: white; border: none; border-radius: 4px; cursor: pointer;">
-                <i class="fa-solid fa-gauge-high"></i> Launch Advanced Controls
-            </button>
-        </div>
-    `;
+        `;
 
-    bastionTab.prepend(suite);
+        bastionTab.prepend(suite);
+        
+        console.log(`Bastion Manager | Injected management suite for ${actor.name}`);
 
-    // 4. Attach Event Listener
-    suite.querySelector(".launch-bastion-dashboard").addEventListener("click", (ev) => {
-        ev.preventDefault();
-        new BastionManager(actor).render({ force: true });
+        // 4. Attach Event Listener
+        suite.querySelector(".launch-bastion-dashboard").addEventListener("click", (ev) => {
+            ev.preventDefault();
+            new BastionManager(actor).render({ force: true });
+        });
+    }
+
+    // 5. Integrate Memorial Wall button into the native Defenders section
+    // Look for the header containing "Defenders" within the bastion tab
+    const defenderHeader = Array.from(bastionTab.querySelectorAll('h3, .label')).find(el => el.textContent.includes("Defenders"));
+    if (defenderHeader && !defenderHeader.querySelector(".bastion-graveyard-btn")) {
+        const graveyardBtn = document.createElement("button");
+        graveyardBtn.type = "button";
+        graveyardBtn.className = "bastion-graveyard-btn";
+        graveyardBtn.title = "View Memorial Wall (Fallen Defenders)";
+        graveyardBtn.innerHTML = '<i class="fa-solid fa-tombstone"></i>';
+        graveyardBtn.style.cssText = "width: auto; padding: 0 4px; border: none; background: none; cursor: pointer; color: var(--dnd5e-color-iron); vertical-align: middle; font-size: 0.8em; margin-left: 5px;";
+        
+        defenderHeader.appendChild(graveyardBtn);
+        graveyardBtn.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            BastionManager.onViewGraveyard.call({ actor }, ev, graveyardBtn);
+        });
+    }
+
+    // 6. Replace native "Add Facility" buttons and placeholders, respecting capacity
+    const actorLevel = actor.system.details?.level || 0;
+    let specCap = 0;
+    if (actorLevel >= 17) specCap = 6;
+    else if (actorLevel >= 13) specCap = 5;
+    else if (actorLevel >= 9) specCap = 4;
+    else if (actorLevel >= 5) specCap = 2;
+
+    const groupFacilities = actor.getFlag(MODULE_ID, "groupFacilities") || [];
+    const currentSpecials = actor.items.filter(i => i.type === "facility" && i.system?.type?.value === "special").length + 
+                           groupFacilities.filter(f => !f.system?.type?.value || f.system?.type?.value === "special").length;
+
+    const atSpecCap = currentSpecials >= specCap;
+
+    const nativeBuildButtons = bastionTab.querySelectorAll('[data-action="createChild"][data-type="facility"], [data-action="findItem"][data-item-type="facility"]');
+    nativeBuildButtons.forEach(btn => {
+        if (btn.classList.contains("bastion-replaced")) return;
+        
+        // Check if this is a "Special" slot specifically for capacity checks
+        const isSpecialSlot = btn.dataset.facilityType === "special";
+
+        // If this is a special facility slot and we are at the cap, hide it entirely
+        if (isSpecialSlot && atSpecCap) {
+            btn.style.setProperty("display", "none", "important");
+            btn.classList.add("bastion-replaced");
+            return;
+        }
+
+        // Aggressively hide native
+        btn.style.setProperty("display", "none", "important");
+        btn.classList.add("bastion-replaced");
+
+        // Create replacement (LI for placeholders, button/a for section buttons)
+        const isPlaceholder = btn.tagName === "LI";
+        const newBtn = document.createElement(btn.tagName);
+        newBtn.className = btn.className.replace("bastion-replaced", "") + " bastion-build-injected";
+        newBtn.innerHTML = btn.innerHTML.replace("Add Facility", "Build Facility");
+        newBtn.title = "Establish Facility (Bastion Manager)";
+        
+        if (btn.tagName === "BUTTON") newBtn.type = "button";
+        if (isPlaceholder) newBtn.style.cursor = "pointer";
+
+        btn.insertAdjacentElement('beforebegin', newBtn);
+
+        newBtn.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            new BastionManager(actor)._promptBuildFacility();
+        });
     });
+
+    // 7. Hijack native "Advance Bastion Turn" button
+    const nativeAdvanceBtn = bastionTab.querySelector('[data-action="advanceBastionTurn"]');
+    if (nativeAdvanceBtn && !nativeAdvanceBtn.classList.contains("bastion-replaced")) {
+        nativeAdvanceBtn.classList.add("bastion-replaced");
+        nativeAdvanceBtn.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            ev.stopImmediatePropagation(); // Prevent native system from advancing its own counter
+            
+            // Trigger our module's turn advancement instead of the system's
+            BastionManager.onAdvanceGlobalTurn.call({ actor }, ev, nativeAdvanceBtn);
+        }, { capture: true });
+    }
+
+    // 7. Inject Special Facilities currently under construction
+    // Native dnd5e 5.2.x uses a specific list for special facilities
+    const specialList = bastionTab.querySelector('.bastion-section.special .features-list, [data-facility-type="special"] .features-list, .special ul');
+    if (specialList) {
+        const groupFacilities = actor.getFlag(MODULE_ID, "groupFacilities") || [];
+        // Filter for special facilities (no size yet or specifically marked as building)
+        const buildingSpecials = groupFacilities.filter(f => {
+            const isSpec = !f.system?.type?.value || f.system?.type?.value === "special";
+            return isSpec && f.flags?.[MODULE_ID]?.upgradeTurns > 0;
+        });
+
+        buildingSpecials.forEach(fac => {
+            const facId = fac._id;
+            // Prevent duplicates
+            if (specialList.querySelector(`[data-bastion-building="${facId}"]`)) return;
+
+            const fFlags = fac.flags[MODULE_ID];
+            const progress = fFlags.upgradeProgress || 0;
+            const total = fFlags.upgradeTurns || 1;
+            const pct = Math.round((progress / total) * 100);
+            const label = fFlags.size ? "Enlarging" : "Founding";
+
+            const li = document.createElement("li");
+            li.className = "item facility building-placeholder";
+            li.dataset.bastionBuilding = facId;
+            // Matching native dnd5e "Modern" list item styles with a construction twist
+            li.style.cssText = "opacity: 0.75; border-left: 4px solid var(--dnd5e-color-gold); padding: 8px; margin-bottom: 6px; background: rgba(0,0,0,0.03); border-radius: 4px; list-style: none; position: relative;";
+            
+            li.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <img src="${fac.img}" width="32" height="32" style="border: none; border-radius: 4px; filter: grayscale(1) sepia(0.5);">
+                    <div style="flex: 1;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <span style="font-family: var(--dnd5e-font-roboto); font-weight: bold; font-size: 1.05em; color: var(--dnd5e-color-black);">${fac.name} <span style="font-weight: normal; font-size: 0.8em; opacity: 0.7;">(${label})</span></span>
+                            <a data-action="deleteFacility" data-item-id="${facId}" data-is-flag="true" title="Cancel Construction" style="color: var(--dnd5e-color-iron);"><i class="fa-solid fa-circle-xmark"></i></a>
+                        </div>
+                        <div class="progress-bar" style="height: 14px; background: rgba(0,0,0,0.1); border: 1px solid #7a7971; border-radius: 3px; position: relative; overflow: hidden;">
+                            <div style="width: ${pct}%; height: 100%; background: var(--dnd5e-color-gold); transition: width 0.5s; border-right: 1px solid #7a7971;"></div>
+                            <span style="position: absolute; top: 0; left: 0; width: 100%; text-align: center; font-size: 0.75em; line-height: 14px; color: #111; font-weight: bold; text-shadow: 0 0 2px white;">${progress} / ${total} Turns</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Prepend so new constructions appear at the top of the list
+            specialList.prepend(li);
+
+            // Re-attach delete logic for cancellation
+            li.querySelector('[data-action="deleteFacility"]').addEventListener("click", (ev) => {
+                ev.preventDefault();
+                BastionManager.onDeleteFacility.call({ actor }, ev, ev.currentTarget);
+            });
+        });
+    }
+
+    // 8. Inject Basic Facilities currently under construction
+    const basicList = bastionTab.querySelector('.bastion-section.basic .features-list, [data-facility-type="basic"] .features-list, .basic ul');
+    if (basicList) {
+        const groupFacilities = actor.getFlag(MODULE_ID, "groupFacilities") || [];
+        const buildingBasics = groupFacilities.filter(f => {
+            return f.system?.type?.value === "basic" && f.flags?.[MODULE_ID]?.upgradeTurns > 0;
+        });
+
+        buildingBasics.forEach(fac => {
+            const facId = fac._id;
+            if (basicList.querySelector(`[data-bastion-building="${facId}"]`)) return;
+
+            const fFlags = fac.flags[MODULE_ID];
+            const progress = fFlags.upgradeProgress || 0;
+            const total = fFlags.upgradeTurns || 1;
+            const pct = Math.round((progress / total) * 100);
+            const label = fFlags.size ? "Enlarging" : "Building";
+
+            const li = document.createElement("li");
+            li.className = "item facility building-placeholder";
+            li.dataset.bastionBuilding = facId;
+            li.style.cssText = "opacity: 0.75; border-left: 4px solid var(--dnd5e-color-iron); padding: 6px; margin-bottom: 4px; background: rgba(0,0,0,0.03); border-radius: 4px; list-style: none;";
+            
+            li.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <img src="${fac.img}" width="24" height="24" style="border: none; border-radius: 2px; filter: grayscale(1);">
+                    <div style="flex: 1;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; font-family: var(--dnd5e-font-roboto);">
+                            <span style="font-family: var(--dnd5e-font-roboto); font-weight: bold; font-size: 0.9em; color: var(--dnd5e-color-black);">${fac.name} <span style="font-weight: normal; font-size: 0.85em; opacity: 0.7;">(${label})</span></span>
+                            <a data-action="deleteFacility" data-item-id="${facId}" data-is-flag="true" title="Cancel Construction" style="color: var(--dnd5e-color-iron); font-size: 0.8em;"><i class="fa-solid fa-circle-xmark"></i></a>
+                        </div>
+                        <div class="progress-bar" style="height: 10px; background: rgba(0,0,0,0.1); border: 1px solid #7a7971; border-radius: 2px; position: relative; overflow: hidden;">
+                            <div style="width: ${pct}%; height: 100%; background: #7a7971; transition: width 0.5s;"></div>
+                            <span style="position: absolute; top: 0; left: 0; width: 100%; text-align: center; font-size: 0.7em; line-height: 10px; color: white; font-weight: bold; text-shadow: 0 0 2px black;">${progress} / ${total}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            basicList.prepend(li);
+
+            li.querySelector('[data-action="deleteFacility"]').addEventListener("click", (ev) => {
+                ev.preventDefault();
+                // We can use the static method directly since we are passing context via .call
+                BastionManager.onDeleteFacility.call({ actor }, ev, ev.currentTarget);
+            });
+        });
+    }
 };
 
 /**

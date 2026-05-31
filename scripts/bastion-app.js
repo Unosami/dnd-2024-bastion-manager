@@ -4227,13 +4227,54 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         }
     }
 
+     /**
+     * A specialized builder trigger for when the user clicks a generic "Build" button
+     * without having a dropdown pre-selected (like in the native tab).
+     */
+    async _promptBuildFacility() {
+        const ctx = await this._prepareContext();
+        
+        // Generate the same grouped options used in our sidebar
+        let specOptions = ctx.specialFacilities.map(g => `
+            <optgroup label="Level ${g.level}">
+                ${g.facilities.map(f => `<option value="${f._id}">${f.name}</option>`).join("")}
+            </optgroup>`).join("");
+
+        let basicOptions = `<optgroup label="Basic Facilities">
+            ${ctx.basicFacilities.map(f => `<option value="${f._id}">${f.name}</option>`).join("")}
+        </optgroup>`;
+
+        const content = `
+            <div class="bastion-app">
+                <p>Select a facility to establish in your Bastion:</p>
+                <div class="form-group">
+                    <select name="selectedFacility" style="width: 100%;">
+                        <option value="">-- Choose Facility --</option>
+                        ${specOptions}
+                        ${basicOptions}
+                    </select>
+                </div>
+            </div>`;
+
+        const result = await DialogV2.prompt({
+            window: { title: "Establish New Facility", icon: "fa-solid fa-hammer" },
+            content: content,
+            ok: { label: "Continue", callback: (event, button) => button.form.elements.selectedFacility.value },
+            rejectClose: false
+        });
+
+        if (result) BastionManager.onBuildFromDropdown.call(this, null, { dataset: {}, value: result });
+    }
+
     static async onBuildFromDropdown(event, target) {
         if (this.actor.type === "group") return ui.notifications.warn("Facilities cannot be built directly on a Group Bastion. They must be established by individual members.");
-        const selectElement = this.element.querySelector('select[name="compendium-facility"]');
-        if (!selectElement?.value) return ui.notifications.warn("Select a facility first!");
+        
+        // Support both our sidebar dropdown and the direct value passed from _promptBuildFacility
+        const facilityId = target?.value || this.element?.querySelector('select[name="compendium-facility"]')?.value;
+        if (!facilityId) return ui.notifications.warn("Select a facility first!");
 
         const pack = game.packs.get("dnd-2024-bastion-manager.bastion-facilities");
-        const itemDoc = await pack.getDocument(selectElement.value);
+        const itemDoc = await pack.getDocument(facilityId);
         let newFacData = itemDoc.toObject();
         const MODULE_ID = "dnd-2024-bastion-manager";
 
@@ -4548,7 +4589,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
     // --- UI ACTION ---
     static async onAdvanceGlobalTurn(event, target) {
-        const turnsInput = this.element.querySelector('input[name="turns"]');
+        // Fallback to 1 turn if the input field isn't found (e.g., when called from the native tab)
+        const turnsInput = typeof this.element?.querySelector === "function" ? this.element.querySelector('input[name="turns"]') : null;
         const turnsToAdvance = parseInt(turnsInput?.value) || 1;
 
         const MODULE_ID = "dnd-2024-bastion-manager";
@@ -4620,7 +4662,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             }
             ui.notifications.info(`Advanced global Bastion turns by ${turnsToAdvance}.`);
             game.socket.emit("module.dnd-2024-bastion-manager", { action: "globalAdvance" });
-            this.render();
+            if (typeof this.render === "function") this.render();
         }
     }
 
@@ -4674,7 +4716,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 await BastionManager._dispatchReports(reports, turnsToAdvance);
             }
             ui.notifications.info(`Advanced ${this.actor.name}'s Bastion by ${turnsToAdvance} turn(s).`);
-            this.render();
+            if (typeof this.render === "function") this.render();
         }
     }
 
