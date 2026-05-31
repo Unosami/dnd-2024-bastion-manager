@@ -4589,8 +4589,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
     // --- UI ACTION ---
     static async onAdvanceGlobalTurn(event, target) {
+        const actor = this.actor;
+        if ( !actor ) return console.error("Bastion Manager | Global Advance triggered without Actor context.");
+
         // Fallback to 1 turn if the input field isn't found (e.g., when called from the native tab)
-        const turnsInput = typeof this.element?.querySelector === "function" ? this.element.querySelector('input[name="turns"]') : null;
+        let turnsInput = (typeof this.element?.querySelector === "function") ? this.element.querySelector('input[name="turns"]') : null;
+        if ( !turnsInput ) turnsInput = (typeof this.element?.querySelector === "function") ? this.element.querySelector('input[name="bastion-manager-turns"]') : null;
         const turnsToAdvance = parseInt(turnsInput?.value) || 1;
 
         const MODULE_ID = "dnd-2024-bastion-manager";
@@ -4603,9 +4607,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         });
 
         // Ensure the actor in the current window is also advanced, regardless of active ownership
-        if ( !bastionActors.some(a => a.id === this.actor.id) ) {
-            const hasFac = this.actor.items.some(i => i.type === "facility") || this.actor.getFlag(MODULE_ID, "groupFacilities")?.length > 0;
-            if ( hasFac ) bastionActors.push(this.actor);
+        if ( !bastionActors.some(a => a.id === actor.id) ) {
+            const hasFac = actor.items.some(i => i.type === "facility") || actor.getFlag(MODULE_ID, "groupFacilities")?.length > 0;
+            if ( hasFac ) bastionActors.push(actor);
         }
 
         let allMissing = [];
@@ -4650,9 +4654,6 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     processedGroups.add(combinedId);
                 }
  
-                const currentActorTurns = actor.getFlag(MODULE_ID, "turnCount") || 0;
-                await actor.setFlag(MODULE_ID, "isReady", false);
-                await actor.setFlag(MODULE_ID, "turnCount", currentActorTurns + turnsToAdvance);
                 const r = await BastionManager.executeBastionTurn(actor, turnsToAdvance, rolledEvents);
                 if (r) reports.push(r);
             }
@@ -4660,9 +4661,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (reports.length > 0) {
                 await BastionManager._dispatchReports(reports, turnsToAdvance);
             }
-            ui.notifications.info(`Advanced global Bastion turns by ${turnsToAdvance}.`);
+            ui.notifications.info(`Bastion Manager | Global turns advanced by ${turnsToAdvance}.`);
             game.socket.emit("module.dnd-2024-bastion-manager", { action: "globalAdvance" });
-            if (typeof this.render === "function") this.render();
+            // Refresh any open manager windows
+            for ( const app of foundry.applications.instances.values() ) if ( app instanceof BastionManager ) app.render();
         }
     }
 
@@ -4672,7 +4674,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     static async onAdvanceIndividualTurn(event, target) {
-        const turnsInput = this.element.querySelector('input[name="turns"]');
+        const actor = this.actor;
+        if ( !actor ) return;
+
+        let turnsInput = (typeof this.element?.querySelector === "function") ? this.element.querySelector('input[name="turns"]') : null;
+        if ( !turnsInput ) turnsInput = (typeof this.element?.querySelector === "function") ? this.element.querySelector('input[name="bastion-manager-turns"]') : null;
         const turnsToAdvance = parseInt(turnsInput?.value) || 1;
         const MODULE_ID = "dnd-2024-bastion-manager";
 
@@ -4706,17 +4712,15 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 }
             }
 
-            const currentActorTurns = this.actor.getFlag(MODULE_ID, "turnCount") || 0;
-            await this.actor.setFlag(MODULE_ID, "isReady", false);
-            await this.actor.setFlag(MODULE_ID, "turnCount", currentActorTurns + turnsToAdvance);
             const r = await BastionManager.executeBastionTurn(this.actor, turnsToAdvance, new Map());
             if (r) reports.push(r);
 
             if (reports.length > 0) {
                 await BastionManager._dispatchReports(reports, turnsToAdvance);
             }
-            ui.notifications.info(`Advanced ${this.actor.name}'s Bastion by ${turnsToAdvance} turn(s).`);
-            if (typeof this.render === "function") this.render();
+            ui.notifications.info(`Bastion Manager | ${actor.name}'s Bastion advanced by ${turnsToAdvance}.`);
+            // Refresh any open manager windows for this actor
+            for ( const app of foundry.applications.instances.values() ) if ( app instanceof BastionManager && app.actor.id === actor.id ) app.render();
         }
     }
 
@@ -4969,6 +4973,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (neglectCounter > 0 || disableNeglect) neglectCounter = 0;
         }
 
+        // Sync turn counters
+        const currentNativeTurn = actor.system.bastion?.turn ?? 0;
+        const currentModuleTurn = actor.getFlag(MODULE_ID, "turnCount") || 0;
+
         // Ensure we are working with clean integers to avoid DataModel validation errors
         const currentGP = Number(actor.system.currency?.gp || 0) || 0;
         const totalGoldAdjustment = Math.floor(Number(resolution.totalGold) || 0);
@@ -4976,6 +4984,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
         // Batch all updates for the Actor
         const actorUpdate = {
+            "system.bastion.turn": currentNativeTurn + turnsToAdvance,
+            [`flags.${MODULE_ID}.turnCount`]: currentModuleTurn + turnsToAdvance,
+            [`flags.${MODULE_ID}.isReady`]: false,
             "system.currency.gp": finalGP,
             [`flags.${MODULE_ID}.neglectCounter`]: neglectCounter
         };
@@ -4994,7 +5005,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         }
 
         // 3. Finalize Actor state (GP, Neglect, Group Facilities)
-        await actor.update(actorUpdate, { diff: true, recursive: true });
+        await actor.update(actorUpdate, { diff: true, recursive: true, bastionManagerSource: true });
         await BastionManager._processInventory(actor, resolution.items);
 
         return await BastionManager._buildReport(actor, turnsToAdvance, resolution.effectivelyAllMaintaining, resolution);

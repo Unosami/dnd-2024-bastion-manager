@@ -2,6 +2,140 @@ import { BastionManager } from "./bastion-app.js";
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
 /**
+ * FLOATING TURN CONTROL
+ * A small UI that appears when the Bastion Advancement tool is selected in the sidebar.
+ */
+class BastionTurnControl extends HandlebarsApplicationMixin(ApplicationV2) {
+    static instance = null;
+    static DEFAULT_OPTIONS = {
+        id: "bastion-turn-control",
+        window: { frame: true, title: "Bastion Advancement", icon: "fa-solid fa-play" },
+        position: { width: 240, height: "auto", left: 120, top: 60 },
+        classes: ["bastion-app", "bastion-floating-control"],
+        actions: {
+            advance: function(event, target) {
+                const actor = game.user.character || game.actors.find(a => a.items.some(i => i.type === "facility") && a.isOwner) || game.actors.find(a => a.items.some(i => i.type === "facility"));
+                if (actor) BastionManager.onAdvanceGlobalTurn.call({ actor, element: this.element }, event, target);
+                else ui.notifications.warn("No owned actor with a Bastion found.");
+            }
+        }
+    };
+
+    static PARTS = {
+        main: { template: "modules/dnd-2024-bastion-manager/templates/bastion-advance-turn.hbs" }
+    };
+
+    static toggle() {
+        if (this.instance) { this.instance.close(); this.instance = null; }
+        else { this.instance = new BastionTurnControl(); this.instance.render({ force: true }); }
+    }
+
+    async _prepareContext(options) {
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        const activeNonGMs = game.users.filter(u => u.active && !u.isGM);
+        const bastionActors = game.actors.filter(a => {
+            const isAllowedType = a.type === "character" || a.type === "npc";
+            const hasFacilities = a.items.some(i => i.type === "facility") || a.getFlag(MODULE_ID, "groupFacilities")?.length > 0;
+            const ownedByActivePlayer = activeNonGMs.some(u => a.testUserPermission(u, "OWNER"));
+            return isAllowedType && hasFacilities && ownedByActivePlayer;
+        });
+        return {
+            readyCount: bastionActors.filter(a => a.getFlag(MODULE_ID, "isReady")).length,
+            totalBastions: bastionActors.length
+        };
+    }
+
+    _onRender(context, options) {
+        // v13: Prevent canvas interaction while typing or clicking in the box
+        this.element.addEventListener("mousedown", ev => ev.stopPropagation(), { capture: true });
+        this.element.addEventListener("keydown", ev => ev.stopPropagation());
+    }
+}
+
+/**
+ * Placeholder Layer for Bastion Management
+ * Required in v13 to support a dedicated sidebar category icon.
+ */
+class BastionLayer extends (foundry.canvas.layers.InteractionLayer || InteractionLayer) {
+    static get layerOptions() {
+        return foundry.utils.mergeObject(super.layerOptions, { name: "bastion" });
+    }
+}
+
+/**
+ * Toolbar Integration: Add a new control group to the Scene Controls (left sidebar)
+ */
+Hooks.on("getSceneControlButtons", (sceneControls) => {
+    if ( !game.user?.isGM || !sceneControls ) return;
+
+    // Prepare the Bastion control configuration
+    const bastionControl = {
+        name: "bastion",
+        title: "Bastion Management",
+        icon: "fa-solid fa-chess-rook",
+        layer: "bastion",
+        visible: true,
+        activeTool: "advanceTurn", 
+        tools: [
+            // Tool 1: Advance Turn (Selectable). Clicking this makes it active and opens the prompt.
+            { name: "advanceTurn", title: "Advance Bastion Turn", icon: "fa-solid fa-play", visible: true },
+            // Tool 2: The Manager button.
+            { 
+                name: "manager", title: "Open Bastion Manager", icon: "fa-solid fa-gauge-high", 
+                button: true, visible: true,
+                onChange: () => {
+                    const actor = game.user.character || game.actors.find(a => a.items.some(i => i.type === "facility") && a.isOwner) || game.actors.find(a => a.items.some(i => i.type === "facility"));
+                    if (actor) new BastionManager(actor).render({ force: true });
+                    else ui.notifications.warn("No actor with a Bastion found.");
+                }
+            }
+        ]
+    };
+
+    // v13 Stability: SceneControls (ApplicationV2) requires tools to be an Object Map.
+    // We manually convert the array to a map here to prevent lookup crashes during layer switching.
+    const toolsMap = bastionControl.tools.reduce((map, t) => {
+        map[t.name] = t;
+        return map;
+    }, {});
+    bastionControl.tools = toolsMap;
+
+    // Handle both the standard Array structure and the Object map structure seen in your console log
+    if ( Array.isArray(sceneControls) ) {
+        if ( !sceneControls.some(c => c.name === "bastion") ) {
+            console.log("Bastion Manager | Pushing Bastion category to sidebar array.");
+            sceneControls.push(bastionControl);
+        }
+    } else {
+        // sceneControls is an Object (Record<string, ControlGroup>)
+        if ( !sceneControls.bastion ) {
+            sceneControls.bastion = bastionControl;
+        }
+    }
+});
+
+/**
+ * Toggle the floating advancement UI when the sidebar tool is active
+ */
+Hooks.on("renderSceneControls", (app, html, data) => {
+    if ( !game.user?.isGM || !app?.control ) return;
+    
+    // v13 Stability: Use activeTool and control.name for reliable state detection
+    const isBastion = app.control.name === "bastion";
+    const isAdvanceActive = isBastion && app.tool?.name === "advanceTurn";
+
+    if (isAdvanceActive) {
+        if (!BastionTurnControl.instance) {
+            BastionTurnControl.instance = new BastionTurnControl();
+            BastionTurnControl.instance.render({ force: true });
+        }
+    } else if (BastionTurnControl.instance) {
+        BastionTurnControl.instance.close();
+        BastionTurnControl.instance = null;
+    }
+});
+
+/**
  * INTEGRATION ENGINE: Mutation-Based Injection
  * Since v13 sheets don't always trigger hooks on tab swap, we watch the DOM.
  */
@@ -127,19 +261,6 @@ const integrateBastionDashboard = (bastionTab) => {
         });
     });
 
-    // 7. Hijack native "Advance Bastion Turn" button
-    const nativeAdvanceBtn = bastionTab.querySelector('[data-action="advanceBastionTurn"]');
-    if (nativeAdvanceBtn && !nativeAdvanceBtn.classList.contains("bastion-replaced")) {
-        nativeAdvanceBtn.classList.add("bastion-replaced");
-        nativeAdvanceBtn.addEventListener("click", (ev) => {
-            ev.preventDefault();
-            ev.stopImmediatePropagation(); // Prevent native system from advancing its own counter
-            
-            // Trigger our module's turn advancement instead of the system's
-            BastionManager.onAdvanceGlobalTurn.call({ actor }, ev, nativeAdvanceBtn);
-        }, { capture: true });
-    }
-
     // 7. Inject Special Facilities currently under construction
     // Native dnd5e 5.2.x uses a specific list for special facilities
     const specialList = bastionTab.querySelector('.bastion-section.special .features-list, [data-facility-type="special"] .features-list, .special ul');
@@ -243,6 +364,25 @@ const integrateBastionDashboard = (bastionTab) => {
             });
         });
     }
+
+    // 9. Inject turn input next to native advance button on sheet
+    const nativeAdvanceBtn = bastionTab.querySelector('[data-action="advanceBastionTurn"]');
+    if ( nativeAdvanceBtn && !nativeAdvanceBtn.parentElement.querySelector(".bastion-turn-input-injected") ) {
+        const input = document.createElement("input");
+        input.type = "number";
+        input.className = "bastion-turn-input-injected";
+        input.name = "bastion-manager-turns";
+        input.value = "1";
+        input.min = "1";
+        input.style.cssText = "width: 45px; height: 24px; text-align: center; margin-left: 5px; border: 1px solid var(--dnd5e-color-gold); border-radius: 4px; background: var(--dnd5e-color-cream); color: var(--dnd5e-color-black); font-weight: bold; font-family: var(--dnd5e-font-roboto); pointer-events: auto;";
+        input.title = "Number of turns to advance (Bastion Manager)";
+        
+        // Ensure the input is editable by stopping event propagation
+        input.addEventListener("mousedown", (ev) => ev.stopPropagation());
+        input.addEventListener("click", (ev) => ev.stopPropagation());
+
+        nativeAdvanceBtn.after(input);
+    }
 };
 
 /**
@@ -269,6 +409,12 @@ observer.observe(document.body, { childList: true, subtree: true });
 Hooks.once("init", () => {
     const MODULE_ID = "dnd-2024-bastion-manager";
     Handlebars.registerHelper({ ge: (a, b) => a >= b, div: (a, b) => a / b, mult: (a, b) => a * b });
+
+    // v13: Define and register dummy layer inside init to ensure namespaces are ready
+    CONFIG.Canvas.layers.bastion = { 
+        layerClass: BastionLayer, 
+        group: "interface" 
+    };
 
     // --- Settings Registration ---
     game.settings.register(MODULE_ID, "ignoreConstructionCosts", { name: "Construction: Ignore All Requirements", scope: "world", config: true, type: Boolean, default: false });
@@ -308,6 +454,66 @@ Hooks.once("ready", async () => {
     console.log("Bastion Manager | Foundry is ready.");
     game.modules.get("dnd-2024-bastion-manager").api = { BastionManager };
     await BastionManager.loadProfessions();
+
+    // v13: Force control refresh to ensure the Bastion category appears for the GM
+    if ( game.user.isGM ) { console.log("Bastion Manager | Forcing sidebar re-render."); ui.controls.render(true); }
+
+    // Hide native floating Bastion button
+    const style = document.createElement("style");
+    style.innerHTML = `#bastion-turn { display: none !important; }`;
+    document.head.appendChild(style);
+
+    // Robust Link: Override the native advance method on the Bastion data model.
+    // This acts as a logic-level fallback if the UI hijack is bypassed.
+    const BastionData = game.dnd5e?.dataModels?.actor?.BastionData;
+    if ( BastionData ) {
+        const originalAdvance = BastionData.prototype.advance;
+        let isAdvancing = false;
+        
+        BastionData.prototype.advance = async function(options = {}) {
+            if ( game.user.isGM && !isAdvancing ) {
+                isAdvancing = true;
+                try {
+                    // Redirect to the module's Global Advance engine
+                    const actor = this.parent instanceof Actor ? this.parent : this.parent?.parent;
+                    if ( actor ) {
+                        await BastionManager.onAdvanceGlobalTurn.call({ actor }, new Event("click"), null);
+                        return []; // Return empty array to prevent the native chat summary from generating
+                    }
+                } finally {
+                    // Short debounce to handle concurrent calls from the map sidebar
+                    setTimeout(() => isAdvancing = false, 500);
+                }
+            }
+            if ( isAdvancing ) return []; 
+            return originalAdvance.call(this, options);
+        };
+    }
+
+    // Robust Hijack: Intercept native Bastion Turn Advancement UI clicks.
+    // We use a capture-phase listener on the window to stop the event before dnd5e handlers can trigger the native confirmation prompt.
+    window.addEventListener("click", (event) => {
+        // Target native actions from the sheet and the canvas sidebar (floating button is hidden)
+        const btn = event.target.closest('[data-action="advanceBastionTurn"], [data-action="advance"], [data-action="advance-turn"]');
+        if ( !btn || !game.user.isGM || btn.closest('.bastion-app') ) return;
+
+        // Kill the event immediately to prevent the native confirmation dialog
+        event.stopImmediatePropagation();
+        event.stopPropagation();
+        event.preventDefault();
+
+        // Determine the Actor context from the parent application
+        const app = Array.from(foundry.applications.instances.values()).find(a => a.element?.contains(btn))
+                 || Object.values(ui.windows).find(w => (w.element?.[0] || w.element)?.contains(btn));
+        
+        // If we can't find the app, find an owned actor with a Bastion to act as the context
+        const actor = app?.document || app?.actor || game.actors.find(a => a.items.some(i => i.type === "facility") && a.isOwner);
+
+        if ( actor ) {
+            console.log(`Bastion Manager | Hijacking native advancement for ${actor.name}.`);
+            BastionManager.onAdvanceGlobalTurn.call({ actor, element: btn.parentElement }, event, btn);
+        }
+    }, { capture: true });
 
     // Socket listeners
     game.socket.on("module.dnd-2024-bastion-manager", (data) => {
