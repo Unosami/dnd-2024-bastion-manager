@@ -83,10 +83,29 @@ Hooks.on("getSceneControlButtons", (sceneControls) => {
             { 
                 name: "manager", title: "Open Bastion Manager", icon: "fa-solid fa-gauge-high", 
                 button: true, visible: true,
-                onChange: () => {
-                    const actor = game.user.character || game.actors.find(a => a.items.some(i => i.type === "facility") && a.isOwner) || game.actors.find(a => a.items.some(i => i.type === "facility"));
-                    if (actor) new BastionManager(actor).render({ force: true });
-                    else ui.notifications.warn("No actor with a Bastion found.");
+                onChange: async () => {
+                    const MODULE_ID = "dnd-2024-bastion-manager";
+                    const bastionActors = game.actors.filter(a => 
+                        a.items.some(i => i.type === "facility") || 
+                        (a.getFlag(MODULE_ID, "groupFacilities")?.length > 0)
+                    );
+
+                    if (bastionActors.length === 0) return ui.notifications.warn("No actor with a Bastion found.");
+                    if (bastionActors.length === 1) return new BastionManager(bastionActors[0]).render({ force: true });
+
+                    // If multiple bastions exist, let the DM choose which one to open
+                    const options = bastionActors.map(a => `<option value="${a.id}">${a.name}</option>`).join("");
+                    const selectedId = await DialogV2.prompt({
+                        window: { title: "Select Bastion to Manage", icon: "fa-solid fa-chess-rook" },
+                        content: `<p>Which character's Bastion would you like to manage?</p><div class="form-group"><label>Character:</label><select name="actorId">${options}</select></div>`,
+                        ok: { label: "Open Manager", callback: (event, button) => button.form.elements.actorId.value },
+                        rejectClose: false
+                    });
+
+                    if (selectedId) {
+                        const actor = game.actors.get(selectedId);
+                        if (actor) new BastionManager(actor).render({ force: true });
+                    }
                 }
             }
         ]
@@ -383,6 +402,68 @@ const integrateBastionDashboard = (bastionTab) => {
 
         nativeAdvanceBtn.after(input);
     }
+
+    // 10. Augment Native Facility Items with Module State
+    const facilitiesList = bastionTab.querySelectorAll('.item.facility:not(.building-placeholder)');
+    facilitiesList.forEach(li => {
+        const itemId = li.dataset.itemId;
+        const item = actor.items.get(itemId);
+        if (!item || li.querySelector(".bastion-augmented")) return;
+
+        const fFlags = item.getFlag(MODULE_ID) || {};
+        const nameContainer = li.querySelector('.name, .item-name');
+        if (!nameContainer) return;
+
+        // Mark as augmented to prevent duplicate injections
+        li.classList.add("bastion-augmented");
+
+        // A. WORKING Badge: Pulse when an order is active (and not building/damaged)
+        const hasOrder = fFlags.order && fFlags.order !== "Maintain";
+        const isBuilding = fFlags.upgradeTurns > 0;
+        if (hasOrder && !isBuilding && !fFlags.isDamaged) {
+            const badge = document.createElement("span");
+            badge.className = "bastion-working-badge";
+            badge.style.cssText = "font-size: 0.65em; background: #2e7d32; color: white; padding: 1px 5px; border-radius: 3px; margin-left: 6px; vertical-align: middle; animation: bastion-pulse 2s infinite; font-weight: bold; white-space: nowrap;";
+            badge.innerHTML = '<i class="fa-solid fa-gear fa-spin" style="font-size: 0.8em;"></i> WORKING';
+            badge.title = `Current Order: ${fFlags.order}`;
+            nameContainer.appendChild(badge);
+        }
+
+        // B. DAMAGED Badge
+        if (fFlags.isDamaged) {
+            const badge = document.createElement("span");
+            badge.style.cssText = "font-size: 0.65em; background: var(--dnd5e-color-iron); color: white; padding: 1px 5px; border-radius: 3px; margin-left: 6px; vertical-align: middle; font-weight: bold;";
+            badge.innerHTML = 'DAMAGED';
+            nameContainer.appendChild(badge);
+        }
+
+        // C. Specific Facility Logic (Storehouse / Armory)
+        const infoDiv = document.createElement("div");
+        infoDiv.style.cssText = "font-size: 0.75em; opacity: 0.7; margin-top: 2px; font-family: var(--dnd5e-font-roboto);";
+
+        if (item.name.includes("Storehouse")) {
+            const stored = fFlags.storedGp || 0;
+            const limit = actorLevel >= 13 ? 5000 : (actorLevel >= 9 ? 2000 : 500);
+            infoDiv.innerHTML = `<i class="fa-solid fa-boxes-stacked"></i> Stock: <b>${stored} / ${limit} GP</b>`;
+            nameContainer.after(infoDiv);
+        } else if (item.name.includes("Armory")) {
+            const isStocked = fFlags.isStocked;
+            const color = isStocked ? "green" : "#666";
+            const label = isStocked ? "STOCKED" : "UNSTOCKED";
+            infoDiv.innerHTML = `<i class="fa-solid fa-shield-halved" style="color: ${color}"></i> <b>${label}</b>`;
+            nameContainer.after(infoDiv);
+        } else if (fFlags.progress > 0 && !isBuilding) {
+            // Progress tracking for long-term projects (Craft/Research)
+            infoDiv.innerHTML = `<i class="fa-solid fa-hourglass-half"></i> Project Progress: <b>${fFlags.progress}</b> turns`;
+            nameContainer.after(infoDiv);
+        }
+
+        // D. Functionality: Right-Click to open Advanced Manager
+        li.addEventListener("contextmenu", (ev) => {
+            ev.preventDefault();
+            new BastionManager(actor).render({ force: true });
+        });
+    });
 };
 
 /**
@@ -455,13 +536,16 @@ Hooks.once("ready", async () => {
     game.modules.get("dnd-2024-bastion-manager").api = { BastionManager };
     await BastionManager.loadProfessions();
 
+    // Inject global styles for the "WORKING" pulse animation
+    const style = document.createElement("style");
+    style.innerHTML = `
+        @keyframes bastion-pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+        #bastion-turn { display: none !important; }
+    `;
+    document.head.appendChild(style);
+
     // v13: Force control refresh to ensure the Bastion category appears for the GM
     if ( game.user.isGM ) { console.log("Bastion Manager | Forcing sidebar re-render."); ui.controls.render(true); }
-
-    // Hide native floating Bastion button
-    const style = document.createElement("style");
-    style.innerHTML = `#bastion-turn { display: none !important; }`;
-    document.head.appendChild(style);
 
     // Robust Link: Override the native advance method on the Bastion data model.
     // This acts as a logic-level fallback if the UI hijack is bypassed.
