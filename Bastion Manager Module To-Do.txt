@@ -4,6 +4,7 @@ GENERAL
 - Make Bastion Name Editable. This should also be doable for combined bastions.
 - Have individual bastions show the descrepancy between their turn and the global turn. 
 - For new characters, have the DM be able to jump the turn count up to the global amount (without production). Or perhaps, have new facilities start at the global turn count?
+- Tie day-based time to native calendar?
 
 
 EVENTS:

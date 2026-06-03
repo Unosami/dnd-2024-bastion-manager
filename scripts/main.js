@@ -404,61 +404,302 @@ const integrateBastionDashboard = (bastionTab) => {
     }
 
     // 10. Augment Native Facility Items with Module State
-    const facilitiesList = bastionTab.querySelectorAll('.item.facility:not(.building-placeholder)');
+    // Native dnd5e bastion tab: <li class="facility" data-item-id="..."> with
+    // <div class="facility-header"> > <div class="name-stacked" data-action="useFacility">
+    const facilitiesList = bastionTab.querySelectorAll('li.facility[data-item-id]:not(.building-placeholder)');
     facilitiesList.forEach(li => {
         const itemId = li.dataset.itemId;
         const item = actor.items.get(itemId);
-        if (!item || li.querySelector(".bastion-augmented")) return;
+        if (!item || item.type !== "facility" || li.classList.contains("bastion-augmented")) return;
 
-        const fFlags = item.getFlag(MODULE_ID) || {};
-        const nameContainer = li.querySelector('.name, .item-name');
-        if (!nameContainer) return;
-
-        // Mark as augmented to prevent duplicate injections
+        // Mark immediately so re-entrancy from flag updates doesn't double-inject
         li.classList.add("bastion-augmented");
 
-        // A. WORKING Badge: Pulse when an order is active (and not building/damaged)
-        const hasOrder = fFlags.order && fFlags.order !== "Maintain";
-        const isBuilding = fFlags.upgradeTurns > 0;
-        if (hasOrder && !isBuilding && !fFlags.isDamaged) {
-            const badge = document.createElement("span");
-            badge.className = "bastion-working-badge";
-            badge.style.cssText = "font-size: 0.65em; background: #2e7d32; color: white; padding: 1px 5px; border-radius: 3px; margin-left: 6px; vertical-align: middle; animation: bastion-pulse 2s infinite; font-weight: bold; white-space: nowrap;";
-            badge.innerHTML = '<i class="fa-solid fa-gear fa-spin" style="font-size: 0.8em;"></i> WORKING';
-            badge.title = `Current Order: ${fFlags.order}`;
-            nameContainer.appendChild(badge);
+        const fFlags = item.getFlag(MODULE_ID) || {};
+
+        // --- Block the native "Issue Order" click (data-action="useFacility") ---
+        const useFacilityDiv = li.querySelector('[data-action="useFacility"]');
+        if (useFacilityDiv) {
+            useFacilityDiv.addEventListener("click", (ev) => {
+                ev.stopImmediatePropagation();
+                ev.preventDefault();
+            }, { capture: true });
         }
 
-        // B. DAMAGED Badge
-        if (fFlags.isDamaged) {
-            const badge = document.createElement("span");
-            badge.style.cssText = "font-size: 0.65em; background: var(--dnd5e-color-iron); color: white; padding: 1px 5px; border-radius: 3px; margin-left: 6px; vertical-align: middle; font-weight: bold;";
-            badge.innerHTML = 'DAMAGED';
-            nameContainer.appendChild(badge);
+        const facName = item.name;
+        const isUpgrading = (fFlags.upgradeTurns || 0) > 0;
+        const isEnlarging = isUpgrading && !!fFlags.size;
+        const isDamaged = !!fFlags.isDamaged;
+        const progress = Number(fFlags.progress || 0);
+        const hasActiveOrder = fFlags.order && fFlags.order !== "Maintain";
+
+        // --- A. Header Badges (appended to the .title span inside .name-stacked) ---
+        const titleSpan = li.querySelector('.name-stacked .title');
+        if (titleSpan) {
+            if (hasActiveOrder && !isUpgrading && !isDamaged) {
+                const badge = document.createElement("span");
+                badge.style.cssText = "font-size: 0.65em; background: #2e7d32; color: white; padding: 1px 5px; border-radius: 3px; margin-left: 6px; vertical-align: middle; animation: bastion-pulse 2s infinite; font-weight: bold; white-space: nowrap;";
+                badge.innerHTML = '<i class="fa-solid fa-gear fa-spin" style="font-size: 0.8em;"></i> WORKING';
+                badge.title = `Current Order: ${fFlags.order}`;
+                titleSpan.after(badge);
+            }
+            if (isDamaged) {
+                const badge = document.createElement("span");
+                badge.style.cssText = "font-size: 0.65em; background: var(--dnd5e-color-iron); color: white; padding: 1px 5px; border-radius: 3px; margin-left: 6px; vertical-align: middle; font-weight: bold;";
+                badge.textContent = "DAMAGED";
+                titleSpan.after(badge);
+            }
+            if (isEnlarging) {
+                const badge = document.createElement("span");
+                badge.style.cssText = "font-size: 0.65em; background: #e65100; color: white; padding: 1px 5px; border-radius: 3px; margin-left: 6px; vertical-align: middle; font-weight: bold;";
+                badge.textContent = "ENLARGING";
+                titleSpan.after(badge);
+            }
         }
 
-        // C. Specific Facility Logic (Storehouse / Armory)
-        const infoDiv = document.createElement("div");
-        infoDiv.style.cssText = "font-size: 0.75em; opacity: 0.7; margin-top: 2px; font-family: var(--dnd5e-font-roboto);";
+        // --- B. Order Dropdown + Manager Button ---
+        // Basic facilities (Bedroom, Dining Room, etc.) only Maintain — no dropdown needed
+        const isBasicFacility = item.system?.type?.value === "basic";
+        const { availableOrders, safeOrder } = BastionManager.buildFacilityOrderState(actor, item);
+        const isOrderLocked = (isUpgrading && !isEnlarging) || isDamaged;
 
-        if (item.name.includes("Storehouse")) {
+        const orderBlock = document.createElement("div");
+        orderBlock.className = "bastion-order-block";
+        orderBlock.style.cssText = "padding: 3px 6px 3px 6px; border-top: 1px solid rgba(0,0,0,0.12); display: flex; align-items: center; gap: 5px; background: rgba(0,0,0,0.03);";
+
+        const orderLabel = document.createElement("label");
+        orderLabel.style.cssText = "font-size: 0.74em; font-weight: bold; white-space: nowrap; font-family: var(--dnd5e-font-roboto, sans-serif); color: var(--dnd5e-color-black, #111);";
+        orderLabel.textContent = "Order:";
+
+        const orderSelect = document.createElement("select");
+        orderSelect.style.cssText = "flex: 1; font-size: 0.78em; height: 22px; font-family: var(--dnd5e-font-roboto, sans-serif);";
+        orderSelect.disabled = isOrderLocked;
+        availableOrders.forEach(order => {
+            const opt = document.createElement("option");
+            opt.value = order;
+            opt.textContent = order;
+            opt.selected = order === safeOrder;
+            orderSelect.appendChild(opt);
+        });
+        // Stop mousedown/click from bubbling to the li's own native handlers
+        orderSelect.addEventListener("mousedown", ev => ev.stopPropagation());
+        orderSelect.addEventListener("click", ev => ev.stopPropagation());
+        orderSelect.addEventListener("change", async (ev) => {
+            ev.stopPropagation();
+            await BastionManager.setFacilityOrder(actor, itemId, ev.target.value);
+            // Remove injected blocks + augmented marker so the observer re-injects with updated state
+            li.querySelectorAll(".bastion-order-block, .bastion-augmented-info").forEach(el => el.remove());
+            li.classList.remove("bastion-augmented");
+        });
+
+        const mgrBtn = document.createElement("button");
+        mgrBtn.type = "button";
+        mgrBtn.title = "Open Bastion Manager (full controls)";
+        mgrBtn.style.cssText = "width: auto; height: 22px; padding: 0 5px; font-size: 0.75em; flex-shrink: 0; cursor: pointer;";
+        mgrBtn.innerHTML = '<i class="fa-solid fa-gauge-high"></i>';
+        mgrBtn.addEventListener("mousedown", ev => ev.stopPropagation());
+        mgrBtn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            new BastionManager(actor).render({ force: true });
+        });
+
+        orderBlock.appendChild(orderLabel);
+        orderBlock.appendChild(orderSelect);
+        orderBlock.appendChild(mgrBtn);
+
+        // --- C. Status Info Block ---
+        const infoBlock = document.createElement("div");
+        infoBlock.className = "bastion-augmented-info";
+        infoBlock.style.cssText = "font-size: 0.76em; color: var(--dnd5e-color-black, #111); padding: 3px 6px; font-family: var(--dnd5e-font-roboto, sans-serif); display: flex; flex-direction: column; gap: 2px;";
+
+        const rows = [];
+
+        // C1. Size
+        const facSize = fFlags.size;
+        if (facSize && facSize !== "Construction") {
+            rows.push(`<div><i class="fa-solid fa-ruler-combined" style="opacity:0.6; width:12px;"></i> <b>Size:</b> ${facSize}</div>`);
+        }
+
+        // C2. SubType (specialization — e.g. Workshop tool, Garden plant type)
+        const subType = fFlags.subType;
+        if (subType) {
+            rows.push(`<div><i class="fa-solid fa-tag" style="opacity:0.6; width:12px;"></i> <b>Type:</b> ${subType}</div>`);
+        }
+
+        // C3. Defenders
+        const defenders = fFlags.defenders || {};
+        if ((defenders.count || 0) > 0) {
+            const names = (defenders.names || []).join(", ");
+            const nameStr = names ? ` — ${names}` : "";
+            rows.push(`<div><i class="fa-solid fa-shield" style="color:#a32a22; width:12px;"></i> <b>Defenders:</b> ${defenders.count}${nameStr}</div>`);
+        }
+
+        // C4. Hirelings
+        const hirelings = fFlags.hirelings;
+        if (Array.isArray(hirelings) && hirelings.length > 0) {
+            rows.push(`<div style="font-style:italic; opacity:0.8;"><i class="fa-solid fa-people-group" style="opacity:0.6; width:12px;"></i> ${hirelings.join(", ")}</div>`);
+        }
+
+        // C5. Active project progress bar (craft/research in progress)
+        const maxCraftTurns = Number(fFlags.maxCraftTurns || 0);
+        if (progress > 0 && !isUpgrading && !isDamaged) {
+            const pct = maxCraftTurns > 0 ? Math.round((progress / maxCraftTurns) * 100) : 0;
+            const craftChoice = fFlags.craftChoice || fFlags.activeProjectChoice || "";
+            const choiceStr = craftChoice ? ` — ${craftChoice}` : "";
+            rows.push(`<div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1px;">
+                    <span><i class="fa-solid fa-hourglass-half" style="opacity:0.6; width:12px;"></i> <b>Project${choiceStr}:</b> ${progress}${maxCraftTurns > 0 ? ` / ${maxCraftTurns}` : ""} turns</span>
+                </div>
+                ${maxCraftTurns > 0 ? `<div style="height:6px; background:rgba(0,0,0,0.1); border-radius:3px; overflow:hidden;"><div style="width:${pct}%; height:100%; background:#2e7d32;"></div></div>` : ""}
+            </div>`);
+        }
+
+        // C6. Enlargement / construction progress bar (for native items being enlarged)
+        if (isEnlarging) {
+            const upProg = Number(fFlags.upgradeProgress || 0);
+            const upTotal = Number(fFlags.upgradeTurns || 1);
+            const upPct = Math.round((upProg / upTotal) * 100);
+            rows.push(`<div>
+                <div style="margin-bottom:1px;"><i class="fa-solid fa-expand" style="opacity:0.6; width:12px;"></i> <b>Enlarging:</b> ${upProg} / ${upTotal} turns</div>
+                <div style="height:6px; background:rgba(0,0,0,0.1); border-radius:3px; overflow:hidden;"><div style="width:${upPct}%; height:100%; background:var(--dnd5e-color-gold, #c8a000);"></div></div>
+            </div>`);
+        }
+
+        // C7. Damage repair progress
+        if (isDamaged) {
+            const repProg = Number(fFlags.repairProgress || 0);
+            const repTotal = Number(fFlags.repairTurns || 0);
+            if (repTotal > 0) {
+                const repPct = Math.round((repProg / repTotal) * 100);
+                rows.push(`<div>
+                    <div style="margin-bottom:1px;"><i class="fa-solid fa-wrench" style="opacity:0.6; width:12px;"></i> <b>Repairing:</b> ${repProg} / ${repTotal} turns</div>
+                    <div style="height:6px; background:rgba(0,0,0,0.1); border-radius:3px; overflow:hidden;"><div style="width:${repPct}%; height:100%; background:#e65100;"></div></div>
+                </div>`);
+            } else {
+                rows.push(`<div><i class="fa-solid fa-wrench" style="opacity:0.6; width:12px;"></i> <b>Awaiting repair</b></div>`);
+            }
+        }
+
+        // --- D. Facility-Specific Blocks ---
+
+        // D1. Storehouse
+        if (facName.includes("Storehouse")) {
             const stored = fFlags.storedGp || 0;
             const limit = actorLevel >= 13 ? 5000 : (actorLevel >= 9 ? 2000 : 500);
-            infoDiv.innerHTML = `<i class="fa-solid fa-boxes-stacked"></i> Stock: <b>${stored} / ${limit} GP</b>`;
-            nameContainer.after(infoDiv);
-        } else if (item.name.includes("Armory")) {
-            const isStocked = fFlags.isStocked;
-            const color = isStocked ? "green" : "#666";
-            const label = isStocked ? "STOCKED" : "UNSTOCKED";
-            infoDiv.innerHTML = `<i class="fa-solid fa-shield-halved" style="color: ${color}"></i> <b>${label}</b>`;
-            nameContainer.after(infoDiv);
-        } else if (fFlags.progress > 0 && !isBuilding) {
-            // Progress tracking for long-term projects (Craft/Research)
-            infoDiv.innerHTML = `<i class="fa-solid fa-hourglass-half"></i> Project Progress: <b>${fFlags.progress}</b> turns`;
-            nameContainer.after(infoDiv);
+            const markup = actorLevel >= 17 ? 100 : (actorLevel >= 13 ? 50 : (actorLevel >= 9 ? 20 : 10));
+            const pct = Math.round((stored / limit) * 100);
+            rows.push(`<div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1px;">
+                    <span><i class="fa-solid fa-boxes-stacked" style="opacity:0.6; width:12px;"></i> <b>Stock:</b> ${stored} / ${limit} GP</span>
+                    <span style="opacity:0.7;">+${markup}% markup</span>
+                </div>
+                <div style="height:6px; background:rgba(0,0,0,0.1); border-radius:3px; overflow:hidden;"><div style="width:${pct}%; height:100%; background:var(--dnd5e-color-gold, #c8a000);"></div></div>
+            </div>`);
         }
 
-        // D. Functionality: Right-Click to open Advanced Manager
+        // D2. Armory
+        if (facName.includes("Armory")) {
+            const isStocked = fFlags.isStocked || false;
+            const stockedCount = fFlags.stockedCount || 0;
+            const totalBastionDefs = actor.items.filter(i => i.type === "facility").reduce((sum, i) => {
+                const d = i.getFlag(MODULE_ID, "defenders") || {};
+                return sum + (d.count || 0);
+            }, 0);
+            let badge, color;
+            if (isStocked && stockedCount >= totalBastionDefs) {
+                badge = `<span style="background:#2e7d32; color:white; padding:1px 6px; border-radius:10px; font-weight:bold; font-size:0.9em;"><i class="fa-solid fa-shield-check"></i> STOCK-READY</span>`;
+            } else if (isStocked && stockedCount > 0) {
+                badge = `<span style="background:#ef6c00; color:white; padding:1px 6px; border-radius:10px; font-weight:bold; font-size:0.9em;" title="Partial stock (${stockedCount} defenders equipped)"><i class="fa-solid fa-shield-halved"></i> PARTIAL (${stockedCount})</span>`;
+            } else {
+                badge = `<span style="background:#666; color:white; padding:1px 6px; border-radius:10px; font-weight:bold; font-size:0.9em;"><i class="fa-solid fa-shield-slash"></i> UNSTOCKED</span>`;
+            }
+            rows.push(`<div>${badge}</div>`);
+        }
+
+        // D3. Greenhouse
+        if (facName.includes("Greenhouse")) {
+            const fruitCount = fFlags.fruitCount ?? 3;
+            rows.push(`<div><i class="fa-solid fa-seedling" style="color:#2e7d32; width:12px;"></i> <b>Magical Fruits:</b> ${fruitCount} / 3 &nbsp;<span style="opacity:0.7; font-style:italic;">(Lesser Restoration)</span></div>`);
+        }
+
+        // D4. Theater
+        if (facName.includes("Theater")) {
+            const phase = fFlags.theaterPhase || "Idle";
+            const tProg = Number(fFlags.theaterProgress || 0);
+            const tPct = Math.round((Math.min(tProg, 14) / 14) * 100);
+            const phaseColor = phase === "Writing" ? "#82cfff" : (phase === "Rehearsing" ? "#ff9800" : (phase === "Performing" ? "#4caf50" : "#777"));
+            const contributors = fFlags.theaterContributors || [];
+            const author = fFlags.theaterAuthor || "";
+            rows.push(`<div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1px;">
+                    <span><i class="fa-solid fa-masks-theater" style="opacity:0.6; width:12px;"></i> <b>Phase:</b> <span style="color:${phaseColor}; font-weight:bold;">${phase}</span>${author ? ` — ${author}` : ""}</span>
+                    <span style="opacity:0.7;">${tProg} / 14 turns</span>
+                </div>
+                <div style="height:6px; background:rgba(0,0,0,0.1); border-radius:3px; overflow:hidden;"><div style="width:${tPct}%; height:100%; background:${phaseColor};"></div></div>
+                ${contributors.length > 0 ? `<div style="opacity:0.75; margin-top:1px;"><i class="fa-solid fa-people-group" style="width:12px;"></i> ${contributors.map(c => `${c.name} (${c.role})`).join(", ")}</div>` : ""}
+            </div>`);
+        }
+
+        // D5. Teleportation Circle
+        if (facName.includes("Teleportation Circle")) {
+            const visiting = fFlags.visitingSpellcaster || false;
+            const daysRemaining = fFlags.spellcasterDaysRemaining || 0;
+            const spellcasterName = fFlags.spellcasterName || "";
+            if (visiting && daysRemaining > 0) {
+                rows.push(`<div><i class="fa-solid fa-wand-sparkles" style="color:#7c4dff; width:12px;"></i> <b>Visiting:</b> ${spellcasterName || "Spellcaster"} &mdash; ${daysRemaining} day(s) remaining</div>`);
+            } else {
+                rows.push(`<div style="opacity:0.6;"><i class="fa-solid fa-wand-sparkles" style="width:12px;"></i> No visiting spellcaster</div>`);
+            }
+        }
+
+        // D6. Meditation Chamber
+        if (facName.includes("Meditation Chamber")) {
+            const innerPeace = actor.getFlag(MODULE_ID, "innerPeaceActive") || false;
+            const fortifiedSaves = actor.getFlag(MODULE_ID, "fortifiedSaves") || [];
+            if (innerPeace) {
+                rows.push(`<div><i class="fa-solid fa-brain" style="color:#4a86e8; width:12px;"></i> <b>Inner Peace Active</b></div>`);
+            }
+            if (fortifiedSaves.length > 0) {
+                rows.push(`<div><i class="fa-solid fa-shield-halved" style="color:#4a86e8; width:12px;"></i> <b>Fortified Saves:</b> ${fortifiedSaves.join(", ")}</div>`);
+            }
+        }
+
+        // D7. Stable
+        if (facName.includes("Stable")) {
+            const animals = fFlags.stableAnimals || [];
+            const maxSlots = facSize === "Vast" ? 4 : (facSize === "Roomy" ? 2 : 1);
+            if (animals.length > 0) {
+                const animalList = animals.map(a => a.nickname ? `${a.nickname} (${a.species})` : a.species).join(", ");
+                rows.push(`<div><i class="fa-solid fa-horse" style="opacity:0.6; width:12px;"></i> <b>Animals (${animals.length}/${maxSlots}):</b> ${animalList}</div>`);
+            } else {
+                rows.push(`<div style="opacity:0.6;"><i class="fa-solid fa-horse" style="width:12px;"></i> No animals (0 / ${maxSlots} slots)</div>`);
+            }
+        }
+
+        // D8. Craft Queue summary
+        const craftQueue = fFlags.craftQueue || [];
+        if (craftQueue.length > 0) {
+            const queueGold = craftQueue.reduce((s, q) => s + ((q.totalCost || 0) - (q.paidCost || 0)), 0);
+            const queueTurns = craftQueue.reduce((s, q) => s + ((q.totalTurns || 0) - (q.completedTurns || 0)), 0);
+            rows.push(`<div style="opacity:0.8;"><i class="fa-solid fa-list-ol" style="opacity:0.6; width:12px;"></i> <b>Queue:</b> ${craftQueue.length} item(s) — ${queueGold} GP, ~${queueTurns} turn(s)</div>`);
+        }
+
+        // Insert order block and info block after .facility-header
+        const headerDiv = li.querySelector('.facility-header');
+        if (headerDiv) {
+            if (!isBasicFacility) {
+                headerDiv.after(orderBlock);
+                if (rows.length > 0) {
+                    infoBlock.innerHTML = rows.join("");
+                    orderBlock.after(infoBlock);
+                }
+            } else if (rows.length > 0) {
+                infoBlock.innerHTML = rows.join("");
+                headerDiv.after(infoBlock);
+            }
+        }
+
+        // Right-click → open full BastionManager
         li.addEventListener("contextmenu", (ev) => {
             ev.preventDefault();
             new BastionManager(actor).render({ force: true });

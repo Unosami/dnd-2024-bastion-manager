@@ -315,6 +315,137 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     /**
+     * Computes the available order labels and the effective "safe" selected order for a single
+     * facility item, using only synchronous data (no compendium lookups needed).
+     * @param {Actor} actor   The owning actor.
+     * @param {Item}  item    The facility item.
+     * @returns {{ availableOrders: string[], safeOrder: string }}
+     */
+    static buildFacilityOrderState(actor, item) {
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        const actorLevel = actor.system?.details?.level || 1;
+        const fFlags = item.getFlag(MODULE_ID) || {};
+        const currentOrder = fFlags.order || "Maintain";
+        const craftChoice = fFlags.craftChoice || "";
+        const progress = Number(fFlags.progress || 0);
+        const rawQueue = fFlags.craftQueue || [];
+
+        const availableOrders = ["Maintain"];
+        if (progress > 0) availableOrders.unshift("Continue Project");
+        if (rawQueue.length > 0) availableOrders.push("Progress Queue");
+
+        const systemOrder = item.system?.order;
+        if (systemOrder && typeof systemOrder === "string") {
+            const formattedOrder = systemOrder.charAt(0).toUpperCase() + systemOrder.slice(1).toLowerCase();
+            let label = formattedOrder;
+            if (formattedOrder === "Empower" && item.name.includes("Theater")) label = "Empower: Theatrical Event";
+            if (formattedOrder === "Trade" && item.name.includes("Armory")) label = "Trade: Stock Armory";
+            if (formattedOrder !== "Maintain" && !availableOrders.includes(label)) availableOrders.push(label);
+        }
+
+        let rawProps = item.system?.properties;
+        let propArray = [];
+        if (rawProps instanceof Set) propArray = Array.from(rawProps);
+        else if (Array.isArray(rawProps)) propArray = rawProps;
+        else if (typeof rawProps === "object" && rawProps !== null) propArray = Object.keys(rawProps).filter(k => rawProps[k]);
+        const safeProps = propArray.map(p => String(p).toLowerCase());
+
+        BASTION_ORDERS.forEach(order => {
+            let label = order;
+            if (order === "Empower" && item.name.includes("Theater")) label = "Empower: Theatrical Event";
+            if (order === "Trade" && item.name.includes("Armory")) label = "Trade: Stock Armory";
+            if (order === "Maintain" || availableOrders.includes(label)) return;
+            if (safeProps.some(p => p.includes(order.toLowerCase()))) availableOrders.push(label);
+        });
+
+        if (availableOrders.includes("Craft") && item.name.includes("Laboratory")) {
+            const idx = availableOrders.indexOf("Craft");
+            availableOrders.splice(idx, 1, "Craft: Alchemist's Supplies", "Craft: Poison");
+        }
+        if (availableOrders.includes("Research") && item.name.includes("Trophy Room")) {
+            const idx = availableOrders.indexOf("Research");
+            availableOrders.splice(idx, 1, "Research: Lore", "Research: Trinket Trophy");
+        }
+        if (availableOrders.includes("Research") && item.name.includes("Archive")) {
+            const idx = availableOrders.indexOf("Research");
+            availableOrders.splice(idx, 1, "Research: Helpful Lore");
+        }
+        if (item.name.includes("Garden")) availableOrders.push("Change Type");
+        if (availableOrders.includes("Harvest") && item.name.includes("Greenhouse")) {
+            const idx = availableOrders.indexOf("Harvest");
+            availableOrders.splice(idx, 1, "Harvest: Healing Herbs", "Harvest: Poison");
+        }
+        if (availableOrders.includes("Craft")) {
+            const fname = item.name || "";
+            const specialOrders = [];
+            if (fname.includes("Arcane Study")) {
+                specialOrders.push("Craft: Arcane Focus", "Craft: Book");
+                if (actorLevel >= 9) specialOrders.push("Craft: Magic Item (Arcana)");
+            } else if (fname.includes("Smithy")) {
+                specialOrders.push("Craft: Smith's Tools");
+                if (actorLevel >= 9) specialOrders.push("Craft: Magic Item (Armament)");
+            } else if (fname.includes("Workshop")) {
+                specialOrders.push("Craft: Adventuring Gear");
+                if (actorLevel >= 9) specialOrders.push("Craft: Magic Item (Implement)");
+            } else if (fname.includes("Sanctuary")) {
+                specialOrders.push("Craft: Druidic Focus", "Craft: Holy Symbol");
+            } else if (fname.includes("Sacristy")) {
+                specialOrders.push("Craft: Holy Water");
+                if (actorLevel >= 9) specialOrders.push("Craft: Magic Item (Relic)");
+            } else if (fname.includes("Scriptorium")) {
+                specialOrders.push("Craft: Book Replica", "Craft: Spell Scroll", "Craft: Paperwork");
+            }
+            if (specialOrders.length > 0) {
+                const idx = availableOrders.indexOf("Craft");
+                availableOrders.splice(idx, 1, ...specialOrders);
+            }
+        }
+
+        // Compute the UI-facing current order label (maps stored flag value → dropdown option)
+        let currentUIOrder = (currentOrder === "Craft" && craftChoice) ? `Craft: ${craftChoice}` : currentOrder;
+        if (currentOrder === "Empower" && item.name.includes("Theater")) currentUIOrder = "Empower: Theatrical Event";
+        if (currentOrder === "Trade" && item.name.includes("Armory")) currentUIOrder = "Trade: Stock Armory";
+        if (currentOrder === "Harvest" && item.name.includes("Greenhouse")) currentUIOrder = `Harvest: ${craftChoice || "Healing Herbs"}`;
+        if (currentOrder === "Research" && item.name.includes("Trophy Room")) currentUIOrder = `Research: ${craftChoice || "Lore"}`;
+        if (currentOrder === "Research" && item.name.includes("Archive")) currentUIOrder = "Research: Helpful Lore";
+        if (currentOrder === "Craft" && item.name.includes("Laboratory")) currentUIOrder = `Craft: ${craftChoice || "Alchemist's Supplies"}`;
+
+        let safeOrder = availableOrders.includes(currentUIOrder) ? currentUIOrder : "Maintain";
+        if (progress > 0 && !item.name.includes("Garden")) safeOrder = "Continue Project";
+        if (safeOrder === "Maintain" && rawQueue.length > 0) safeOrder = "Progress Queue";
+
+        return { availableOrders, safeOrder };
+    }
+
+    /**
+     * Saves a new order (and optional craftChoice) to a facility item's flags.
+     * Handles the "Craft: X" compound label convention.
+     * @param {Actor}  actor  The owning actor.
+     * @param {string} itemId The facility item ID.
+     * @param {string} newValue The order label selected in the UI.
+     */
+    static async setFacilityOrder(actor, itemId, newValue) {
+        const MODULE_ID = "dnd-2024-bastion-manager";
+        const item = actor.items.get(itemId);
+        if (!item) return;
+        if (newValue === "Continue Project" || newValue === "Progress Queue") {
+            await item.setFlag(MODULE_ID, "order", newValue);
+            return;
+        }
+        let newOrder = newValue;
+        let craftChoice = "";
+        if (newValue.includes(": ")) {
+            const parts = newValue.split(": ");
+            newOrder = parts[0];
+            craftChoice = parts[1];
+        }
+        await item.update({
+            [`flags.${MODULE_ID}.order`]: newOrder,
+            [`flags.${MODULE_ID}.craftChoice`]: craftChoice || ""
+        });
+    }
+
+    /**
      * Extracts a size key from a document (Actor or Item).
      * Looks for system.size, then checks system.properties for size tags.
      * @param {object} doc The document or index entry.
