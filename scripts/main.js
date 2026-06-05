@@ -1,4 +1,5 @@
-import { BastionManager } from "./bastion-app.js"; 
+import { BastionManager } from "./bastion-app.js";
+const MODULE_ID = "dnd-2024-bastion-manager";
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
 /**
@@ -25,13 +26,7 @@ class BastionTurnControl extends HandlebarsApplicationMixin(ApplicationV2) {
         main: { template: "modules/dnd-2024-bastion-manager/templates/bastion-advance-turn.hbs" }
     };
 
-    static toggle() {
-        if (this.instance) { this.instance.close(); this.instance = null; }
-        else { this.instance = new BastionTurnControl(); this.instance.render({ force: true }); }
-    }
-
     async _prepareContext(options) {
-        const MODULE_ID = "dnd-2024-bastion-manager";
         const activeNonGMs = game.users.filter(u => u.active && !u.isGM);
         const bastionActors = game.actors.filter(a => {
             const isAllowedType = a.type === "character" || a.type === "npc";
@@ -66,7 +61,8 @@ class BastionLayer extends (foundry.canvas.layers.InteractionLayer || Interactio
  * Toolbar Integration: Add a new control group to the Scene Controls (left sidebar)
  */
 Hooks.on("getSceneControlButtons", (sceneControls) => {
-    if ( !game.user?.isGM || !sceneControls ) return;
+    if ( !sceneControls ) return;
+    const isGM = game.user?.isGM ?? false;
 
     // Prepare the Bastion control configuration
     const bastionControl = {
@@ -75,16 +71,24 @@ Hooks.on("getSceneControlButtons", (sceneControls) => {
         icon: "fa-solid fa-chess-rook",
         layer: "bastion",
         visible: true,
-        activeTool: "advanceTurn", 
+        activeTool: isGM ? "advanceTurn" : "manager",
         tools: [
-            // Tool 1: Advance Turn (Selectable). Clicking this makes it active and opens the prompt.
-            { name: "advanceTurn", title: "Advance Bastion Turn", icon: "fa-solid fa-play", visible: true },
-            // Tool 2: The Manager button.
+            // Tool 1: Advance Bastion Turn — GM only
+            { name: "advanceTurn", title: "Advance Bastion Turn", icon: "fa-solid fa-play", visible: isGM },
+            // Tool 2: Open Bastion Manager — available to all users (players open their own bastion)
             { 
                 name: "manager", title: "Open Bastion Manager", icon: "fa-solid fa-gauge-high", 
                 button: true, visible: true,
                 onChange: async () => {
-                    const MODULE_ID = "dnd-2024-bastion-manager";
+                    if (!isGM) {
+                        // Players: open their assigned character's bastion dashboard.
+                        // No facility guard — the dashboard itself handles the founding flow.
+                        const playerActor = game.user.character;
+                        if (!playerActor) return ui.notifications.warn("No character is assigned to your user. Ask your GM to assign one.");
+                        return new BastionManager(playerActor).render({ force: true });
+                    }
+
+                    // GMs: pick from all bastions
                     const bastionActors = game.actors.filter(a => 
                         a.items.some(i => i.type === "facility") || 
                         (a.getFlag(MODULE_ID, "groupFacilities")?.length > 0)
@@ -93,7 +97,7 @@ Hooks.on("getSceneControlButtons", (sceneControls) => {
                     if (bastionActors.length === 0) return ui.notifications.warn("No actor with a Bastion found.");
                     if (bastionActors.length === 1) return new BastionManager(bastionActors[0]).render({ force: true });
 
-                    // If multiple bastions exist, let the DM choose which one to open
+                    // If multiple bastions exist, let the GM choose which one to open
                     const options = bastionActors.map(a => `<option value="${a.id}">${a.name}</option>`).join("");
                     const selectedId = await DialogV2.prompt({
                         window: { title: "Select Bastion to Manage", icon: "fa-solid fa-chess-rook" },
@@ -164,11 +168,53 @@ const integrateBastionDashboard = (bastionTab) => {
     const app = Array.from(foundry.applications.instances.values()).find(a => a.element?.contains(bastionTab))
              || Object.values(ui.windows).find(w => (w.element?.[0] || w.element)?.contains(bastionTab));
 
-    const actor = app?.document || app?.actor;
+    // v13 Stability: Use game.actors.get to ensure we have the most current DB state,
+    // as app references can be stale during asynchronous render cycles.
+    const actor = game.actors.get((app?.document || app?.actor)?.id);
     if (!actor || actor.documentName !== "Actor") return;
     if (!["character", "npc", "group"].includes(actor.type)) return;
 
-    const MODULE_ID = "dnd-2024-bastion-manager";
+    // Inject bastion tab CSS overrides once into document.head (idempotent)
+    if (!document.getElementById('bastion-manager-tab-styles')) {
+        const style = document.createElement('style');
+        style.id = 'bastion-manager-tab-styles';
+        style.textContent = `
+            /* Facility title: white text + dark text-shadow for readability over any image overlay */
+            .dnd5e2 .tab[data-tab="bastion"] li.facility:not(.empty) .facility-header .name-stacked .title {
+                color: white !important;
+                text-shadow: 0 1px 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.6) !important;
+            }
+            /* Hide native facility subtitle — it shows system.size which defaults to "Cramped"
+               for all facilities since the module stores real sizes in flags.
+               Module shows size contextually via enlarging/building progress bars. */
+            .dnd5e2 .tab[data-tab="bastion"] li.facility:not(.empty) .facility-header .name-stacked .subtitle {
+                display: none !important;
+            }
+            .tab[data-tab="bastion"] li.facility .bastion-order-block,
+            .tab[data-tab="bastion"] li.facility .bastion-augmented-info {
+                background: rgba(15, 12, 8, 0.82) !important;
+                color: #e8e4d9 !important;
+                position: relative !important;
+                z-index: 1 !important;
+            }
+            .tab[data-tab="bastion"] li.facility .bastion-order-block label,
+            .tab[data-tab="bastion"] li.facility .bastion-order-block div,
+            .tab[data-tab="bastion"] li.facility .bastion-augmented-info div,
+            .tab[data-tab="bastion"] li.facility .bastion-augmented-info b {
+                color: #e8e4d9 !important;
+            }
+            /* Progress bar track — needs light bg to be visible on dark block */
+            .tab[data-tab="bastion"] li.facility .bastion-augmented-info div[style*="height:6px"] {
+                background: rgba(255, 255, 255, 0.18) !important;
+            }
+            /* Turn counter beside bastion name */
+            .tab[data-tab="bastion"] section.name .bastion-turn-counter {
+                color: var(--dnd5e-color-gold, #c9a227) !important;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
     const combinedId = actor.getFlag(MODULE_ID, "combinedGroupId");
     const unify = game.settings.get(MODULE_ID, "unifyCombinedTurns");
     let turnCount = actor.getFlag(MODULE_ID, "turnCount") || 0;
@@ -178,36 +224,75 @@ const integrateBastionDashboard = (bastionTab) => {
         if (group) turnCount = group.getFlag(MODULE_ID, "turnCount") || 0;
     }
 
-    // 3. Create the Suite UI using the native 2024 Cream/Gold theme variables
-    if (!bastionTab.querySelector(".bastion-manager-suite")) {
-        const suite = document.createElement("div");
-        suite.className = "bastion-manager-suite";
-        suite.style.cssText = "margin: 5px 0 15px 0; border: 1px solid var(--dnd5e-color-gold); border-radius: 5px; background: var(--dnd5e-color-cream); padding: 12px; font-family: var(--dnd5e-font-roboto); color: var(--dnd5e-color-black); box-shadow: 0 0 5px rgba(0,0,0,0.1);";
-        
-        suite.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <i class="fa-solid fa-chess-rook" style="font-size: 2em; color: var(--dnd5e-color-iron);"></i>
-                    <div>
-                        <h3 style="margin: 0; border: none; font-size: 1.1em; font-weight: bold; text-transform: uppercase;">Bastion Management</h3>
-                        <div style="font-size: 0.9em; opacity: 0.8;">Module Tracking: <b>Turn ${turnCount}</b></div>
-                    </div>
+    // Robust Capacity and Defender Tallying (Consolidated for all sub-sections)
+    const groupFacilities = actor.getFlag(MODULE_ID, "groupFacilities") || [];
+    const facPack = game.packs.get(`${MODULE_ID}.bastion-facilities`);
+    const basicRoot = facPack?.folders.find(f => f.name.toLowerCase().includes("basic"));
+    const basicFolderIds = basicRoot ? BastionManager._getAllSubfolderIds(facPack, basicRoot.id) : [];
+
+    const isBasicFac = (facDoc) => {
+        const folderId = facDoc.folder?.id || facDoc.folder;
+        return basicFolderIds.includes(folderId) || facDoc.system?.type?.value === "basic" || facDoc.name?.toLowerCase().includes("basic");
+    };
+
+    const totalBastionDefs = actor.items.filter(i => i.type === "facility").reduce((sum, i) => {
+        return sum + (i.getFlag(MODULE_ID, "defenders")?.count || 0);
+    }, 0) + groupFacilities.reduce((sum, f) => {
+        return sum + (f.flags?.[MODULE_ID]?.defenders?.count || 0);
+    }, 0);
+
+    const currentSpecialsCount = actor.items.filter(i => i.type === "facility" && !isBasicFac(i)).length + 
+                                groupFacilities.filter(f => !isBasicFac(f)).length;
+
+    // 3. Inject turn counter beside the native bastion name field (small, right-aligned)
+    const nameSection = bastionTab.querySelector('section.name');
+    if (nameSection) {
+        let counter = nameSection.querySelector('.bastion-turn-counter');
+        if (!counter) {
+            // One-time setup: only mutate DOM when the element doesn't exist yet
+            nameSection.style.position = 'relative';
+            counter = document.createElement('div');
+            counter.className = 'bastion-turn-counter';
+            counter.style.cssText = 'position: absolute; right: 6px; top: 50%; transform: translateY(-50%); font-size: 0.625rem; font-family: var(--dnd5e-font-roboto, sans-serif); opacity: 0.75; letter-spacing: 0.04em; white-space: nowrap; pointer-events: none;';
+            counter.innerHTML = `<i class="fa-solid fa-rotate" style="font-size:0.85em; margin-right:2px;"></i>Turn <b class="bastion-turn-value">${turnCount}</b>`;
+            nameSection.appendChild(counter);
+        } else {
+            // Update only the text node — avoids triggering the MutationObserver
+            const val = counter.querySelector('.bastion-turn-value');
+            if (val && val.textContent !== String(turnCount)) val.textContent = turnCount;
+        }
+    }
+
+    // 3.5. If actor has no facilities yet, show a founding prompt and hide the empty native sections
+    const hasNoFacilities = !actor.items.some(i => i.type === "facility") && groupFacilities.length === 0;
+    if (hasNoFacilities) {
+        bastionTab.querySelectorAll('section.facilities').forEach(s => s.style.setProperty('display', 'none', 'important'));
+        if (!bastionTab.querySelector('.bastion-founding-ui')) {
+            const foundingDiv = document.createElement('div');
+            foundingDiv.className = 'bastion-founding-ui';
+            foundingDiv.style.cssText = 'margin: 10px 5px;';
+            foundingDiv.innerHTML = `
+                <div style="text-align: center; padding: 24px 16px; background: rgba(15, 12, 8, 0.85); border: 2px dashed var(--dnd5e-color-gold, #c9a227); border-radius: 8px;">
+                    <i class="fa-solid fa-chess-rook" style="font-size: 2.5em; color: var(--dnd5e-color-gold, #c9a227); display: block; margin-bottom: 8px;"></i>
+                    <div style="font-size: 1.05em; font-weight: bold; text-transform: uppercase; color: #e8e4d9; margin-bottom: 6px;">No Bastion Established</div>
+                    <div style="font-size: 0.88em; color: rgba(232, 228, 217, 0.75); margin-bottom: 14px; line-height: 1.4;">Select two Special Facilities and two Basic Facilities to found your stronghold.</div>
+                    <button type="button" class="bastion-found-btn" style="width: auto; padding: 8px 20px; font-weight: bold; background: var(--dnd5e-color-iron, #6e6e6e); color: white; border: none; border-radius: 4px; cursor: pointer;">
+                        <i class="fa-solid fa-sparkles"></i> Found Your Bastion
+                    </button>
                 </div>
-                <button type="button" class="launch-bastion-dashboard" style="width: auto; padding: 6px 15px; font-weight: bold; background: var(--dnd5e-color-iron); color: white; border: none; border-radius: 4px; cursor: pointer;">
-                    <i class="fa-solid fa-gauge-high"></i> Launch Advanced Controls
-                </button>
-            </div>
-        `;
-
-        bastionTab.prepend(suite);
-        
-        console.log(`Bastion Manager | Injected management suite for ${actor.name}`);
-
-        // 4. Attach Event Listener
-        suite.querySelector(".launch-bastion-dashboard").addEventListener("click", (ev) => {
-            ev.preventDefault();
-            new BastionManager(actor).render({ force: true });
-        });
+            `;
+            const contentsSection = bastionTab.querySelector('section.contents');
+            if (contentsSection) contentsSection.appendChild(foundingDiv);
+            foundingDiv.querySelector('.bastion-found-btn').addEventListener('click', async (ev) => {
+                ev.preventDefault();
+                const mgr = new BastionManager(actor);
+                await BastionManager.onInitializeBastion.call(mgr, ev, ev.currentTarget);
+            });
+        }
+    } else {
+        // Clean up founding UI if bastion was just established
+        bastionTab.querySelectorAll('.bastion-founding-ui').forEach(el => el.remove());
+        bastionTab.querySelectorAll('section.facilities').forEach(s => s.style.removeProperty('display'));
     }
 
     // 5. Integrate Memorial Wall button into the native Defenders section
@@ -219,7 +304,7 @@ const integrateBastionDashboard = (bastionTab) => {
         graveyardBtn.className = "bastion-graveyard-btn";
         graveyardBtn.title = "View Memorial Wall (Fallen Defenders)";
         graveyardBtn.innerHTML = '<i class="fa-solid fa-tombstone"></i>';
-        graveyardBtn.style.cssText = "width: auto; padding: 0 4px; border: none; background: none; cursor: pointer; color: var(--dnd5e-color-iron); vertical-align: middle; font-size: 0.8em; margin-left: 5px;";
+        graveyardBtn.style.cssText = "width: auto; padding: 0 4px; border: none; background: none; cursor: pointer; color: var(--dnd5e-color-iron); vertical-align: middle; font-size: 0.8em; margin-left: auto;";
         
         defenderHeader.appendChild(graveyardBtn);
         graveyardBtn.addEventListener("click", (ev) => {
@@ -229,19 +314,40 @@ const integrateBastionDashboard = (bastionTab) => {
         });
     }
 
+    // 5b. Show module-tracked defenders — hide native list to avoid duplicate/conflicting display
+    const rosterSection = bastionTab.querySelector('section.roster');
+    if (rosterSection) {
+        // Hide native defender UL (module uses item flags, not the native actor system)
+        rosterSection.querySelectorAll('ul.unlist').forEach(ul => ul.style.setProperty('display', 'none', 'important'));
+        if (!rosterSection.querySelector('.bastion-module-defenders')) {
+            const allDefenderInfo = [];
+            actor.items.filter(i => i.type === "facility").forEach(facItem => {
+                const d = facItem.flags?.[MODULE_ID]?.defenders || facItem.getFlag(MODULE_ID, "defenders") || {};
+                if ((d.count || 0) > 0) allDefenderInfo.push({ facilityName: facItem.name, count: d.count, names: d.names || [] });
+            });
+            groupFacilities.forEach(f => {
+                const d = f.flags?.[MODULE_ID]?.defenders || {};
+                if ((d.count || 0) > 0) allDefenderInfo.push({ facilityName: f.name, count: d.count, names: d.names || [] });
+            });
+            const defSummary = document.createElement('div');
+            defSummary.className = 'bastion-module-defenders';
+            defSummary.style.cssText = 'font-size: 0.85em; padding: 4px 8px; margin-top: 2px; color: #e8e4d9;';
+            if (allDefenderInfo.length > 0) {
+                defSummary.innerHTML = allDefenderInfo.map(d => {
+                    const names = d.names.length > 0 ? ` — ${d.names.join(', ')}` : '';
+                    return `<div style="margin-bottom: 2px; color: #e8e4d9;"><i class="fa-solid fa-shield" style="color:#ef9a9a; width:12px;"></i> <b>${d.facilityName}:</b> ${d.count} defender(s)${names}</div>`;
+                }).join('');
+            } else {
+                defSummary.innerHTML = `<div style="opacity: 0.6; font-style: italic; color: #e8e4d9;"><i class="fa-solid fa-shield" style="width:12px;"></i> Bastion is undefended.</div>`;
+            }
+            rosterSection.appendChild(defSummary);
+        }
+    }
+
     // 6. Replace native "Add Facility" buttons and placeholders, respecting capacity
     const actorLevel = actor.system.details?.level || 0;
-    let specCap = 0;
-    if (actorLevel >= 17) specCap = 6;
-    else if (actorLevel >= 13) specCap = 5;
-    else if (actorLevel >= 9) specCap = 4;
-    else if (actorLevel >= 5) specCap = 2;
-
-    const groupFacilities = actor.getFlag(MODULE_ID, "groupFacilities") || [];
-    const currentSpecials = actor.items.filter(i => i.type === "facility" && i.system?.type?.value === "special").length + 
-                           groupFacilities.filter(f => !f.system?.type?.value || f.system?.type?.value === "special").length;
-
-    const atSpecCap = currentSpecials >= specCap;
+    const specCap = BastionManager._getSpecialFacilityCap(actorLevel);
+    const atSpecCap = currentSpecialsCount >= specCap;
 
     const nativeBuildButtons = bastionTab.querySelectorAll('[data-action="createChild"][data-type="facility"], [data-action="findItem"][data-item-type="facility"]');
     nativeBuildButtons.forEach(btn => {
@@ -284,7 +390,6 @@ const integrateBastionDashboard = (bastionTab) => {
     // Native dnd5e 5.2.x uses a specific list for special facilities
     const specialList = bastionTab.querySelector('.bastion-section.special .features-list, [data-facility-type="special"] .features-list, .special ul');
     if (specialList) {
-        const groupFacilities = actor.getFlag(MODULE_ID, "groupFacilities") || [];
         // Filter for special facilities (no size yet or specifically marked as building)
         const buildingSpecials = groupFacilities.filter(f => {
             const isSpec = !f.system?.type?.value || f.system?.type?.value === "special";
@@ -338,7 +443,6 @@ const integrateBastionDashboard = (bastionTab) => {
     // 8. Inject Basic Facilities currently under construction
     const basicList = bastionTab.querySelector('.bastion-section.basic .features-list, [data-facility-type="basic"] .features-list, .basic ul');
     if (basicList) {
-        const groupFacilities = actor.getFlag(MODULE_ID, "groupFacilities") || [];
         const buildingBasics = groupFacilities.filter(f => {
             return f.system?.type?.value === "basic" && f.flags?.[MODULE_ID]?.upgradeTurns > 0;
         });
@@ -412,10 +516,11 @@ const integrateBastionDashboard = (bastionTab) => {
         const item = actor.items.get(itemId);
         if (!item || item.type !== "facility" || li.classList.contains("bastion-augmented")) return;
 
-        // Mark immediately so re-entrancy from flag updates doesn't double-inject
+        // Mark immediately so re-entrancy from DOM changes doesn't cause an infinite loop
         li.classList.add("bastion-augmented");
+        li.querySelectorAll(".bastion-order-block, .bastion-augmented-info").forEach(el => el.remove());
 
-        const fFlags = item.getFlag(MODULE_ID) || {};
+        const fFlags = item.flags?.[MODULE_ID] || item.getFlag(MODULE_ID) || {};
 
         // --- Block the native "Issue Order" click (data-action="useFacility") ---
         const useFacilityDiv = li.querySelector('[data-action="useFacility"]');
@@ -436,8 +541,10 @@ const integrateBastionDashboard = (bastionTab) => {
         // --- A. Header Badges (appended to the .title span inside .name-stacked) ---
         const titleSpan = li.querySelector('.name-stacked .title');
         if (titleSpan) {
+            li.querySelectorAll(".bastion-badge, .bastion-working-badge").forEach(b => b.remove());
             if (hasActiveOrder && !isUpgrading && !isDamaged) {
                 const badge = document.createElement("span");
+                badge.className = "bastion-working-badge";
                 badge.style.cssText = "font-size: 0.65em; background: #2e7d32; color: white; padding: 1px 5px; border-radius: 3px; margin-left: 6px; vertical-align: middle; animation: bastion-pulse 2s infinite; font-weight: bold; white-space: nowrap;";
                 badge.innerHTML = '<i class="fa-solid fa-gear fa-spin" style="font-size: 0.8em;"></i> WORKING';
                 badge.title = `Current Order: ${fFlags.order}`;
@@ -445,12 +552,14 @@ const integrateBastionDashboard = (bastionTab) => {
             }
             if (isDamaged) {
                 const badge = document.createElement("span");
+                badge.className = "bastion-badge";
                 badge.style.cssText = "font-size: 0.65em; background: var(--dnd5e-color-iron); color: white; padding: 1px 5px; border-radius: 3px; margin-left: 6px; vertical-align: middle; font-weight: bold;";
                 badge.textContent = "DAMAGED";
                 titleSpan.after(badge);
             }
             if (isEnlarging) {
                 const badge = document.createElement("span");
+                badge.className = "bastion-badge";
                 badge.style.cssText = "font-size: 0.65em; background: #e65100; color: white; padding: 1px 5px; border-radius: 3px; margin-left: 6px; vertical-align: middle; font-weight: bold;";
                 badge.textContent = "ENLARGING";
                 titleSpan.after(badge);
@@ -460,16 +569,19 @@ const integrateBastionDashboard = (bastionTab) => {
         // --- B. Order Dropdown + Manager Button ---
         // Basic facilities (Bedroom, Dining Room, etc.) only Maintain — no dropdown needed
         const isBasicFacility = item.system?.type?.value === "basic";
-        const { availableOrders, safeOrder } = BastionManager.buildFacilityOrderState(actor, item);
-        const isOrderLocked = (isUpgrading && !isEnlarging) || isDamaged;
+        const { availableOrders, safeOrder, fFlags: stateFlags } = BastionManager.buildFacilityOrderState(actor, item);
+        const isOrderLocked = (progress > 0 || (isUpgrading && !isEnlarging)) || isDamaged;
 
         const orderBlock = document.createElement("div");
         orderBlock.className = "bastion-order-block";
-        orderBlock.style.cssText = "padding: 3px 6px 3px 6px; border-top: 1px solid rgba(0,0,0,0.12); display: flex; align-items: center; gap: 5px; background: rgba(0,0,0,0.03);";
+        orderBlock.style.cssText = "padding: 3px 6px 3px 6px; border-top: 1px solid rgba(255,255,255,0.15); display: flex; flex-direction: column; gap: 5px; background: rgba(15, 12, 8, 0.82); color: #e8e4d9; position: relative; z-index: 1;";
+
+        const orderRow = document.createElement("div");
+        orderRow.style.cssText = "display: flex; align-items: center; gap: 5px; width: 100%;";
 
         const orderLabel = document.createElement("label");
-        orderLabel.style.cssText = "font-size: 0.74em; font-weight: bold; white-space: nowrap; font-family: var(--dnd5e-font-roboto, sans-serif); color: var(--dnd5e-color-black, #111);";
-        orderLabel.textContent = "Order:";
+        orderLabel.style.cssText = "font-size: 0.74em; font-weight: bold; white-space: nowrap; font-family: var(--dnd5e-font-roboto, sans-serif); color: #e8e4d9;";
+        orderLabel.textContent = "Order:";  
 
         const orderSelect = document.createElement("select");
         orderSelect.style.cssText = "flex: 1; font-size: 0.78em; height: 22px; font-family: var(--dnd5e-font-roboto, sans-serif);";
@@ -486,16 +598,99 @@ const integrateBastionDashboard = (bastionTab) => {
         orderSelect.addEventListener("click", ev => ev.stopPropagation());
         orderSelect.addEventListener("change", async (ev) => {
             ev.stopPropagation();
-            await BastionManager.setFacilityOrder(actor, itemId, ev.target.value);
-            // Remove injected blocks + augmented marker so the observer re-injects with updated state
-            li.querySelectorAll(".bastion-order-block, .bastion-augmented-info").forEach(el => el.remove());
-            li.classList.remove("bastion-augmented");
+            await BastionManager.setFacilityOrder(actor, itemId, ev.target.value, false, false, null);
         });
+
+        orderRow.appendChild(orderLabel);
+        orderRow.appendChild(orderSelect);
+        orderBlock.appendChild(orderRow);
+
+        // --- B2. Dynamic Sub-Selectors (Injected into the order block) ---
+        const isContinuing = safeOrder === "Continue Project";
+        const currentOrder = fFlags.order || "Maintain";
+        const craftChoice = fFlags.craftChoice || "";
+
+        if (!isContinuing && !isBasicFacility) {
+            const choiceContainer = document.createElement("div");
+            choiceContainer.className = "bastion-choices";
+            choiceContainer.style.cssText = "display: flex; flex-direction: column; gap: 4px; width: 100%;";
+
+            // Add Research Topic input for Libraries/Archives
+            if (availableOrders.some(o => o.includes("Research")) && safeOrder.startsWith("Research")) {
+                const input = document.createElement("input");
+                input.type = "text";
+                input.className = "library-topic-input";
+                input.placeholder = "Research Topic...";
+                input.value = fFlags.libraryTopic || "";
+                input.style.cssText = "height: 22px; font-size: 0.85em; width: 100%;";
+                input.addEventListener("change", async (ev) => {
+                    await item.setFlag(MODULE_ID, "libraryTopic", ev.target.value);
+                });
+                choiceContainer.appendChild(input);
+            }
+
+            // Example: Add Magic Item / Focus selector logic for Arcane Study
+            if (facName.includes("Arcane Study") && safeOrder.startsWith("Craft")) {
+                if (craftChoice === "Magic Item (Arcana)") {
+                    // We call the state builder to get the options list
+                    (async () => {
+                        const calculationMode = game.settings.get(MODULE_ID, "calculationMode");
+                        const daysPerTurn = game.settings.get(MODULE_ID, "daysPerTurn") || 7;
+                        const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+                        if (outPack) {
+                            const options = await BastionManager._getNestedCompendiumOptions(outPack, "8yYUu27NcOQJc3qx", fFlags.magicItemChoice, calculationMode, daysPerTurn, "t", true, null, "Focus|Book");
+                            const sel = document.createElement("select");
+                            sel.style.cssText = "height: 22px; font-size: 0.85em;";
+                            options.forEach(opt => {
+                                if (opt.groupOptions) {
+                                    const group = document.createElement("optgroup");
+                                    group.label = opt.label;
+                                    opt.groupOptions.forEach(o => {
+                                        const oEl = document.createElement("option");
+                                        oEl.value = o.value; oEl.textContent = o.label; oEl.selected = o.selected;
+                                        group.appendChild(oEl);
+                                    });
+                                    sel.appendChild(group);
+                                } else {
+                                    const oEl = document.createElement("option");
+                                    oEl.value = opt.value; oEl.textContent = opt.label; oEl.selected = opt.selected;
+                                    sel.appendChild(oEl);
+                                }
+                            });
+                            sel.addEventListener("change", async (ev) => { await item.setFlag(MODULE_ID, "magicItemChoice", ev.target.value); });
+                            choiceContainer.appendChild(sel);
+                        }
+                    })();
+                }
+            }
+
+            // Generic Queue Button for all crafting facilities
+            if (safeOrder.startsWith("Craft") && craftChoice) {
+                const qRow = document.createElement("div");
+                qRow.style.cssText = "display: flex; gap: 4px; align-items: center;";
+                const qInput = document.createElement("input");
+                qInput.type = "number"; qInput.value = "1"; qInput.min = "1";
+                qInput.style.cssText = "width: 35px; height: 22px; text-align: center; font-size: 0.8em;";
+                const qBtn = document.createElement("button");
+                qBtn.type = "button"; qBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Add to Queue';
+                qBtn.style.cssText = "height: 22px; font-size: 0.75em; flex: 1;";
+                qBtn.addEventListener("click", async (ev) => {
+                    // Mock the target object for the static handler
+                    const mockTarget = { parentElement: qRow, dataset: { itemId: item.id, isFlag: "false" } };
+                    await BastionManager.onAddToQueue.call({ actor }, ev, mockTarget);
+                });
+                qRow.appendChild(qInput);
+                qRow.appendChild(qBtn);
+                choiceContainer.appendChild(qRow);
+            }
+
+            if (choiceContainer.children.length > 0) orderBlock.appendChild(choiceContainer);
+        }
 
         const mgrBtn = document.createElement("button");
         mgrBtn.type = "button";
         mgrBtn.title = "Open Bastion Manager (full controls)";
-        mgrBtn.style.cssText = "width: auto; height: 22px; padding: 0 5px; font-size: 0.75em; flex-shrink: 0; cursor: pointer;";
+        mgrBtn.style.cssText = "width: auto; height: 22px; padding: 0 5px; font-size: 0.75em; flex-shrink: 0; cursor: pointer; margin-left: auto;";
         mgrBtn.innerHTML = '<i class="fa-solid fa-gauge-high"></i>';
         mgrBtn.addEventListener("mousedown", ev => ev.stopPropagation());
         mgrBtn.addEventListener("click", (ev) => {
@@ -503,18 +698,16 @@ const integrateBastionDashboard = (bastionTab) => {
             new BastionManager(actor).render({ force: true });
         });
 
-        orderBlock.appendChild(orderLabel);
-        orderBlock.appendChild(orderSelect);
-        orderBlock.appendChild(mgrBtn);
+        orderRow.appendChild(mgrBtn);
 
         // --- C. Status Info Block ---
         const infoBlock = document.createElement("div");
         infoBlock.className = "bastion-augmented-info";
-        infoBlock.style.cssText = "font-size: 0.76em; color: var(--dnd5e-color-black, #111); padding: 3px 6px; font-family: var(--dnd5e-font-roboto, sans-serif); display: flex; flex-direction: column; gap: 2px;";
+        infoBlock.style.cssText = "font-size: 0.76em; color: #e8e4d9; padding: 3px 6px; font-family: var(--dnd5e-font-roboto, sans-serif); display: flex; flex-direction: column; gap: 2px; background: rgba(15, 12, 8, 0.82); position: relative; z-index: 1;";
 
         const rows = [];
 
-        // C1. Size
+        // C1. Size (from module flags)
         const facSize = fFlags.size;
         if (facSize && facSize !== "Construction") {
             rows.push(`<div><i class="fa-solid fa-ruler-combined" style="opacity:0.6; width:12px;"></i> <b>Size:</b> ${facSize}</div>`);
@@ -526,12 +719,10 @@ const integrateBastionDashboard = (bastionTab) => {
             rows.push(`<div><i class="fa-solid fa-tag" style="opacity:0.6; width:12px;"></i> <b>Type:</b> ${subType}</div>`);
         }
 
-        // C3. Defenders
+        // C3. Defenders — count only (names listed in the Defenders section above)
         const defenders = fFlags.defenders || {};
         if ((defenders.count || 0) > 0) {
-            const names = (defenders.names || []).join(", ");
-            const nameStr = names ? ` — ${names}` : "";
-            rows.push(`<div><i class="fa-solid fa-shield" style="color:#a32a22; width:12px;"></i> <b>Defenders:</b> ${defenders.count}${nameStr}</div>`);
+            rows.push(`<div><i class="fa-solid fa-shield" style="color:#ef9a9a; width:12px;"></i> <b>Defenders:</b> ${defenders.count}</div>`);
         }
 
         // C4. Hirelings
@@ -601,17 +792,13 @@ const integrateBastionDashboard = (bastionTab) => {
         if (facName.includes("Armory")) {
             const isStocked = fFlags.isStocked || false;
             const stockedCount = fFlags.stockedCount || 0;
-            const totalBastionDefs = actor.items.filter(i => i.type === "facility").reduce((sum, i) => {
-                const d = i.getFlag(MODULE_ID, "defenders") || {};
-                return sum + (d.count || 0);
-            }, 0);
-            let badge, color;
-            if (isStocked && stockedCount >= totalBastionDefs) {
-                badge = `<span style="background:#2e7d32; color:white; padding:1px 6px; border-radius:10px; font-weight:bold; font-size:0.9em;"><i class="fa-solid fa-shield-check"></i> STOCK-READY</span>`;
+            let badge;
+            if (isStocked && totalBastionDefs > 0 && stockedCount >= totalBastionDefs) {
+                badge = `<span style="background:#2e7d32; color:white; padding:1px 6px; border-radius:10px; font-weight:bold; font-size:0.9em;" data-tooltip="All ${stockedCount} defender(s) are equipped from the Armory."><i class="fa-solid fa-shield-check"></i> STOCK-READY</span>`;
             } else if (isStocked && stockedCount > 0) {
-                badge = `<span style="background:#ef6c00; color:white; padding:1px 6px; border-radius:10px; font-weight:bold; font-size:0.9em;" title="Partial stock (${stockedCount} defenders equipped)"><i class="fa-solid fa-shield-halved"></i> PARTIAL (${stockedCount})</span>`;
+                badge = `<span style="background:#e65100; color:white; padding:1px 6px; border-radius:10px; font-weight:bold; font-size:0.9em;" data-tooltip="${stockedCount} defender(s) equipped; ${totalBastionDefs - stockedCount} unequipped. Run a Trade order to fully stock."><i class="fa-solid fa-shield-halved"></i> SEMI-STOCKED (${stockedCount}/${totalBastionDefs})</span>`;
             } else {
-                badge = `<span style="background:#666; color:white; padding:1px 6px; border-radius:10px; font-weight:bold; font-size:0.9em;"><i class="fa-solid fa-shield-slash"></i> UNSTOCKED</span>`;
+                badge = `<span style="background:#555; color:white; padding:1px 6px; border-radius:10px; font-weight:bold; font-size:0.9em;" data-tooltip="No defenders are equipped. Run a Trade order to stock the Armory."><i class="fa-solid fa-shield-slash"></i> UNSTOCKED</span>`;
             }
             rows.push(`<div>${badge}</div>`);
         }
@@ -657,10 +844,12 @@ const integrateBastionDashboard = (bastionTab) => {
             const innerPeace = actor.getFlag(MODULE_ID, "innerPeaceActive") || false;
             const fortifiedSaves = actor.getFlag(MODULE_ID, "fortifiedSaves") || [];
             if (innerPeace) {
-                rows.push(`<div><i class="fa-solid fa-brain" style="color:#4a86e8; width:12px;"></i> <b>Inner Peace Active</b></div>`);
+                const ipTooltip = "When you next roll on the Bastion Events table, you may roll twice and choose either result. This benefit is consumed on use.";
+                rows.push(`<div data-tooltip="${ipTooltip}" style="cursor: help;"><i class="fa-solid fa-brain" style="color:#4a86e8; width:12px;"></i> <b>Inner Peace Active</b></div>`);
             }
             if (fortifiedSaves.length > 0) {
-                rows.push(`<div><i class="fa-solid fa-shield-halved" style="color:#4a86e8; width:12px;"></i> <b>Fortified Saves:</b> ${fortifiedSaves.join(", ")}</div>`);
+                const fsTooltip = "You add double your Proficiency Bonus to saving throws with these abilities while in your Bastion.";
+                rows.push(`<div data-tooltip="${fsTooltip}" style="cursor: help;"><i class="fa-solid fa-shield-halved" style="color:#4a86e8; width:12px;"></i> <b>Fortified Saves:</b> ${fortifiedSaves.join(", ")}</div>`);
             }
         }
 
@@ -684,6 +873,19 @@ const integrateBastionDashboard = (bastionTab) => {
             rows.push(`<div style="opacity:0.8;"><i class="fa-solid fa-list-ol" style="opacity:0.6; width:12px;"></i> <b>Queue:</b> ${craftQueue.length} item(s) — ${queueGold} GP, ~${queueTurns} turn(s)</div>`);
         }
 
+        // D9. Facility passive abilities — DMG name, rest type indicator, details in tooltip only
+        const PASSIVE_INFO = {
+            "Arcane Study": { icon: "fa-solid fa-sparkles",     color: "#b39ddb", name: "Arcane Study Charm",  restIcon: "fa-solid fa-moon",          rest: "Long Rest",  tip: "After each Long Rest in your Bastion, you may cast Identify as a Charm (no spell slot required). At level 9+, your hireling also assists with magic item crafting." },
+            "Sanctuary":    { icon: "fa-solid fa-heart-pulse",   color: "#ef9a9a", name: "Healing Word Charm",  restIcon: "fa-solid fa-moon",          rest: "Long Rest",  tip: "After each Long Rest in your Bastion, you may cast Healing Word as a Charm (no spell slot required)." },
+            "Sacristy":     { icon: "fa-solid fa-wand-sparkles", color: "#ef9a9a", name: "Sacred Spellcasting", restIcon: "fa-solid fa-hourglass-half", rest: "Short Rest", tip: "After a Short Rest in your Bastion, you regain one expended spell slot of level 5 or lower." },
+        };
+        for (const [keyword, info] of Object.entries(PASSIVE_INFO)) {
+            if (facName.includes(keyword) && !isUpgrading) {
+                rows.push(`<div data-tooltip="${info.tip}" style="cursor: help; display: flex; align-items: center; justify-content: space-between; gap: 4px;"><span><i class="${info.icon}" style="color:${info.color}; width:12px;"></i> <b>${info.name}</b></span><span style="opacity: 0.7; font-size: 0.88em; white-space: nowrap;"><i class="${info.restIcon}" style="width:10px;"></i> ${info.rest} · Bastion</span></div>`);
+                break;
+            }
+        }
+
         // Insert order block and info block after .facility-header
         const headerDiv = li.querySelector('.facility-header');
         if (headerDiv) {
@@ -696,6 +898,19 @@ const integrateBastionDashboard = (bastionTab) => {
             } else if (rows.length > 0) {
                 infoBlock.innerHTML = rows.join("");
                 headerDiv.after(infoBlock);
+            }
+        }
+
+        // Add hireling name tooltips to native occupant slots (if naming is enabled)
+        if (game.settings.get(MODULE_ID, "nameHirelings")) {
+            const hirelingNames = fFlags.hirelings || [];
+            if (hirelingNames.length > 0) {
+                li.querySelectorAll(".slot.occupant-slot.hireling").forEach((slot, i) => {
+                    if (hirelingNames[i]) {
+                        slot.title = hirelingNames[i];
+                        slot.setAttribute("data-tooltip", hirelingNames[i]);
+                    }
+                });
             }
         }
 
@@ -713,14 +928,11 @@ const integrateBastionDashboard = (bastionTab) => {
  */
 const observer = new MutationObserver(() => {
     // Check all elements matching the bastion tab selector
-    document.querySelectorAll('section[data-tab="bastion"], div[data-tab="bastion"]').forEach(bastionTab => {
-        if (!bastionTab.classList.contains('item') && !bastionTab.classList.contains('anchor')) {
-            // In ApplicationV2, the tab is always in the DOM but hidden via display: none
-            const style = window.getComputedStyle(bastionTab);
-            if (style.display !== 'none') {
-                integrateBastionDashboard(bastionTab);
-            }
-        }
+    const tabs = document.querySelectorAll('section[data-tab="bastion"], div[data-tab="bastion"]');
+    tabs.forEach(bastionTab => {
+        if ( bastionTab.classList.contains('item') || bastionTab.classList.contains('anchor') ) return;
+        const style = window.getComputedStyle(bastionTab);
+        if (style.display !== 'none') integrateBastionDashboard(bastionTab);
     });
 });
 observer.observe(document.body, { childList: true, subtree: true });
@@ -729,7 +941,6 @@ observer.observe(document.body, { childList: true, subtree: true });
  * INITIALIZATION
  */
 Hooks.once("init", () => {
-    const MODULE_ID = "dnd-2024-bastion-manager";
     Handlebars.registerHelper({ ge: (a, b) => a >= b, div: (a, b) => a / b, mult: (a, b) => a * b });
 
     // v13: Define and register dummy layer inside init to ensure namespaces are ready
@@ -818,8 +1029,8 @@ Hooks.once("ready", async () => {
     // Robust Hijack: Intercept native Bastion Turn Advancement UI clicks.
     // We use a capture-phase listener on the window to stop the event before dnd5e handlers can trigger the native confirmation prompt.
     window.addEventListener("click", (event) => {
-        // Target native actions from the sheet and the canvas sidebar (floating button is hidden)
-        const btn = event.target.closest('[data-action="advanceBastionTurn"], [data-action="advance"], [data-action="advance-turn"]');
+        // Target ONLY the specific native advance action to avoid conflicts with system calendars or other tools
+        const btn = event.target.closest('[data-action="advanceBastionTurn"]');
         if ( !btn || !game.user.isGM || btn.closest('.bastion-app') ) return;
 
         // Kill the event immediately to prevent the native confirmation dialog
@@ -863,12 +1074,29 @@ Hooks.once("ready", async () => {
  * Re-render our advanced manager if actor data changes.
  */
 Hooks.on("updateActor", (actor, changes) => {
-    const MODULE_ID = "dnd-2024-bastion-manager";
     if (foundry.utils.hasProperty(changes, `flags.${MODULE_ID}`)) {
         for (const app of foundry.applications.instances.values()) {
             if (app.constructor.name === "BastionManager" && app.actor.id === actor.id) app.render();
         }
+
+        // Force integration refresh on character sheets by clearing the augmentation guard
+        document.querySelectorAll('section[data-tab="bastion"], div[data-tab="bastion"]').forEach(tab => {
+            const app = Array.from(foundry.applications.instances.values()).find(a => a.element?.contains(tab))
+                     || Object.values(ui.windows).find(w => (w.element?.[0] || w.element)?.contains(tab));
+            if ((app?.document || app?.actor)?.id === actor.id) {
+                tab.querySelectorAll(".bastion-augmented").forEach(el => el.classList.remove("bastion-augmented"));
+            }
+        });
     }
+});
+
+// Clear stale bastion augmentation when a facility item's module flags change
+// (e.g., Armory isStocked, stockedCount updated after a trade order)
+Hooks.on("updateItem", (item, changes) => {
+    if (item.type !== "facility") return;
+    if (!foundry.utils.hasProperty(changes, `flags.${MODULE_ID}`)) return;
+    document.querySelectorAll(`li.facility[data-item-id="${item.id}"].bastion-augmented`)
+        .forEach(li => li.classList.remove("bastion-augmented"));
 });
 
 /**
@@ -927,7 +1155,6 @@ class ConstructionConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
     };
     static PARTS = { main: { template: "modules/dnd-2024-bastion-manager/templates/construction-config.hbs" } };
     async _prepareContext() {
-        const MODULE_ID = "dnd-2024-bastion-manager";
         const context = { globalCost: game.settings.get(MODULE_ID, "globalCostMultiplier"), globalTime: game.settings.get(MODULE_ID, "globalTimeMultiplier") };
         for (const s of ["buildCramped", "buildRoomy", "buildVast", "enlargeRoomy", "enlargeVast"]) {
             context[`${s}Cost`] = game.settings.get(MODULE_ID, `${s}Cost`);
@@ -958,7 +1185,7 @@ class ConstructionConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
         });
     }
     static async processForm(event, form, formData) {
-        const MODULE_ID = "dnd-2024-bastion-manager", data = formData.object;
+        const data = formData.object;
         await game.settings.set(MODULE_ID, "globalCostMultiplier", Number(data.globalCost));
         await game.settings.set(MODULE_ID, "globalTimeMultiplier", Number(data.globalTime));
         for (const s of ["buildCramped", "buildRoomy", "buildVast", "enlargeRoomy", "enlargeVast"]) {
@@ -973,7 +1200,6 @@ class ResetBastionsApp extends ApplicationV2 {
     static DEFAULT_OPTIONS = { id: "reset-bastions-app", window: { title: "Reset Global Bastion Turns", frame: true }, position: { width: 300, height: "auto" } };
     async _renderHTML() { return `<p style="padding: 10px; text-align: center;">Resetting Turns...</p>`; }
     async _onFirstRender() {
-        const MODULE_ID = "dnd-2024-bastion-manager";
         const confirm = await DialogV2.confirm({ window: { title: "Reset All Turns" }, content: `<p>Are you sure you want to reset ALL bastion turns to 0?</p>` });
         if (confirm) {
             await game.settings.set(MODULE_ID, "globalTurnCount", 0);

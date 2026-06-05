@@ -3,15 +3,14 @@
     <div class="bastion-sidebar" style="flex: 0 0 400px; overflow-y: auto; padding-right: 10px; border-right: 1px solid #ccc; display: flex; flex-direction: column;">
     <div class="sidebar-content-column">
     <div class="bastion-header" style="text-align: center; margin-bottom: 5px;">
-        <h2 style="margin-bottom: 5px; line-height: 1.2;">{{actor.name}}'s Bastion</h2>
+        <h2 style="margin-bottom: 5px; line-height: 1.2; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <span>{{#if bastionName}}{{bastionName}}{{else}}{{actor.name}}'s Bastion{{/if}}</span>
+            <button type="button" data-action="renameBastionName" style="width: auto; padding: 2px 4px; border: none; background: none; color: #888; cursor: pointer; font-size: 0.55em; line-height: 1;" title="Rename Bastion">
+                <i class="fa-solid fa-pencil"></i>
+            </button>
+        </h2>
         <div style="font-size: 1em; display: flex; align-items: center; justify-content: center; gap: 15px; flex-wrap: wrap;">
             <span><b>Total Turns:</b> {{turnCount}}</span>
-            <span>
-                <b>Total Defenders:</b> {{totalDefenders}}
-                <button type="button" data-action="viewGraveyard" style="width: auto; padding: 2px 4px; border: none; background: none; color: #444; cursor: pointer;" title="View Memorial Wall (Fallen Defenders)">
-                    <i class="fa-solid fa-tombstone"></i>
-                </button>
-            </span>
 
             {{#if neglectWarning}}
                 <span class="neglect-warning" style="color: {{neglectColor}}; font-weight: bold; display: flex; align-items: center; gap: 4px;" 
@@ -72,11 +71,23 @@
             </div>
         </div>
         
-        {{#if defenderNames}}
-            <div style="font-size: 0.85em; color: #444; margin-top: 5px; font-style: italic;">
-                Known Defenders: {{defenderNames}}
+        <div style="font-size: 0.85em; color: #444; margin-top: 6px; border-top: 1px solid #ddd; padding-top: 5px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-weight: bold; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.04em;"><i class="fa-solid fa-shield" style="color:#a32a22;"></i> Defenders</span>
+                <button type="button" data-action="viewGraveyard" style="width: auto; padding: 1px 3px; border: none; background: none; color: #888; cursor: pointer; font-size: 0.9em;" title="View Memorial Wall (Fallen Defenders)">
+                    <i class="fa-solid fa-tombstone"></i>
+                </button>
             </div>
-        {{/if}}
+            {{#if defendersByFacility.length}}
+                <div style="margin-top: 3px; display: flex; flex-direction: column; gap: 2px;">
+                {{#each defendersByFacility}}
+                    <div><b>{{this.facilityName}}:</b> {{this.count}}{{#if this.names.length}} — {{#each this.names}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}{{/if}}</div>
+                {{/each}}
+                </div>
+            {{else}}
+                <div style="margin-top: 3px; opacity: 0.6; font-style: italic;">Bastion is undefended.</div>
+            {{/if}}
+        </div>
     </div>
 
     <hr style="margin: 5px 0;">
@@ -154,12 +165,6 @@
                         <span style="font-size: 0.8em; color: darkgreen; margin-left: 5px; font-weight: bold;">[{{this.subType}}]</span>
                     {{/if}}
 
-                    {{#if this.defenderCount}}
-                        <span style="background: #a32a22; color: white; padding: 2px 6px; border-radius: 12px; font-size: 0.75em; margin-left: 5px;" title="Defenders housed here">
-                            <i class="fa-solid fa-shield"></i> {{this.defenderCount}}
-                        </span>
-                    {{/if}}
-
                     {{#if this.hirelings}}
                         <span style="font-size: 0.85em; color: #555; font-style: italic; display: block;">(Hirelings: {{this.hirelings}})</span>
                     {{/if}}
@@ -187,7 +192,7 @@
                             {{#if (and this.isStocked this.isFullyStocked)}}
                                 <span style="font-size: 0.7em; background: #2e7d32; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold;"><i class="fa-solid fa-shield-check"></i> STOCK-READY</span>
                             {{else if this.stockedCount}}
-                                <span style="font-size: 0.7em; background: #ef6c00; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold;" title="Requires Trade order to equip new defenders."><i class="fa-solid fa-shield-halved"></i> PARTIAL ({{this.stockedCount}})</span>
+                                <span style="font-size: 0.7em; background: #e65100; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold;" data-tooltip="{{this.stockedCount}} defender(s) equipped. Run a Trade order to fully stock."><i class="fa-solid fa-shield-halved"></i> SEMI-STOCKED ({{this.stockedCount}})</span>
                             {{else}}
                                 <span style="font-size: 0.7em; background: #666; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold; opacity: 0.8;"><i class="fa-solid fa-shield-slash"></i> UNSTOCKED</span>
                             {{/if}}
@@ -610,7 +615,7 @@
                 {{#if this.isMeditationChamber}}
                     <div style="font-size: 0.9em; color: #eee; border: 2px solid #82cfff; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                            <span><i class="fa-solid fa-brain"></i> <b>Inner Peace:</b></span>
+                            <span data-tooltip="When you next roll on the Bastion Events table, you may roll twice and choose either result. This benefit is consumed on use." style="cursor: help;"><i class="fa-solid fa-brain"></i> <b>Inner Peace:</b></span>
                             {{#if ../innerPeaceActive}}
                                 <span style="color: #4caf50; font-weight: bold;">ACTIVE</span>
                             {{else}}
@@ -619,7 +624,7 @@
                         </div>
                         <hr style="opacity: 0.1; margin: 5px 0;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span><b>Fortify Self:</b></span>
+                            <span data-tooltip="Use an Empower order to activate Fortify Self, which adds double your Proficiency Bonus to saving throws with chosen abilities while in your Bastion." style="cursor: help;"><b>Fortify Self:</b></span>
                             <button type="button" data-action="toggleMeditation" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 24px;">
                                 Meditation
                             </button>
@@ -722,8 +727,9 @@
                     {{/if}}
                     
                     {{#if (and (eq this.itemName "Arcane Study") (not this.isBuilding))}}
-                        <div style="font-size: 0.8em; color: purple; margin-top: 2px;">
-                            <i class="fa-solid fa-sparkles"></i> <b>Passive:</b> Gain <i>Identify</i> charm after Long Rest.
+                        <div style="font-size: 0.8em; margin-top: 2px; display: flex; align-items: center; justify-content: space-between; gap: 4px; cursor: help;" data-tooltip="After each Long Rest in your Bastion, you may cast Identify as a Charm (no spell slot required). At level 9+, your hireling also assists with magic item crafting.">
+                            <span style="color: #b39ddb;"><i class="fa-solid fa-sparkles"></i> <b>Arcane Study Charm</b></span>
+                            <span style="opacity: 0.7; font-size: 0.9em; white-space: nowrap;"><i class="fa-solid fa-moon"></i> Long Rest · Bastion</span>
                         </div>
                     {{/if}}
                                 {{#if this.isSacristyCrafting}}
@@ -763,14 +769,16 @@
                                 {{/if}}
 
                     {{#if (and (eq this.itemName "Sanctuary") (not this.isBuilding))}}
-                        <div style="font-size: 0.8em; color: #a32a22; margin-top: 2px;">
-                            <i class="fa-solid fa-heart-pulse"></i> <b>Passive:</b> Gain <i>Healing Word</i> charm after Long Rest.
+                        <div style="font-size: 0.8em; margin-top: 2px; display: flex; align-items: center; justify-content: space-between; gap: 4px; cursor: help;" data-tooltip="After each Long Rest in your Bastion, you may cast Healing Word as a Charm (no spell slot required).">
+                            <span style="color: #ef9a9a;"><i class="fa-solid fa-heart-pulse"></i> <b>Healing Word Charm</b></span>
+                            <span style="opacity: 0.7; font-size: 0.9em; white-space: nowrap;"><i class="fa-solid fa-moon"></i> Long Rest · Bastion</span>
                         </div>
                     {{/if}}
 
                                 {{#if (and (eq this.itemName "Sacristy") (not this.isBuilding))}}
-                                    <div style="font-size: 0.8em; color: #a32a22; margin-top: 2px;">
-                                        <i class="fa-solid fa-wand-sparkles"></i> <b>Passive:</b> Spell slot refreshment (Level 5 or lower) after Short Rest.
+                                    <div style="font-size: 0.8em; margin-top: 2px; display: flex; align-items: center; justify-content: space-between; gap: 4px; cursor: help;" data-tooltip="After a Short Rest in your Bastion, you regain one expended spell slot of level 5 or lower.">
+                                        <span style="color: #ef9a9a;"><i class="fa-solid fa-wand-sparkles"></i> <b>Sacred Spellcasting</b></span>
+                                        <span style="opacity: 0.7; font-size: 0.9em; white-space: nowrap;"><i class="fa-solid fa-hourglass-half"></i> Short Rest · Bastion</span>
                                     </div>
                                 {{/if}}
 

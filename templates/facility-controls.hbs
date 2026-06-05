@@ -1,0 +1,195 @@
+<div style="display: flex; align-items: flex-start; justify-content: space-between; width: 100%;">
+<div style="display: flex; gap: 6px; flex: 1; flex-direction: column;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+        <img src="{{this.img}}" width="24" height="24" style="border: none; border-radius: 3px; vertical-align: middle; {{#if this.isUnderConstruction}}filter: grayscale(1);{{/if}}">
+        <div style="flex: 1;">
+            <b style="font-size: 0.95em;">{{this.name}}</b> 
+            {{#if this.isDamaged}}
+                <span style="font-size: 0.7em; background: #a32a22; color: white; padding: 1px 4px; border-radius: 3px; margin-left: 4px; vertical-align: middle;">DAMAGED</span>
+            {{/if}}
+            <span style="font-size: 0.7em; background: {{#if (eq this.size "Construction")}}#a32a22; color: white;{{else}}#ddd; color: #333;{{/if}} padding: 1px 4px; border-radius: 3px; margin-left: 4px; vertical-align: middle;">{{this.size}}</span>
+            {{#if (and this.isCraftingOrPaused (not this.isBuilding) (not this.isDamaged))}}
+                <span style="font-size: 0.65em; background: #2e7d32; color: white; padding: 1px 5px; border-radius: 3px; margin-left: 4px; vertical-align: middle; animation: pulse 2s infinite;" title="Facility is currently working on a project">
+                    <i class="fa-solid fa-gear fa-spin" style="font-size: 0.8em;"></i> WORKING
+                </span>
+            {{/if}}
+            {{#if this.subType}}
+                <span style="font-size: 0.8em; color: darkgreen; margin-left: 5px; font-weight: bold;">[{{this.subType}}]</span>
+            {{/if}}
+            {{#if this.defenderCount}}
+                <span style="background: #a32a22; color: white; padding: 2px 6px; border-radius: 12px; font-size: 0.75em; margin-left: 5px;" title="Defenders housed here">
+                    <i class="fa-solid fa-shield"></i> {{this.defenderCount}}
+                </span>
+            {{/if}}
+        </div>
+    </div>
+
+    {{#if this.hirelings}}
+        <span style="font-size: 0.85em; color: #555; font-style: italic;">(Hirelings: {{this.hirelings}})</span>
+    {{/if}}
+
+    {{#if (and this.isGreenhouse (not this.isBuilding))}}
+        <div style="font-size: 0.8em; color: #2e7d32; margin-top: 4px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 4px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span><i class="fa-solid fa-seedling"></i> <b>Magical Fruits:</b> {{this.greenhouseFruitCount}} / 3</span>
+                <div style="display: flex; gap: 4px;">
+                    {{#if this.fruitUuid}}
+                        <button type="button" data-action="previewItem" data-uuid="{{this.fruitUuid}}" style="width: auto; padding: 0 4px; font-size: 0.8em; height: 18px;" title="View Fruit Details"><i class="fa-solid fa-eye"></i></button>
+                    {{/if}}
+                    {{#if (gt this.greenhouseFruitCount 0)}}
+                        <button type="button" data-action="consumeGreenhouseFruit" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 0 6px; font-size: 0.8em; height: 18px;" title="Harvest one fruit to inventory">Harvest</button>
+                    {{/if}}
+                    <button type="button" data-action="refreshGreenhouseFruits" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 0 4px; font-size: 0.8em; height: 18px;" title="Reset fruits (Daily at Dawn)"><i class="fa-solid fa-sun"></i></button>
+                </div>
+            </div>
+        </div>
+    {{/if}}
+
+    {{#if this.isArmory}}
+        <div style="margin-top: 2px;">
+            {{#if (and this.isStocked this.isFullyStocked)}}
+                <span style="font-size: 0.7em; background: #2e7d32; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold;"><i class="fa-solid fa-shield-check"></i> STOCK-READY</span>
+            {{else if this.stockedCount}}
+                <span style="font-size: 0.7em; background: #ef6c00; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold;" title="Requires Trade order to equip new defenders."><i class="fa-solid fa-shield-halved"></i> PARTIAL ({{this.stockedCount}})</span>
+            {{else}}
+                <span style="font-size: 0.7em; background: #666; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold; opacity: 0.8;"><i class="fa-solid fa-shield-slash"></i> UNSTOCKED</span>
+            {{/if}}
+        </div>
+    {{/if}}
+
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 1px;">
+        <div style="font-size: 0.65em; color: #666;">
+            <i class="fa-solid fa-layer-group"></i> Layout: 
+            <span style="{{#if (eq this.placedSquares this.maxSquares)}}color: green; font-weight: bold;{{/if}}">
+                {{this.placedSquares}} / {{this.maxSquares}} sq
+            </span>
+        </div>
+        {{#if this.isStorehouse}}
+            <div style="font-size: 0.65em; color: #555; text-align: right;" title="Current Stock / Maximum Capacity">
+                <i class="fa-solid fa-boxes-stacked"></i> <b>{{this.storedGp}} / {{this.storehouseLimit}} GP</b> (+{{this.storehouseMarkup}}%)
+            </div>
+        {{else if this.craftQueue.length}}
+            <div style="font-size: 0.65em; color: #555; text-align: right;" title="Project Queue Summary">
+                <i class="fa-solid fa-list-ol"></i> <b>Queue:</b> {{this.queueTotalGold}}g, {{this.queueTotalTurns}}t
+            </div>
+        {{/if}}
+    </div>
+
+    {{#if (and this.hasOrders (not this.isBuilding))}}
+        <div style="font-size: 0.85em; margin-top: 2px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; width: 100%;">
+            <label>Order: </label>
+            <select class="facility-order-select" data-item-id="{{this.id}}" data-item-name="{{this.itemName}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" {{#if this.isOrderDisabled}}disabled{{/if}} style="flex: 1;">
+                {{#each this.orderOptions}}
+                    <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                {{/each}}
+            </select>
+            
+            {{#if this.isLibraryResearching}}
+                <div style="width: 100%;">
+                    <input type="text" class="library-topic-input" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" value="{{this.libraryTopic}}" placeholder="Enter topic..." style="height: 22px; font-size: 0.85em; width: 100%;">
+                </div>
+            {{/if}}
+
+            {{#if (or this.isArcaneStudyCrafting this.isSanctuaryCrafting this.isSmithyCrafting this.isWorkshopCrafting this.isSacristyCrafting this.isScriptoriumCrafting this.isLaboratoryCrafting)}}
+                <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; width: 100%; {{#if this.isContinuingProject}}display: none;{{/if}}">
+                    {{#if this.showArcanaItemSelect}}
+                        <select class="arcane-study-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 22px; font-size: 0.85em;">
+                            <option value="">-- Select Magic Item --</option>
+                            {{#each magicItemOptions}}{{#if this.groupOptions}}<optgroup label="{{this.label}}">{{#each this.groupOptions}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/each}}</optgroup>{{else}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/if}}{{/each}}
+                        </select>
+                    {{/if}}
+                    {{#if this.showArcaneFocusSelect}}
+                        <select class="arcane-study-focus-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 22px; font-size: 0.85em;">
+                            <option value="">-- Select Focus Type --</option>
+                            {{#each focusOptions}}{{#if this.groupOptions}}<optgroup label="{{this.label}}">{{#each this.groupOptions}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/each}}</optgroup>{{else}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/if}}{{/each}}
+                        </select>
+                    {{/if}}
+                    {{#if this.showSacredFocusSelect}}
+                        <select class="sanctuary-focus-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 22px; font-size: 0.85em;">
+                            <option value="">-- Select Focus Type --</option>
+                            {{#each sacredFocusOptions}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/each}}
+                        </select>
+                    {{/if}}
+                    {{#if this.showSmithyItemSelect}}
+                        <select class="smithy-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 22px; font-size: 0.85em;">
+                            <option value="">-- Select Item --</option>
+                            {{#each smithyItemOptions}}{{#if this.groupOptions}}<optgroup label="{{this.label}}">{{#each this.groupOptions}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/each}}</optgroup>{{else}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/if}}{{/each}}
+                        </select>
+                    {{/if}}
+                    {{#if this.showArmamentItemSelect}}
+                        <select class="armament-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 22px; font-size: 0.85em;">
+                            <option value="">-- Select Magic Item --</option>
+                            {{#each armamentItemOptions}}{{#if this.groupOptions}}<optgroup label="{{this.label}}">{{#each this.groupOptions}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/each}}</optgroup>{{else}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/if}}{{/each}}
+                        </select>
+                    {{/if}}
+                    {{#if this.showWorkshopItemSelect}}
+                        <select class="workshop-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 22px; font-size: 0.85em;">
+                            <option value="">-- Select Item --</option>
+                            {{#each workshopItemOptions}}{{#if this.groupOptions}}<optgroup label="{{this.label}}">{{#each this.groupOptions}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/each}}</optgroup>{{else}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/if}}{{/each}}
+                        </select>
+                    {{/if}}
+                    {{#if this.showRelicItemSelect}}
+                        <select class="sacristy-relic-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 22px; font-size: 0.85em;">
+                            <option value="">-- Select Magic Item --</option>
+                            {{#each relicItemOptions}}{{#if this.groupOptions}}<optgroup label="{{this.label}}">{{#each this.groupOptions}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/each}}</optgroup>{{else}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/if}}{{/each}}
+                        </select>
+                    {{/if}}
+                    {{#if this.showScrollItemSelect}}
+                        <select class="scriptorium-scroll-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 22px; font-size: 0.85em;">
+                            <option value="">-- Select Spell Scroll --</option>
+                            {{#each scrollItemOptions}}{{#if this.groupOptions}}<optgroup label="{{this.label}}">{{#each this.groupOptions}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/each}}</optgroup>{{else}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/if}}{{/each}}
+                        </select>
+                    {{/if}}
+                    {{#if (eq this.craftChoice "Book Replica")}}
+                        <input type="text" class="scriptorium-book-title" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" value="{{this.bookTitle}}" placeholder="Book Title..." style="height: 22px; font-size: 0.85em;">
+                    {{/if}}
+                    {{#if (eq this.craftChoice "Paperwork")}}
+                        <input type="text" class="scriptorium-paperwork-title" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" value="{{this.paperworkTitle}}" placeholder="Description..." style="height: 22px; font-size: 0.85em;">
+                        <div style="display: flex; align-items: center; gap: 4px;"><label style="font-size: 0.75em;">Copies:</label><input type="number" class="scriptorium-paperwork-qty" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" value="{{this.paperworkQty}}" min="1" max="50" style="height: 20px; font-size: 0.85em; flex: 1;"></div>
+                    {{/if}}
+                    {{#if (and this.craftChoice (not this.isInherited) (not (eq this.safeOrder "Continue Project")))}}
+                        <div style="display: flex; align-items: center; gap: 4px; margin-top: 2px;">
+                            <input type="number" class="queue-qty" value="1" min="1" style="width: 40px; height: 22px; font-size: 0.8em; text-align: center;" title="Quantity">
+                            <button type="button" data-action="addToQueue" data-item-id="{{this.id}}" style="height: 22px; font-size: 0.75em; flex: 1;"><i class="fa-solid fa-plus"></i> Add to Queue</button>
+                        </div>
+                    {{/if}}
+                </div>
+            {{/if}}
+
+            {{#if (and this.isTrainingArea (eq this.safeOrder "Empower"))}}
+                <select class="training-trainer-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 22px; font-size: 0.85em; width: 100%;">
+                    <option value="">-- Select Trainer --</option>
+                    {{#each trainerTypeOptions}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/each}}
+                </select>
+            {{/if}}
+
+            {{#if this.isStableTrade}}
+                <div style="display: flex; gap: 4px; align-items: center; width: 100%;">
+                    <select class="stable-trade-choice" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 22px; font-size: 0.85em; flex: 0 0 60px;">
+                        <option value="buy" {{#if (eq this.stableTradeChoice "buy")}}selected{{/if}}>Buy</option>
+                        <option value="sell" {{#if (eq this.stableTradeChoice "sell")}}selected{{/if}}>Sell</option>
+                    </select>
+                    <select class="stable-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 22px; font-size: 0.85em; flex: 1;">
+                        <option value="">-- Select Mount --</option>
+                        {{#each stableItemOptions}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}} style="{{this.style}}">{{this.label}}</option>{{/each}}
+                    </select>
+                </div>
+            {{/if}}
+
+            {{#if this.isStable}}
+                <div style="display: flex; gap: 4px; align-items: center; width: 100%; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 4px;">
+                    <select class="stable-transfer-type" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 22px; font-size: 0.85em; flex: 0 0 65px;">
+                        <option value="claim" {{#if (eq this.stableTransferType "claim")}}selected{{/if}}>Claim</option>
+                        <option value="store" {{#if (eq this.stableTransferType "store")}}selected{{/if}}>Store</option>
+                    </select>
+                    <select class="stable-transfer-choice-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 22px; font-size: 0.85em; flex: 1;">
+                        <option value="">-- Select Animal --</option>
+                        {{#each stableTransferOptions}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/each}}
+                    </select>
+                    <button type="button" data-action="instantTransferAnimal" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 0 6px; height: 22px;"><i class="fa-solid fa-right-left"></i></button>
+                </div>
+            {{/if}}
+
+            {{#if (and this.isStorehouse this.isTradeOrder)}}
+                <div style="display: flex; gap: 4px; align-items: center; width: 100%; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 4px;">
+                    <select class="storehouse-trade-choice" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 22px; font-size: 0.85em; flex: 1;" {{#
