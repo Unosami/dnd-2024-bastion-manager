@@ -24,6 +24,7 @@ const SACRISTY_ROOT_ID        = "hU4DDWFnK13sSUSP";
 const SANCTUARY_ROOT_ID       = "B6m3PJWbZ81SSYeW";
 const SCRIPTORIUM_ROOT_ID     = "RbGD7EB1jyD26fq6";
 const STABLE_ROOT_ID          = "7fgBYawFLeER4MtQ";
+const MENAGERIE_ROOT_ID       = "2NJBOp0l0PxvBN6B";
 const TELEPORTATION_CIRCLE_ROOT_ID = "7Iiukg7IXSfJxnXS";
 const TRAINING_AREA_ROOT_ID   = "cxAgMJ71ADZ2APKu";
 
@@ -315,6 +316,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             consumeGreenhouseFruit: BastionManager.onConsumeGreenhouseFruit,
             refreshGreenhouseFruits: BastionManager.onRefreshGreenhouseFruits,
             renameStableAnimal: BastionManager.onRenameStableAnimal,
+            renameMenagerieCreature: BastionManager.onRenameMenagerieCreature,
+            toggleMenagerieDefender: BastionManager.onToggleMenagerieDefender,
+            removeMenagerieCreature: BastionManager.onRemoveMenagerieCreature,
             toggleMeditation: BastionManager.onToggleMeditation,
             viewGraveyard: BastionManager.onViewGraveyard,
             renameBastionName: BastionManager.onRenameBastionName,
@@ -621,6 +625,37 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if ( s === "huge" || s === "hg" ) return 3.0;
         // Anything larger (Gargantuan+) or unknown defaults to a "cannot house" value
         return 999;
+    }
+
+    /** Slot cost for Menagerie: Large = 1, Small/Medium/Tiny = 0.25 (4 per Large slot). */
+    static _getMenagerieSlotCost(sizeKey) {
+        const s = String(sizeKey || "med").toLowerCase();
+        return ["lg", "large", "huge", "grg", "gargantuan"].includes(s) ? 1 : 0.25;
+    }
+
+    /** GP cost for a Menagerie creature — table lookup with CR-based fallback. */
+    static _getMenagerieCost(name, cr) {
+        const TABLE = {
+            "Ape": 500, "Black Bear": 500, "Brown Bear": 1000,
+            "Constrictor Snake": 250, "Crocodile": 500, "Dire Wolf": 1000,
+            "Giant Vulture": 1000, "Hyena": 50, "Jackal": 50,
+            "Lion": 1000, "Owlbear": 3500, "Panther": 250, "Tiger": 1000
+        };
+        if (TABLE[name] !== undefined) return TABLE[name];
+        // CR-based fallback
+        let crNum = 0;
+        if (typeof cr === "string") {
+            if (cr === "1/8") crNum = 0.125;
+            else if (cr === "1/4") crNum = 0.25;
+            else if (cr === "1/2") crNum = 0.5;
+            else crNum = parseFloat(cr) || 0;
+        } else crNum = cr || 0;
+        if (crNum <= 0.125) return 50;
+        if (crNum <= 0.25) return 250;
+        if (crNum <= 0.5) return 500;
+        if (crNum <= 1) return 1000;
+        if (crNum <= 2) return 2000;
+        return 3500;
     }
 
     /**
@@ -1176,6 +1211,37 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const stableMaxSlots = facSize === "Vast" ? 6 : 3;
             const isStableTrade = isStable && currentOrder === "Trade";
             let stableUsedSlots = 0;
+
+            // --- Menagerie Metadata Initialization ---
+            const isMenagerie = fac.name.includes("Menagerie");
+            let menagerieCreatures = getFacFlag("menagerieCreatures") || [];
+            const menagerieMaxSlots = 4; // always 4 Large-equivalent slots
+            const isMenagerieRecruit = isMenagerie && currentOrder === "Recruit";
+            let menagerieUsedSlots = 0;
+            let menagerieItemChoice = getFacFlag("menagerieItemChoice") || "";
+            let menagerieItemOptions = [];
+            if (isMenagerie) {
+                for (const c of menagerieCreatures) menagerieUsedSlots += (c.slots ?? 0.25);
+                const actorPack = game.packs.get(`${MODULE_ID}.bastion-facility-actors`);
+                if (actorPack) {
+                    const idx = await actorPack.getIndex({ fields: ["system.traits.size", "system.details.cr", "folder"] });
+                    const allMenagerieFolderIds = BastionManager._getAllSubfolderIds(actorPack, MENAGERIE_ROOT_ID);
+                    allMenagerieFolderIds.push(MENAGERIE_ROOT_ID);
+                    const entries = idx.filter(e => allMenagerieFolderIds.includes(e.folder));
+                    for (const entry of entries) {
+                        const size = entry.system?.traits?.size || "med";
+                        const slotCost = BastionManager._getMenagerieSlotCost(size);
+                        const cost = BastionManager._getMenagerieCost(entry.name, entry.system?.details?.cr);
+                        const slotLabel = slotCost === 1 ? "1 slot" : "¼ slot";
+                        menagerieItemOptions.push({
+                            value: entry.name, cost, slotCost, size,
+                            label: `${entry.name} (${cost} GP · ${slotLabel})`,
+                            selected: entry.name === menagerieItemChoice,
+                        });
+                    }
+                    menagerieItemOptions.sort((a, b) => a.label.localeCompare(b.label));
+                }
+            }
             
             if (isStable && outPack) {
                 const index = await outPack.getIndex({fields: ["system.size", "system.properties", "system.description.value"]});
@@ -1689,7 +1755,28 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 stockedCount: getFacFlag("stockedCount") || 0,
                 isStocked: getFacFlag("isStocked") || false,
                 isFullyStocked: (getFacFlag("isStocked") || false) && (getFacFlag("stockedCount") || 0) >= totalBastionDefenders,
+                armoryTotalDefenders: totalBastionDefenders,
+                armoryAttackFormula: (() => {
+                    const sc = getFacFlag("stockedCount") || 0;
+                    const isS = getFacFlag("isStocked") || false;
+                    const total = totalBastionDefenders;
+                    const effStock = (isS && sc === 0) ? total : sc;
+                    const d8s = (total > 0 && isS) ? Math.round(6 * Math.clamp(effStock / total, 0, 1)) : 0;
+                    const d6s = 6 - d8s;
+                    const parts = [];
+                    if (d8s > 0) parts.push(`${d8s}d8`);
+                    if (d6s > 0) parts.push(`${d6s}d6`);
+                    return parts.join(" + ") || "6d6";
+                })(),
                 isStableTrade: isStableTrade,
+                isMenagerie,
+                isMenagerieRecruit,
+                menagerieCreatures,
+                menagerieMaxSlots,
+                menagerieUsedSlots: parseFloat(menagerieUsedSlots.toFixed(2)),
+                menagerieFull: menagerieUsedSlots >= menagerieMaxSlots,
+                menagerieItemChoice,
+                menagerieItemOptions,
                 isTeleportationCircle,
                 isTheater,
                 isMeditationChamber,
@@ -2378,9 +2465,23 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             });
         });
 
-        // Stable Listeners
-        this.element.querySelectorAll('.stable-trade-choice').forEach(select => {
+        // Menagerie Listeners
+        this.element.querySelectorAll('.menagerie-item-select').forEach(select => {
             select.addEventListener('change', async (ev) => {
+                const ds = ev.target.dataset;
+                if (ds.isFlag === "true") {
+                    const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+                    const fac = gf.find(f => f._id === ds.itemId);
+                    if (fac) foundry.utils.setProperty(fac, `flags.${MODULE_ID}.menagerieItemChoice`, ev.target.value);
+                    await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+                } else {
+                    await this.actor.items.get(ds.itemId)?.setFlag(MODULE_ID, "menagerieItemChoice", ev.target.value);
+                }
+            });
+        });
+
+        // Stable Listeners
+        this.element.querySelectorAll('.stable-trade-choice').forEach(select => {            select.addEventListener('change', async (ev) => {
                 const ds = ev.target.dataset;
                 if (ds.isFlag === "true") {
                     const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
@@ -3198,6 +3299,85 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             await actor.update({ "system.bastion.name": newName });
             this.render();
         }
+    }
+
+    static async onRenameMenagerieCreature(event, target) {
+        const ds = target.dataset;
+        const idx = parseInt(ds.index);
+        let gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+        let fac = ds.isFlag === "true" ? gf.find(f => f._id === ds.itemId) : this.actor.items.get(ds.itemId);
+        if (!fac) return;
+        let creatures = Array.from((ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.menagerieCreatures : fac.getFlag(MODULE_ID, "menagerieCreatures")) || []);
+        if (!creatures[idx]) return;
+        const current = creatures[idx];
+        const newName = await DialogV2.prompt({
+            window: { title: `Name your ${current.species}` },
+            content: `<div class="form-group"><label>Nickname:</label><input type="text" name="name" value="${current.nickname || ""}" placeholder="Enter nickname..." autofocus></div>`,
+            ok: { label: "Save", callback: (event, button) => button.form.elements.name.value.trim() },
+            rejectClose: false
+        });
+        if (typeof newName === "string") {
+            creatures[idx] = { ...current, nickname: newName };
+            // Keep defenders flag in sync
+            const defenderNames = creatures.filter(c => c.isDefender).map(c => c.nickname || c.species);
+            if (ds.isFlag === "true") {
+                foundry.utils.setProperty(fac, `flags.${MODULE_ID}.menagerieCreatures`, creatures);
+                foundry.utils.setProperty(fac, `flags.${MODULE_ID}.defenders`, { count: defenderNames.length, names: defenderNames });
+                await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+            } else {
+                await fac.setFlag(MODULE_ID, "menagerieCreatures", creatures);
+                await fac.setFlag(MODULE_ID, "defenders", { count: defenderNames.length, names: defenderNames });
+            }
+            this.render();
+        }
+    }
+
+    static async onToggleMenagerieDefender(event, target) {
+        const ds = target.dataset;
+        const idx = parseInt(ds.index);
+        let gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+        let fac = ds.isFlag === "true" ? gf.find(f => f._id === ds.itemId) : this.actor.items.get(ds.itemId);
+        if (!fac) return;
+        let creatures = Array.from((ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.menagerieCreatures : fac.getFlag(MODULE_ID, "menagerieCreatures")) || []);
+        if (!creatures[idx]) return;
+        creatures[idx] = { ...creatures[idx], isDefender: !creatures[idx].isDefender };
+        const defenderNames = creatures.filter(c => c.isDefender).map(c => c.nickname || c.species);
+        if (ds.isFlag === "true") {
+            foundry.utils.setProperty(fac, `flags.${MODULE_ID}.menagerieCreatures`, creatures);
+            foundry.utils.setProperty(fac, `flags.${MODULE_ID}.defenders`, { count: defenderNames.length, names: defenderNames });
+            await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+        } else {
+            await fac.setFlag(MODULE_ID, "menagerieCreatures", creatures);
+            await fac.setFlag(MODULE_ID, "defenders", { count: defenderNames.length, names: defenderNames });
+        }
+        this.render();
+    }
+
+    static async onRemoveMenagerieCreature(event, target) {
+        const ds = target.dataset;
+        const idx = parseInt(ds.index);
+        let gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+        let fac = ds.isFlag === "true" ? gf.find(f => f._id === ds.itemId) : this.actor.items.get(ds.itemId);
+        if (!fac) return;
+        let creatures = Array.from((ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.menagerieCreatures : fac.getFlag(MODULE_ID, "menagerieCreatures")) || []);
+        if (!creatures[idx]) return;
+        const removed = creatures[idx];
+        const confirmed = await DialogV2.confirm({
+            window: { title: "Release Creature" },
+            content: `<p>Release <b>${removed.nickname || removed.species}</b> from the Menagerie?</p>`
+        });
+        if (!confirmed) return;
+        creatures.splice(idx, 1);
+        const defenderNames = creatures.filter(c => c.isDefender).map(c => c.nickname || c.species);
+        if (ds.isFlag === "true") {
+            foundry.utils.setProperty(fac, `flags.${MODULE_ID}.menagerieCreatures`, creatures);
+            foundry.utils.setProperty(fac, `flags.${MODULE_ID}.defenders`, { count: defenderNames.length, names: defenderNames });
+            await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+        } else {
+            await fac.setFlag(MODULE_ID, "menagerieCreatures", creatures);
+            await fac.setFlag(MODULE_ID, "defenders", { count: defenderNames.length, names: defenderNames });
+        }
+        this.render();
     }
 
     static async onDonateToStorehouse(event, target) {
@@ -5113,6 +5293,22 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     const title = getFacFlag("paperworkTitle");
                     if (!title) missing.push(`${actor.name}: Scriptorium requires a description/title for Paperwork.`);
                 }
+            } else if (fac.name.includes("Menagerie") && order === "Recruit") {
+                const choice = getFacFlag("menagerieItemChoice");
+                if (!choice) {
+                    missing.push(`${actor.name}: Menagerie requires a creature selection for Recruit.`);
+                } else {
+                    const actorPack = game.packs.get(`${MODULE_ID}.bastion-facility-actors`);
+                    if (actorPack) {
+                        const mIdx = await actorPack.getIndex({ fields: ["system.traits.size", "system.details.cr"] });
+                        const mEntry = mIdx.find(e => e.name.toLowerCase() === choice.toLowerCase());
+                        if (mEntry) {
+                            const cost = BastionManager._getMenagerieCost(mEntry.name, mEntry.system?.details?.cr);
+                            const currentGP = Number(actor.system.currency?.gp || 0);
+                            if (currentGP < cost) missing.push(`${actor.name}: Cannot afford <b>${choice}</b> (${cost} GP required, ${currentGP} GP available).`);
+                        }
+                    }
+                }
             } else if (fac.name.includes("Stable") && order === "Trade") {
                 const choice = getFacFlag("stableItemChoice");
                 const tradeType = getFacFlag("stableTradeChoice") || "buy";
@@ -5335,6 +5531,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let stableAnimals = getFacFlag("stableAnimals") || [];
             // Migration: Ensure resolution engine treats animals as objects
             stableAnimals = stableAnimals.map(a => typeof a === "string" ? { species: a, nickname: "" } : a);
+            let menagerieCreatures = getFacFlag("menagerieCreatures") || [];
+            let menagerieItemChoice = getFacFlag("menagerieItemChoice") || "";
             let isStocked = getFacFlag("isStocked") || false;
             const currentStockedCount = getFacFlag("stockedCount") || 0;
 
@@ -5765,7 +5963,38 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         currentResultText = `${getH()} is currently working to change the specialization to [${pending}] (Progress: ${progress}/${totalNeeded} ${label}).`; 
                     }
                 } else if (order === "Recruit") {
-                    if (facDoc.name.includes("Teleportation Circle")) {
+                    if (facDoc.name.includes("Menagerie")) {
+                        const choice = getFacFlag("menagerieItemChoice") || "";
+                        if (!choice) {
+                            currentResultText = `${getH()} awaits a creature selection for the Menagerie.`;
+                        } else {
+                            const actorPack = game.packs.get(`${MODULE_ID}.bastion-facility-actors`);
+                            let slotCost = 0.25; let cost = 50;
+                            if (actorPack) {
+                                const mIdx = await actorPack.getIndex({ fields: ["system.traits.size", "system.details.cr"] });
+                                const mEntry = mIdx.find(e => e.name.toLowerCase() === choice.toLowerCase());
+                                if (mEntry) {
+                                    slotCost = BastionManager._getMenagerieSlotCost(mEntry.system?.traits?.size || "med");
+                                    cost = BastionManager._getMenagerieCost(mEntry.name, mEntry.system?.details?.cr);
+                                }
+                            }
+                            let creatures = Array.from(getFacFlag("menagerieCreatures") || []);
+                            const usedSlots = creatures.reduce((s, c) => s + (c.slots ?? 0.25), 0);
+                            if (currentActorGP + totalGold + localGold < cost) {
+                                currentResultText = `${getH()} was unable to acquire the <b>${choice}</b> (${cost} GP required).`;
+                            } else if (usedSlots + slotCost > 4) {
+                                currentResultText = `${getH()} reports the Menagerie is too full to house another <b>${choice}</b>.`;
+                            } else {
+                                localGold -= cost;
+                                creatures.push({ species: choice, nickname: "", slots: slotCost, isDefender: true });
+                                facEntry.menagerieCreatures = creatures;
+                                // Sync to defenders flag so attack events see them
+                                const defenderNames = creatures.filter(c => c.isDefender).map(c => c.nickname || c.species);
+                                facDoc.newDefenders = { count: defenderNames.length, names: defenderNames };
+                                currentResultText = `${getH()} successfully acquired a <b>${choice}</b> for the Menagerie (${cost} GP).`;
+                            }
+                        }
+                    } else if (facDoc.name.includes("Teleportation Circle")) {
                         if (visitingSpellcaster) {
                             currentResultText = "Recruitment skipped: A spellcaster is already visiting.";
                         } else {
@@ -5906,6 +6135,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     [`flags.${MODULE_ID}.stableTransferType`]: stableTransferType,
                     [`flags.${MODULE_ID}.stableTransferChoice`]: stableTransferChoice,
                     [`flags.${MODULE_ID}.stableAnimals`]: facEntry.stableAnimals || stableAnimals,
+                    [`flags.${MODULE_ID}.menagerieCreatures`]: facEntry.menagerieCreatures || menagerieCreatures,
+                    [`flags.${MODULE_ID}.menagerieItemChoice`]: menagerieItemChoice,
                     [`flags.${MODULE_ID}.stockedCount`]: facEntry.stockedCount ?? (getFacFlag("stockedCount") || 0),
                     [`flags.${MODULE_ID}.fruitCount`]: facName.includes("Greenhouse") ? 3 : greenhouseFruitCount,
                     [`flags.${MODULE_ID}.isStocked`]: facEntry.isStocked ?? isStocked,

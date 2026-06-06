@@ -1,5 +1,7 @@
 Bastion Module notes:
 GENERAL
+- Right-clicking on the bastion tab items shouldn't open the bastion dashboard.
+- The top-right icons on the facility items in the bastion tab should show the order being worked on just like they would natively. This should replace the "Working..." custom bar.
 - Move hireling and defender name pools to seperate editable files.
 - Make Bastion Name Editable. This should also be doable for combined bastions.
 - Have individual bastions show the descrepancy between their turn and the global turn. 
@@ -13,9 +15,14 @@ EVENTS:
 
 
 Next I want to start fleshing out the other facility outputs:
+STABLE
+- Standardize sizes and slots between the stable and the menagerie.
+
+MENAGERIE
+- Explain to me how the CR fallback works.
+
 ARMORY
 - Stocking the armory does nothing if there are no bastion defenders. The facility should throw a warning to that effect if being built without an attached facility that provides defenders.
-
 
 TELEPORTATION CIRCLE 
 - A cool way to display the glyphs of the specific bastion's teleportation circle? (So Extra)

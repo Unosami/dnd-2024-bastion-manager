@@ -1,9 +1,4 @@
 <h1>README</h1>
-<h3>Difficult to Automate</h3>
----
-
-Teleportation Circle
-- Populating a list of all possible spells the Spellcaster can cast runs up against SRD.
 
 
 <h3>Rules Interpretations</h3>

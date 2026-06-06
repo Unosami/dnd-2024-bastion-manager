@@ -792,13 +792,18 @@ const integrateBastionDashboard = (bastionTab) => {
         if (facName.includes("Armory")) {
             const isStocked = fFlags.isStocked || false;
             const stockedCount = fFlags.stockedCount || 0;
+            const effStock = (isStocked && stockedCount === 0) ? totalBastionDefs : stockedCount;
+            const d8s = (totalBastionDefs > 0 && isStocked) ? Math.round(6 * Math.clamp(effStock / totalBastionDefs, 0, 1)) : 0;
+            const d6s = 6 - d8s;
+            const fParts = []; if (d8s > 0) fParts.push(`${d8s}d8`); if (d6s > 0) fParts.push(`${d6s}d6`);
+            const attackFormula = fParts.join(" + ") || "6d6";
             let badge;
             if (isStocked && totalBastionDefs > 0 && stockedCount >= totalBastionDefs) {
-                badge = `<span style="background:#2e7d32; color:white; padding:1px 6px; border-radius:10px; font-weight:bold; font-size:0.9em;" data-tooltip="All ${stockedCount} defender(s) are equipped from the Armory."><i class="fa-solid fa-shield-check"></i> STOCK-READY</span>`;
+                badge = `<span style="background:#2e7d32; color:white; padding:1px 6px; border-radius:10px; font-weight:bold; font-size:0.9em;" data-tooltip="All ${stockedCount} defender(s) equipped. Attack event: ${attackFormula} — each 1 rolled kills a defender."><i class="fa-solid fa-shield-check"></i> STOCK-READY (${stockedCount}/${totalBastionDefs})</span>`;
             } else if (isStocked && stockedCount > 0) {
-                badge = `<span style="background:#e65100; color:white; padding:1px 6px; border-radius:10px; font-weight:bold; font-size:0.9em;" data-tooltip="${stockedCount} defender(s) equipped; ${totalBastionDefs - stockedCount} unequipped. Run a Trade order to fully stock."><i class="fa-solid fa-shield-halved"></i> SEMI-STOCKED (${stockedCount}/${totalBastionDefs})</span>`;
+                badge = `<span style="background:#e65100; color:white; padding:1px 6px; border-radius:10px; font-weight:bold; font-size:0.9em;" data-tooltip="${stockedCount} of ${totalBastionDefs} defender(s) equipped. Attack event: ${attackFormula} — each 1 rolled kills a defender. Run a Trade order to fully stock (improves to 6d8)."><i class="fa-solid fa-shield-halved"></i> SEMI-STOCKED (${stockedCount}/${totalBastionDefs})</span>`;
             } else {
-                badge = `<span style="background:#555; color:white; padding:1px 6px; border-radius:10px; font-weight:bold; font-size:0.9em;" data-tooltip="No defenders are equipped. Run a Trade order to stock the Armory."><i class="fa-solid fa-shield-slash"></i> UNSTOCKED</span>`;
+                badge = `<span style="background:#555; color:white; padding:1px 6px; border-radius:10px; font-weight:bold; font-size:0.9em;" data-tooltip="No defenders equipped. Attack event: 6d6 — each 1 rolled kills a defender. If none survive, a special facility is damaged. Run a Trade order to stock (upgrades dice to d8s)."><i class="fa-solid fa-shield-slash"></i> UNSTOCKED (0/${totalBastionDefs})</span>`;
             }
             rows.push(`<div>${badge}</div>`);
         }
@@ -807,6 +812,16 @@ const integrateBastionDashboard = (bastionTab) => {
         if (facName.includes("Greenhouse")) {
             const fruitCount = fFlags.fruitCount ?? 3;
             rows.push(`<div><i class="fa-solid fa-seedling" style="color:#2e7d32; width:12px;"></i> <b>Magical Fruits:</b> ${fruitCount} / 3 &nbsp;<span style="opacity:0.7; font-style:italic;">(Lesser Restoration)</span></div>`);
+        }
+
+        // D3b. Menagerie
+        if (facName.includes("Menagerie")) {
+            const creatures = fFlags.menagerieCreatures || [];
+            const usedSlots = creatures.reduce((s, c) => s + (c.slots ?? 0.25), 0);
+            const defCount = creatures.filter(c => c.isDefender).length;
+            const names = creatures.map(c => c.nickname ? `${c.nickname} (${c.species})` : c.species);
+            const tooltip = names.length ? names.join(", ") : "No creatures yet.";
+            rows.push(`<div data-tooltip="${tooltip}" style="cursor:default;"><i class="fa-solid fa-paw" style="color:#c8a45e; width:12px;"></i> <b>Menagerie:</b> ${names.length} creature(s) &mdash; ${parseFloat(usedSlots.toFixed(2))}/4 slots${defCount > 0 ? ` &mdash; ${defCount} defending` : ""}</div>`);
         }
 
         // D4. Theater
@@ -875,7 +890,7 @@ const integrateBastionDashboard = (bastionTab) => {
 
         // D9. Facility passive abilities — DMG name, rest type indicator, details in tooltip only
         const PASSIVE_INFO = {
-            "Arcane Study": { icon: "fa-solid fa-sparkles",     color: "#b39ddb", name: "Arcane Study Charm",  restIcon: "fa-solid fa-moon",          rest: "Long Rest",  tip: "After each Long Rest in your Bastion, you may cast Identify as a Charm (no spell slot required). At level 9+, your hireling also assists with magic item crafting." },
+            "Arcane Study": { icon: "fa-solid fa-sparkles",     color: "#b39ddb", name: "Arcane Study Charm",  restIcon: "fa-solid fa-moon",          rest: "Long Rest",  tip: "After each Long Rest in your Bastion, you may cast Identify as a Charm (no spell slot required)." },
             "Sanctuary":    { icon: "fa-solid fa-heart-pulse",   color: "#ef9a9a", name: "Healing Word Charm",  restIcon: "fa-solid fa-moon",          rest: "Long Rest",  tip: "After each Long Rest in your Bastion, you may cast Healing Word as a Charm (no spell slot required)." },
             "Sacristy":     { icon: "fa-solid fa-wand-sparkles", color: "#ef9a9a", name: "Sacred Spellcasting", restIcon: "fa-solid fa-hourglass-half", rest: "Short Rest", tip: "After a Short Rest in your Bastion, you regain one expended spell slot of level 5 or lower." },
         };

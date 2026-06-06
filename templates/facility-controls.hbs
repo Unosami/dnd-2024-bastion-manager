@@ -48,11 +48,11 @@
     {{#if this.isArmory}}
         <div style="margin-top: 2px;">
             {{#if (and this.isStocked this.isFullyStocked)}}
-                <span style="font-size: 0.7em; background: #2e7d32; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold;"><i class="fa-solid fa-shield-check"></i> STOCK-READY</span>
+                <span style="font-size: 0.7em; background: #2e7d32; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold;" data-tooltip="All {{this.stockedCount}} defender(s) equipped. Attack event: {{this.armoryAttackFormula}}."><i class="fa-solid fa-shield-check"></i> STOCK-READY ({{this.stockedCount}}/{{this.armoryTotalDefenders}})</span>
             {{else if this.stockedCount}}
-                <span style="font-size: 0.7em; background: #ef6c00; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold;" title="Requires Trade order to equip new defenders."><i class="fa-solid fa-shield-halved"></i> PARTIAL ({{this.stockedCount}})</span>
+                <span style="font-size: 0.7em; background: #ef6c00; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold;" data-tooltip="{{this.stockedCount}} of {{this.armoryTotalDefenders}} defender(s) equipped. Attack event: {{this.armoryAttackFormula}}. Run a Trade order to fully stock (improves to 6d8)."><i class="fa-solid fa-shield-halved"></i> SEMI-STOCKED ({{this.stockedCount}}/{{this.armoryTotalDefenders}})</span>
             {{else}}
-                <span style="font-size: 0.7em; background: #666; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold; opacity: 0.8;"><i class="fa-solid fa-shield-slash"></i> UNSTOCKED</span>
+                <span style="font-size: 0.7em; background: #666; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold; opacity: 0.8;" data-tooltip="No defenders equipped. Attack event: 6d6. If none survive, a special facility is damaged. Run a Trade order to stock (upgrades dice to d8s)."><i class="fa-solid fa-shield-slash"></i> UNSTOCKED (0/{{this.armoryTotalDefenders}})</span>
             {{/if}}
         </div>
     {{/if}}
