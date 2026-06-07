@@ -1,25 +1,20 @@
 Bastion Module notes:
 GENERAL
-- Right-clicking on the bastion tab items shouldn't open the bastion dashboard.
-- The top-right icons on the facility items in the bastion tab should show the order being worked on just like they would natively. This should replace the "Working..." custom bar.
 - Move hireling and defender name pools to seperate editable files.
-- Make Bastion Name Editable. This should also be doable for combined bastions.
-- Have individual bastions show the descrepancy between their turn and the global turn. 
-- For new characters, have the DM be able to jump the turn count up to the global amount (without production). Or perhaps, have new facilities start at the global turn count?
 - Tie day-based time to native calendar?
-- Remove turn advance functionality from calendar arrows.
+- Consolidate multiple turn events into a single prompt. For example, if you recruit for 3 turns there should be a single prompt asking for all names instead of 3 recruit name prompts.
+- Enlarging special facilities should show what the mechanical benefits of expanding that facility are in the staging prompt.
 
 
 EVENTS:
 - Combined Bastions should all share a single bastion event, rather than generating one-per bastion per Maintenance turn.
+- Allow for custom events?
 
 
 Next I want to start fleshing out the other facility outputs:
 STABLE
-- Standardize sizes and slots between the stable and the menagerie.
-
-MENAGERIE
-- Explain to me how the CR fallback works.
+- Standardize sizes and slots between the stable and the menagerie. If possible
+- When a mount is withdrawn by a character import the associated actor and give the player ownership of it and rename it to the creature's nickname. Then if the mount is deposited again remove the actor. I'd like any changes to the specific creature to be remembered between withdrawels if possible.
 
 ARMORY
 - Stocking the armory does nothing if there are no bastion defenders. The facility should throw a warning to that effect if being built without an attached facility that provides defenders.
@@ -30,10 +25,6 @@ TELEPORTATION CIRCLE
 THEATER
 - Nice to have: Writers type in name of the production. That production script is saved as an item (in the compendium?) so they can look back on it.
 
-
-- Bastion Events when the Maintain order is issued. (Groundwork is done)
-    - Flesh out the events and add automation for the DM
-    - Allow for custom events?
 
 - Bastion Features:
     - Closets (might not need to be included)

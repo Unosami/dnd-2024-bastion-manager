@@ -15,6 +15,7 @@ const LAB_ALCH_FOLDER_ID      = "mqk8IahDyEIKpvcj";
 const LAB_POISON_FOLDER_ID    = "fwyUIxfHsEGOLHYc";
 const ARCHIVE_BOOKS_FOLDER_ID = "1gNhp4TlPZmeUuND";
 const MEDITATION_FOLDER_ID    = "MHEBG1MAdvgjzJk1";
+const OBSERVATORY_ROOT_FOLDER_ID    = "e88xHkwROqUs8TGK";
 const ARCHIVE_ROOT_FOLDER_ID = "abF82Om5im6lVTmF";
 const ARTISANS_TOOLS_FOLDER_ID = "6BSYdjswSgM0HRib";
 const GREENHOUSE_ROOT_ID      = "L5IXLxn3kjBeN7Vx";
@@ -27,6 +28,9 @@ const STABLE_ROOT_ID          = "7fgBYawFLeER4MtQ";
 const MENAGERIE_ROOT_ID       = "2NJBOp0l0PxvBN6B";
 const TELEPORTATION_CIRCLE_ROOT_ID = "7Iiukg7IXSfJxnXS";
 const TRAINING_AREA_ROOT_ID   = "cxAgMJ71ADZ2APKu";
+const PUB_ROOT_ID             = "soSkXpUmtteM4mgD";
+const BASE_ITEMS_FOLDER_ID    = "AQ0XdVgHpL5IaNjC"; // Weapons & Armor used as base items for magic item crafting
+const RELIQUARY_ROOT_ID       = "zOMONoelQli72ZI7"; // Reliquary output folder
 
 const BASTION_EVENTS_LIST = [
     { label: "All Is Well (01-50)", roll: 1 },
@@ -320,6 +324,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             toggleMenagerieDefender: BastionManager.onToggleMenagerieDefender,
             removeMenagerieCreature: BastionManager.onRemoveMenagerieCreature,
             toggleMeditation: BastionManager.onToggleMeditation,
+            grantObservatoryCharm: BastionManager.onGrantObservatoryCharm,
+            grantReliquaryCharm:   BastionManager.onGrantReliquaryCharm,
             viewGraveyard: BastionManager.onViewGraveyard,
             renameBastionName: BastionManager.onRenameBastionName,
         }
@@ -352,8 +358,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     static buildFacilityOrderState(actor, item, isFlag = false) {
         const actorLevel = actor.system?.details?.level || 1;
         const fFlags = isFlag ? (item.flags?.[MODULE_ID] || item.flags?.["dnd-2024-bastion-manager"] || {}) : (item.getFlag?.(MODULE_ID) || item.flags?.[MODULE_ID] || {});
-        const currentOrder = fFlags.order || "Maintain";
+        let currentOrder = fFlags.order;
+        if (!currentOrder && item.system?.order) {
+            const sysOrd = String(item.system.order).split(":")[0].trim();
+            currentOrder = sysOrd.charAt(0).toUpperCase() + sysOrd.slice(1).toLowerCase();
+        }
+        currentOrder = currentOrder || "Maintain";
         const craftChoice = fFlags.craftChoice || "";
+        const subType = fFlags.subType || "";
         const progress = Number(fFlags.progress || 0);
         const rawQueue = fFlags.craftQueue || [];
 
@@ -447,6 +459,26 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             }
         }
 
+        // Reliquary: rename generic "Harvest" to the more descriptive "Harvest: Talisman"
+        if (item.name.includes("Reliquary")) {
+            const harvestIdx = availableOrders.indexOf("Harvest");
+            if (harvestIdx !== -1) availableOrders.splice(harvestIdx, 1, "Harvest: Talisman");
+            // Reliquary doesn't craft — remove the system-granted Craft order if present
+            const craftIdx = availableOrders.indexOf("Craft");
+            if (craftIdx !== -1) availableOrders.splice(craftIdx, 1);
+        }
+
+        // Additional specific order labels for remaining facility types
+        if (availableOrders.includes("Research") && item.name.includes("Library") && !item.name.includes("Trophy")) {
+            availableOrders.splice(availableOrders.indexOf("Research"), 1, "Research: Lore");
+        }
+        if (availableOrders.includes("Research") && item.name.includes("Pub")) {
+            availableOrders.splice(availableOrders.indexOf("Research"), 1, "Research: Rumours");
+        }
+        if (availableOrders.includes("Harvest") && item.name.includes("Garden") && !item.name.includes("Greenhouse")) {
+            if (subType) availableOrders.splice(availableOrders.indexOf("Harvest"), 1, `Harvest: ${subType}`);
+        }
+
         // Compute the UI-facing current order label (maps stored flag value → dropdown option)
         let currentUIOrder = (currentOrder === "Craft" && craftChoice) ? `Craft: ${craftChoice}` : currentOrder;
         if (currentOrder === "Empower" && item.name.includes("Theater")) currentUIOrder = "Empower: Theatrical Event";
@@ -455,6 +487,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (currentOrder === "Research" && item.name.includes("Trophy Room")) currentUIOrder = `Research: ${craftChoice || "Lore"}`;
         if (currentOrder === "Research" && item.name.includes("Archive")) currentUIOrder = "Research: Helpful Lore";
         if (currentOrder === "Craft" && item.name.includes("Laboratory")) currentUIOrder = `Craft: ${craftChoice || "Alchemist's Supplies"}`;
+        if ((currentOrder === "Harvest" || currentOrder === "Harvest: Talisman") && item.name.includes("Reliquary")) currentUIOrder = "Harvest: Talisman";
+        if (currentOrder === "Research" && item.name.includes("Library") && !item.name.includes("Trophy")) currentUIOrder = "Research: Lore";
+        if (currentOrder === "Research" && item.name.includes("Pub")) currentUIOrder = "Research: Rumours";
+        if (currentOrder === "Harvest" && item.name.includes("Garden") && !item.name.includes("Greenhouse") && subType) currentUIOrder = `Harvest: ${subType}`;
 
         // Fallback: Ensure the currently stored order is always available to prevent snap-back
         if (currentUIOrder !== "Maintain" && !availableOrders.includes(currentUIOrder)) {
@@ -655,7 +691,41 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (crNum <= 0.5) return 500;
         if (crNum <= 1) return 1000;
         if (crNum <= 2) return 2000;
-        return 3500;
+        if (crNum <= 3) return 3500;
+        // CR > 3: cost = 5 × XP by CR (DMG 2024), rounded to nearest 5 GP
+        // Index: 0=CR0, 1=CR1/8, 2=CR1/4, 3=CR1/2, 4=CR1, 5=CR2, 6=CR3, 7=CR4, 8=CR5, …
+        const XP_BY_CR = [10,25,50,100,200,450,700,1100,1800,2300,2900,3900,5000,5900,7200,8400,10000,11500,13000,15000,18000,20000,22000,25000,33000,41000,50000,62000,75000,90000,105000,120000,135000,155000];
+        const crIdx = Math.min(Math.floor(crNum) + 3, XP_BY_CR.length - 1);
+        return Math.round(XP_BY_CR[crIdx] * 5 / 5) * 5;
+    }
+
+    /** Returns the die type string for a Menagerie defender based on its CR and the dice mode setting. */
+    static _getMenagerieDie(crNum) {
+        const mode = game.settings.get(MODULE_ID, "menagerieDiceMode");
+        if (mode === "raw") return "d6";
+        if (mode === "digital") {
+            // CR tiers: 0→d2, 1/8→d3, 1/4→d4, 1/2→d5, 1→d6, 2→d7, 3→d8, 4→d9, …
+            const CR_TIERS = [0,0.125,0.25,0.5,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30];
+            let idx = 0;
+            for (let i = 0; i < CR_TIERS.length; i++) { if (crNum >= CR_TIERS[i]) idx = i; }
+            return `d${idx + 2}`;
+        }
+        if (mode === "physical") {
+            if (crNum >= 6) return "d20";
+            if (crNum >= 3) return "d12";
+            if (crNum >= 2) return "d10";
+            if (crNum >= 1) return "d8";
+            if (crNum >= 0.125) return "d6"; // CR 1/8 through 1/2
+            return "d4"; // CR 0
+        }
+        // "custom" mode — JSON threshold table
+        let table;
+        try { table = JSON.parse(game.settings.get(MODULE_ID, "menagerieCrDiceTable")); } catch { return "d6"; }
+        const thresholds = Object.keys(table).map(Number).sort((a, b) => b - a);
+        for (const t of thresholds) {
+            if (crNum >= t) return String(table[String(t)] || "d6").toLowerCase();
+        }
+        return "d6";
     }
 
     /**
@@ -994,6 +1064,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const rawQueue = getFacFlag("craftQueue") || [];
             const isBasic = isBasicFac(fac.sourceDoc);
             let facSize = getFacFlag("size");
+            // Capture BEFORE the fallback — null/undefined means this is a brand-new build, not an enlargement.
+            const rawModuleSizeFlag = facSize;
             if (facSize === undefined || facSize === null) {
                 // Fall back to native system.size (e.g. "cramped") and capitalise it
                 const sysSize = fac.sourceDoc.system?.size;
@@ -1003,7 +1075,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let facSubType = getFacFlag("subType");
             let facSubType2 = getFacFlag("subType2");
 
-            let currentOrder = getFacFlag("order") || "Maintain";
+            let currentOrder = getFacFlag("order");
+            if (!currentOrder && !fac.isFlag) {
+                const sysOrder = fac.sourceDoc.system?.order;
+                if (sysOrder) currentOrder = sysOrder.charAt(0).toUpperCase() + sysOrder.slice(1).toLowerCase();
+            }
+            currentOrder = currentOrder || "Maintain";
             let hirelingsArr = getFacFlag("hirelings");
             let hirelingsDisplay = Array.isArray(hirelingsArr) ? hirelingsArr.join(", ") : "";
 
@@ -1018,18 +1095,55 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const upgradeProgress = getFacFlag("upgradeProgress") || 0;
             const upgradeTurns = getFacFlag("upgradeTurns") || 0;
             const isUnderConstruction = upgradeTurns > 0;
-            const isBuilding = isUnderConstruction && !facSize;
+            // A facility is "building" (new construction) when the module size flag was null/undefined before the
+            // sysSize fallback above. An enlargement keeps the current size set, so rawModuleSizeFlag is non-null.
+            const isBuilding = isUnderConstruction && (rawModuleSizeFlag === null || rawModuleSizeFlag === undefined);
             const isOrderChanging = this._changingOrders.has(fac.id);
             const isOrderLocked = (progress > 0 || isBuilding || isDamaged);
             const isSelectionDisabled = fac.isInherited || isBuilding || isDamaged || (progress > 0 && !isOrderChanging);
             
             const isBarrack = fac.name.includes("Barrack");
             const promptNames = isBarrack ? (getFacFlag("promptNames") ?? true) : false;
+            const barrackDefenderCount = isBarrack ? (getFacFlag("defenders")?.count || 0) : 0;
+            const barrackMaxDefenders = isBarrack ? (facSize === "Vast" ? 25 : facSize === "Cramped" ? 6 : 12) : 0;
 
             const isTeleportationCircle = fac.name.includes("Teleportation Circle");
             const visitingSpellcaster = getFacFlag("visitingSpellcaster") || false;
             const isTheater = fac.name.includes("Theater");
             const isMeditationChamber = fac.name.includes("Meditation Chamber");
+            const isObservatory = fac.name.includes("Observatory");
+            const observatoryCharmActive = isObservatory && !!(this.actor.getFlag(MODULE_ID, "activeObservatoryCharmIds") || []).length;
+            const isReliquaryFac = fac.name.includes("Reliquary");
+            const reliquaryCharmActive = isReliquaryFac && !!(this.actor.getFlag(MODULE_ID, "activeReliquaryCharmIds") || []).length;
+            const reliquaryTalismanActive = isReliquaryFac && !!(this.actor.getFlag(MODULE_ID, "activeReliquaryTalismanId"));
+            const isPub = fac.name.includes("Pub");
+            const pubSlotCount = isPub ? (facSize === "Vast" ? 2 : 1) : 0;
+            const pubSpecials = isPub ? (getFacFlag("pubSpecials") || []) : [];
+            const pubSpecialsGrantedTo = isPub ? (getFacFlag("pubSpecialsGrantedTo") || []) : [];
+            let pubSpecialOptions = [];
+            if (isPub && outPack) {
+                const pubSubfolder = outPack.folders.find(f => {
+                    const pid = f.parentId || f.folder?.id || f.folder;
+                    return pid === PUB_ROOT_ID && f.name.toLowerCase().includes("special");
+                });
+                if (pubSubfolder) {
+                    const idx = await outPack.getIndex({ fields: ["folder"] });
+                    pubSpecialOptions = idx
+                        .filter(i => (i.folder?.id || i.folder) === pubSubfolder.id)
+                        .map(i => ({ value: i.name, label: i.name }))
+                        .sort((a, b) => a.label.localeCompare(b.label));
+                }
+                // Hardcoded fallback in case the subfolder is not yet populated
+                if (pubSpecialOptions.length === 0) {
+                    pubSpecialOptions = [
+                        { value: "Bigby's Burden",         label: "Bigby's Burden (Enlarge, 24h)" },
+                        { value: "Kiss of the Spider Queen", label: "Kiss of the Spider Queen (Spider Climb, 24h)" },
+                        { value: "Moonlight Serenade",      label: "Moonlight Serenade (Darkvision 60ft, 24h)" },
+                        { value: "Positive Reinforcement",  label: "Positive Reinforcement (Necrotic Resistance, 24h)" },
+                        { value: "Sterner Stuff",           label: "Sterner Stuff (Auto-succeed vs Frightened, 24h)" },
+                    ];
+                }
+            }
 
             const theaterPhase = isTheater ? (getFacFlag("theaterPhase") || "Idle") : "Idle";
             const theaterProgress = isTheater ? Number(getFacFlag("theaterProgress") || 0) : 0;
@@ -1143,7 +1257,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             const hasOrders = availableOrders.length > 1;
 
-            const isLibraryResearching = (fac.name.includes("Library") && safeOrder === "Research") || (fac.name.includes("Trophy Room") && safeOrder.includes("Lore")) || (fac.name.includes("Archive") && safeOrder === "Research: Helpful Lore");
+            const isLibraryResearching = (fac.name.includes("Library") && safeOrder === "Research") || (fac.name.includes("Trophy Room") && safeOrder.includes("Lore")) || (fac.name.includes("Archive") && safeOrder === "Research: Helpful Lore") || (fac.name === "Pub" && safeOrder === "Research");
+            const isPubResearching      = fac.name === "Pub" && safeOrder === "Research";
+            const isTrophyResearching   = fac.name.includes("Trophy Room") && safeOrder.includes("Lore");
+            const isArchiveResearching  = fac.name.includes("Archive") && safeOrder === "Research: Helpful Lore";
             const libraryTopic = fac.isFlag ? (fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.libraryTopic || "") : (fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "libraryTopic") || "");
 
             const craftQueue = rawQueue.map((q, idx) => {
@@ -1227,15 +1344,31 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     const idx = await actorPack.getIndex({ fields: ["system.traits.size", "system.details.cr", "folder"] });
                     const allMenagerieFolderIds = BastionManager._getAllSubfolderIds(actorPack, MENAGERIE_ROOT_ID);
                     allMenagerieFolderIds.push(MENAGERIE_ROOT_ID);
-                    const entries = idx.filter(e => allMenagerieFolderIds.includes(e.folder));
+                    const entries = idx.filter(e => {
+                        const fid = e.folder?.id || e.folder;
+                        if (!fid) return false;
+                        const fidStr = String(fid);
+                        return allMenagerieFolderIds.some(id => fidStr === id || fidStr.endsWith(`.${id}`));
+                    });
+                    const crScaleDash = game.settings.get(MODULE_ID, "menagerieDiceMode") !== "raw";
                     for (const entry of entries) {
                         const size = entry.system?.traits?.size || "med";
                         const slotCost = BastionManager._getMenagerieSlotCost(size);
                         const cost = BastionManager._getMenagerieCost(entry.name, entry.system?.details?.cr);
                         const slotLabel = slotCost === 1 ? "1 slot" : "¼ slot";
+                        const rawCr = entry.system?.details?.cr;
+                        let crNum = 0;
+                        if (typeof rawCr === "string") {
+                            if (rawCr === "1/8") crNum = 0.125;
+                            else if (rawCr === "1/4") crNum = 0.25;
+                            else if (rawCr === "1/2") crNum = 0.5;
+                            else crNum = parseFloat(rawCr) || 0;
+                        } else crNum = Number(rawCr) || 0;
+                        const crLabel = rawCr != null ? ` CR ${rawCr}` : "";
+                        const dieLabel = crScaleDash ? ` · ${BastionManager._getMenagerieDie(crNum)}` : "";
                         menagerieItemOptions.push({
                             value: entry.name, cost, slotCost, size,
-                            label: `${entry.name} (${cost} GP · ${slotLabel})`,
+                            label: `${entry.name} (${cost} GP · ${slotLabel}${crLabel}${dieLabel})`,
                             selected: entry.name === menagerieItemChoice,
                         });
                     }
@@ -1625,7 +1758,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const hue = colorSeed % 360;
             const facColor = `hsl(${hue}, 60%, 40%)`;
 
-            const constructionLabel = facSize ? "Enlarging" : "Building";
+            const constructionLabel = isBuilding ? "Building" : "Enlarging";
 
             const changeTypeOptions = (isGardenChangingType && !isBuilding) ? dynamicGardenTypes.map(f => ({
                 value: f.name, 
@@ -1646,6 +1779,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 isOrderChanging: isOrderChanging,
                 isSelectionDisabled: isSelectionDisabled,
                 isLibraryResearching: isLibraryResearching,
+                isPubResearching: isPubResearching,
+                isTrophyResearching: isTrophyResearching,
+                isArchiveResearching: isArchiveResearching,
                 isArchive: isArchive,
                 archiveBooks: archiveBooks,
                 archiveBooksList: archiveBooksList,
@@ -1780,6 +1916,19 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 isTeleportationCircle,
                 isTheater,
                 isMeditationChamber,
+                isObservatory,
+                observatoryCharmActive,
+                isReliquaryFac,
+                reliquaryCharmActive,
+                reliquaryTalismanActive,
+                isPub,
+                pubSlotCount,
+                pubSpecials,
+                pubSpecialsGrantedTo,
+                pubSpecialOptions,
+                isBarrack,
+                barrackDefenderCount,
+                barrackMaxDefenders,
                 theaterPhase,
                 theaterProgress,
                 theaterProgressPct,
@@ -2538,6 +2687,42 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             });
         });
 
+        // Pub Grant buttons
+        this.element.querySelectorAll('.pub-grant-btn').forEach(btn => {
+            btn.addEventListener('click', async (ev) => {
+                ev.stopPropagation();
+                const ds = ev.currentTarget.dataset;
+                await BastionManager.onPourPubDrink.call(this, this.actor, ds.itemId, ds.isFlag === "true", parseInt(ds.slotIndex ?? 0));
+            });
+        });
+
+        // Pub Special tap selectors
+        this.element.querySelectorAll('.pub-special-select').forEach(select => {
+            select.addEventListener('change', async (ev) => {
+                const ds = ev.target.dataset;
+                const slotIndex = parseInt(ds.slotIndex ?? 0);
+                const newValue = ev.target.value;
+                if (ds.isFlag === "true") {
+                    const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+                    const fac = gf.find(f => f._id === ds.itemId);
+                    if (fac) {
+                        const specials = [...(fac.flags?.[MODULE_ID]?.pubSpecials || [])];
+                        specials[slotIndex] = newValue;
+                        foundry.utils.setProperty(fac, `flags.${MODULE_ID}.pubSpecials`, specials);
+                        await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+                    }
+                } else {
+                    const item = this.actor.items.get(ds.itemId);
+                    if (item) {
+                        const specials = [...(item.getFlag(MODULE_ID, "pubSpecials") || [])];
+                        specials[slotIndex] = newValue;
+                        await item.setFlag(MODULE_ID, "pubSpecials", specials);
+                    }
+                }
+                this.render();
+            });
+        });
+
         this.element.querySelectorAll('.laboratory-poison-select').forEach(select => {
             select.addEventListener('change', async (ev) => {
                 const ds = ev.target.dataset;
@@ -3036,6 +3221,187 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
         ui.notifications.info(`${actor.name} has finished a week of meditation and gained inner focus: ${saveNames.join(" and ")}.`);
         this.render();
+    }
+
+    /**
+     * Observatory: Grant the Observatory Charm when the character finishes a Long Rest in their Bastion.
+     * The charm is automatically removed at the start of the next Bastion Turn advance.
+     */
+    static async onGrantObservatoryCharm(event, target) {
+        const actor = this.actor;
+
+        const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+        if (!outPack) return ui.notifications.error("Observatory error: Output compendium missing.");
+
+        // Find the "Observatory Charm" subfolder by name under the Observatory root
+        const charmFolder = outPack.folders.find(f => {
+            const pid = f.parentId || f.folder?.id || f.folder;
+            return pid === OBSERVATORY_ROOT_FOLDER_ID && f.name.toLowerCase().includes("observatory charm");
+        });
+        if (!charmFolder) return ui.notifications.error("Observatory: 'Observatory Charm' subfolder not found in compendium.");
+
+        const index = await outPack.getIndex({ fields: ["folder"] });
+        const charmEntries = index.filter(i => (i.folder?.id || i.folder) === charmFolder.id);
+        if (charmEntries.length === 0) return ui.notifications.error("Observatory: No items found in the Observatory Charm folder.");
+
+        // Remove any existing Observatory Charm items first (idempotent grant).
+        // Search by tracked ID AND by name — the DMG states a character can't benefit from
+        // multiple instances of the same Charm simultaneously.
+        const existingIds   = actor.getFlag(MODULE_ID, "activeObservatoryCharmIds") || [];
+        const charmNameList = charmEntries.map(e => e.name);
+        const toDeleteByFlag = actor.items.filter(i => existingIds.includes(i.id)).map(i => i.id);
+        const toDeleteByName = actor.items.filter(i => charmNameList.includes(i.name) && !existingIds.includes(i.id)).map(i => i.id);
+        const allToDeleteFirst = [...new Set([...toDeleteByFlag, ...toDeleteByName])];
+        if (allToDeleteFirst.length > 0) await actor.deleteEmbeddedDocuments("Item", allToDeleteFirst);
+
+        const toCreate = [];
+        for (const entry of charmEntries) {
+            const doc = await outPack.getDocument(entry._id);
+            if (doc) {
+                const data = doc.toObject();
+                // Stamp the item so _resolveOrders can find it reliably at turn advance.
+                foundry.utils.setProperty(data, `flags.${MODULE_ID}.isBastionCharm`, true);
+                toCreate.push(data);
+            }
+        }
+
+        const created = await actor.createEmbeddedDocuments("Item", toCreate);
+        await actor.setFlag(MODULE_ID, "activeObservatoryCharmIds",   created.map(i => i.id));
+        await actor.setFlag(MODULE_ID, "activeObservatoryCharmNames", created.map(i => i.name));
+
+        ui.notifications.info(`${actor.name} has gained the Observatory Charm from their Long Rest in the Bastion.`);
+        this.render();
+    }
+
+    /**
+     * Reliquary: Grant the Reliquary Charm after an Empower order (manual button, mirrors the turn-advance path).
+     * The charm is automatically removed when the next Bastion Turn advances (isBastionCharm cleanup).
+     */
+    static async onGrantReliquaryCharm(event, target) {
+        const actor = this.actor;
+        const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+        if (!outPack) return ui.notifications.error("Reliquary error: Output compendium missing.");
+
+        const charmSubfolder = outPack.folders.find(f => {
+            const pid = f.parentId || f.folder?.id || f.folder;
+            return pid === RELIQUARY_ROOT_ID && f.name.toLowerCase().includes("charm");
+        });
+        if (!charmSubfolder) return ui.notifications.error("Reliquary: 'Charm' subfolder not found in compendium.");
+
+        const index = await outPack.getIndex({ fields: ["folder"] });
+        const charmEntries = index.filter(i => (i.folder?.id || i.folder) === charmSubfolder.id);
+        if (charmEntries.length === 0) return ui.notifications.error("Reliquary: No items in the Reliquary Charm folder.");
+
+        // Remove existing Reliquary Charm items first
+        const existingIds = actor.getFlag(MODULE_ID, "activeReliquaryCharmIds") || [];
+        const charmNames = charmEntries.map(e => e.name);
+        const toDelete = actor.items
+            .filter(i => existingIds.includes(i.id) || charmNames.includes(i.name))
+            .map(i => i.id);
+        if (toDelete.length > 0) await actor.deleteEmbeddedDocuments("Item", toDelete);
+
+        const toCreate = [];
+        for (const entry of charmEntries) {
+            const doc = await outPack.getDocument(entry._id);
+            if (doc) {
+                const data = doc.toObject();
+                foundry.utils.setProperty(data, `flags.${MODULE_ID}.isBastionCharm`, true);
+                toCreate.push(data);
+            }
+        }
+        const created = await actor.createEmbeddedDocuments("Item", toCreate);
+        await actor.setFlag(MODULE_ID, "activeReliquaryCharmIds",   created.map(i => i.id));
+        await actor.setFlag(MODULE_ID, "activeReliquaryCharmNames", created.map(i => i.name));
+
+        ui.notifications.info(`${actor.name} has gained the Reliquary Charm from the sacred rites.`);
+        this.render?.();
+    }
+
+    /**
+     * Pub: Pour a pint — grant the selected Pub Special to a chosen character and lock the tap.
+     */
+    static async onPourPubDrink(actor, itemId, isFlag, slotIndex) {
+        const getFacFlag = (key) => {
+            if (isFlag) {
+                const gf = actor.getFlag(MODULE_ID, "groupFacilities") || [];
+                const f = gf.find(f => f._id === itemId);
+                return f?.flags?.[MODULE_ID]?.[key];
+            }
+            return actor.items.get(itemId)?.getFlag(MODULE_ID, key);
+        };
+
+        const pubSpecials = getFacFlag("pubSpecials") || [];
+        const selectedName = pubSpecials[slotIndex];
+        if (!selectedName) return ui.notifications.warn("No Pub Special selected for this tap.");
+
+        // Build recipient selector
+        const recipients = game.actors.filter(a =>
+            (a.type === "character" || a.type === "npc") && (a.hasPlayerOwner || a.id === actor.id)
+        );
+        const recipOpts = recipients.map(a =>
+            `<option value="${a.id}"${a.id === actor.id ? " selected" : ""}>${a.name}</option>`
+        ).join("");
+
+        const recipientId = await foundry.applications.api.DialogV2.prompt({
+            window: { title: `Pour: ${selectedName}`, icon: "fa-solid fa-beer-mug-empty" },
+            content: `<div class="form-group"><label>Pour for:</label><select name="r" style="width:100%;">${recipOpts}</select></div>`,
+            ok: { label: "Pour a Pint!", callback: (e, b) => b.form.elements.r.value },
+            rejectClose: false
+        });
+        if (!recipientId) return;
+
+        const recipActor = game.actors.get(recipientId);
+        if (!recipActor) return;
+
+        // Look up the item in the Pub Specials compendium subfolder
+        const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+        if (!outPack) return ui.notifications.error("Output compendium not found.");
+        const pubSubfolder = outPack.folders.find(f => {
+            const pid = f.parentId || f.folder?.id || f.folder;
+            return pid === PUB_ROOT_ID && f.name.toLowerCase().includes("special");
+        });
+        if (!pubSubfolder) return ui.notifications.error("Pub Specials subfolder not found in compendium.");
+
+        const idx = await outPack.getIndex({ fields: ["folder", "name"] });
+        const entry = idx.find(i =>
+            (i.folder?.id || i.folder) === pubSubfolder.id && i.name === selectedName
+        );
+        if (!entry) return ui.notifications.error(`"${selectedName}" not found in Pub Specials compendium.`);
+
+        const itemDoc = await outPack.getDocument(entry._id);
+        if (!itemDoc) return;
+
+        // Check if recipient already has this item — if so, increment quantity instead of creating
+        const existingItem = recipActor.items.find(i => i.name === selectedName && i.type !== "facility");
+        let grantedId;
+        if (existingItem) {
+            const currentQty = existingItem.system?.quantity ?? 1;
+            await existingItem.update({ "system.quantity": currentQty + 1 });
+            grantedId = existingItem.id;
+        } else {
+            const created = await recipActor.createEmbeddedDocuments("Item", [itemDoc.toObject()]);
+            grantedId = created[0]?.id;
+        }
+
+        // Mark this tap as served
+        const newServed = [...(getFacFlag("pubSpecialsGrantedTo") || [])];
+        newServed[slotIndex] = { actorId: recipActor.id, actorName: recipActor.name, itemId: grantedId };
+
+        if (isFlag) {
+            const gf = actor.getFlag(MODULE_ID, "groupFacilities") || [];
+            const fac = gf.find(f => f._id === itemId);
+            if (fac) {
+                fac.flags ??= {};
+                fac.flags[MODULE_ID] ??= {};
+                fac.flags[MODULE_ID].pubSpecialsGrantedTo = newServed;
+                await actor.setFlag(MODULE_ID, "groupFacilities", gf);
+            }
+        } else {
+            await actor.items.get(itemId)?.setFlag(MODULE_ID, "pubSpecialsGrantedTo", newServed);
+        }
+
+        ui.notifications.info(`Poured "${selectedName}" for ${recipActor.name}!`);
+        this.render?.();
     }
 
     static async onPromoteToActive(event, target) {
@@ -4443,7 +4809,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 }
             }
 
-            this.render();
+            this.render?.();
         }
     }
 
@@ -5164,7 +5530,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         let hasSmithy = allFacilities.some(fac => fac.doc.name.includes("Smithy"));
         let actorLevel = (actor.type === "character" || actor.type === "npc") ? (actor.system.details?.level || 1) : 1;
 
-        const resolution = await BastionManager._resolveOrders(actor, myFacilities, turnsToAdvance, globalDefenders, hasSmithy, actorLevel);
+        // Collect all interactive inputs upfront so they show in ONE dialog instead of sequentially.
+        const preflightAnswers = await BastionManager._gatherPreflightInputs(actor, myFacilities, turnsToAdvance);
+
+        const resolution = await BastionManager._resolveOrders(actor, myFacilities, turnsToAdvance, globalDefenders, hasSmithy, actorLevel, preflightAnswers);
         if (rolledEvents) resolution.rolledEvents = rolledEvents;
 
         // --- NEGLECT LOGIC ---
@@ -5217,6 +5586,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         // 3. Finalize Actor state (GP, Neglect, Group Facilities)
         await actor.update(actorUpdate, { diff: true, recursive: true, bastionManagerSource: true });
         await BastionManager._processInventory(actor, resolution.items);
+
+        // 4. Track Reliquary Talisman IDs after inventory is settled
+        for (const talismanName of (resolution.pendingTalismanNames || [])) {
+            const talismanItem = actor.items.find(i => i.name === talismanName && i.getFlag(MODULE_ID, "isReliquaryTalisman"));
+            if (talismanItem) await actor.setFlag(MODULE_ID, "activeReliquaryTalismanId", talismanItem.id);
+        }
 
         return await BastionManager._buildReport(actor, turnsToAdvance, resolution.effectivelyAllMaintaining, resolution);
     }
@@ -5379,7 +5754,166 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     // --- HELPER: ORDER RESOLUTION ---
-    static async _resolveOrders(actor, facilities, turns, defenders, hasSmithy, level) {
+    /**
+     * Pre-scan all facilities for this turn to determine which ones need interactive input.
+     * Rolls dice that determine whether a prompt is needed (e.g., Observatory d6) so they
+     * are only rolled once, then presents ALL required inputs in a single consolidated dialog.
+     * Returns a map of { facId → answers } consumed by _resolveOrders handlers.
+     */
+    static async _gatherPreflightInputs(actor, facilities, turns = 1) {
+        const recruitMode = game.settings.get(MODULE_ID, "recruitMode");
+        const nameHirelings = game.settings.get(MODULE_ID, "nameHirelings");
+        const answers = {};
+        const sections = [];
+
+        for (const facEntry of facilities) {
+            const facDoc = facEntry.doc;
+            const facId = facEntry.isFlag ? facDoc._id : facDoc.id;
+            const facName = facEntry.name || facDoc.name || "";
+            const isBasic = facDoc.system?.type?.value === "basic";
+            if (isBasic) continue;
+
+            const getFacFlag = (key) => facEntry.isFlag ? (facDoc.flags?.[MODULE_ID]?.[key]) : (facDoc.getFlag(MODULE_ID, key));
+            const order = getFacFlag("order") || "Maintain";
+
+            // --- Barrack Recruit ---
+            const isRecruitingBarrack = order === "Recruit" &&
+                !facName.includes("Teleportation Circle") && !facName.includes("Menagerie") &&
+                !facName.includes("Guildhall") && !facName.includes("War Room");
+
+            if (isRecruitingBarrack) {
+                const facSize = getFacFlag("size") || "Roomy";
+                const defCount = (getFacFlag("defenders") || {}).count || 0;
+                const maxDefs = facSize === "Vast" ? 25 : facSize === "Cramped" ? 6 : 12;
+                const promptNames = getFacFlag("promptNames") ?? true;
+
+                if (recruitMode === "manual") {
+                    sections.push({ type: "barrack-manual", facId, facName, maxDefs, defCount, turns });
+                } else {
+                    let recruited;
+                    if (recruitMode === "max") {
+                        recruited = Math.min(4 * turns, maxDefs - defCount);
+                    } else {
+                        let rolledTotal = 0;
+                        for (let t = 0; t < turns; t++) {
+                            const roll = await new Roll("1d4").evaluate();
+                            rolledTotal += roll.total;
+                        }
+                        recruited = Math.min(rolledTotal, maxDefs - defCount);
+                    }
+                    answers[facId] = { recruited };
+                    if (nameHirelings && promptNames && recruited > 0) {
+                        sections.push({ type: "barrack-names", facId, facName, count: recruited, turns });
+                    }
+                }
+            }
+
+            // --- Observatory Empower ---
+            else if (order === "Empower" && facName.includes("Observatory")) {
+                const roll = await new Roll("1d6").evaluate();
+                await roll.toMessage({ flavor: "<b>Observatory:</b> Surveying the eldritch mysteries of the stars…", rollMode: "publicroll" });
+                answers[facId] = { rollTotal: roll.total };
+
+                if (roll.total % 2 !== 0) { // odd = success
+                    const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+                    const empowerFolder = outPack?.folders.find(f => {
+                        const pid = f.parentId || f.folder?.id || f.folder;
+                        return pid === OBSERVATORY_ROOT_FOLDER_ID && f.name.toLowerCase().includes("eldritch");
+                    });
+                    if (empowerFolder) {
+                        const idx = await outPack.getIndex({ fields: ["folder"] });
+                        const charms = idx.filter(i => (i.folder?.id || i.folder) === empowerFolder.id);
+                        const recipientActors = game.actors.filter(a =>
+                            (a.type === "character" || a.type === "npc") && (a.hasPlayerOwner || a.id === actor.id)
+                        );
+                        if (charms.length > 0) {
+                            sections.push({ type: "observatory", facId, facName, charms, recipientActors, rollTotal: roll.total });
+                        }
+                    }
+                }
+            }
+
+            // --- Pub Research ---
+            // Pub Research target is now pre-entered in the facility panel (libraryTopic flag).
+            // No preflight section needed for this.
+        }
+
+        if (sections.length === 0) return answers;
+
+        // Build consolidated dialog
+        let html = `<p style="opacity:0.75; font-size:0.9em; margin-bottom:10px;"><i class="fa-solid fa-chess-rook"></i> Your hirelings report for this Bastion turn — please review:</p>`;
+        for (const sec of sections) {
+            html += `<fieldset style="margin-bottom:10px; border:1px solid rgba(201,162,39,0.35); border-radius:4px; padding:8px; background:rgba(0,0,0,0.06);">`;
+            html += `<legend style="font-weight:bold; font-size:0.95em; padding:0 4px;"><i class="fa-solid fa-chess-rook" style="opacity:0.6;"></i> ${sec.facName}</legend>`;
+
+            if (sec.type === "barrack-names") {
+                const turnSuffix = (sec.turns || 1) > 1 ? ` across <b>${sec.turns} turns</b>` : ``;
+                html += `<p style="font-size:0.9em; margin:0 0 5px 0;">Recruited <b>${sec.count}</b> defender(s)${turnSuffix}. Give them names (leave blank to auto-generate):</p>`;
+                for (let d = 0; d < sec.count; d++) {
+                    html += `<div class="form-group" style="display:flex;gap:6px;align-items:center;margin-bottom:3px;">`;
+                    html += `<label style="white-space:nowrap;font-size:0.9em;min-width:80px;">Defender ${d + 1}:</label>`;
+                    html += `<input type="text" name="${sec.facId}_name_${d}" placeholder="Auto-generate if blank" style="flex:1;">`;
+                    html += `</div>`;
+                }
+            } else if (sec.type === "barrack-manual") {
+                const maxCount = Math.min(4 * (sec.turns || 1), sec.maxDefs - sec.defCount);
+                const turnLabel = (sec.turns || 1) > 1 ? ` across ${sec.turns} turns` : ` this turn`;
+                html += `<div class="form-group" style="display:flex;gap:6px;align-items:center;">`;
+                html += `<label style="flex:1; font-size:0.9em;">Defenders recruited${turnLabel} (0–${maxCount}):</label>`;
+                html += `<input type="number" name="${sec.facId}_manual_count" value="0" min="0" max="${maxCount}" style="width:60px;text-align:center;">`;
+                html += `</div>`;
+            } else if (sec.type === "observatory") {
+                const charmOpts = sec.charms.map(c => `<option value="${c._id}">${c.name}</option>`).join("");
+                const recipOpts = sec.recipientActors.map(a =>
+                    `<option value="${a.id}"${a.id === actor.id ? " selected" : ""}>${a.name}</option>`
+                ).join("");
+                html += `<p style="font-size:0.9em; margin:0 0 5px 0;"><i class="fa-solid fa-star" style="color:#c9a227;"></i> Rolled <b>${sec.rollTotal}</b> — the stars are aligned! Choose a charm to bestow.</p>`;
+                html += `<div class="form-group" style="margin-bottom:4px;"><label>Recipient:</label><select name="${sec.facId}_recipientId" style="width:100%;">${recipOpts}</select></div>`;
+                html += `<div class="form-group"><label>Charm:</label><select name="${sec.facId}_charmId" style="width:100%;">${charmOpts}</select></div>`;
+            } else if (sec.type === "pub-research") {
+                html += `<p style="font-size:0.9em; margin:0 0 5px 0;">Your spy network is active. Name a creature familiar to you within 50 miles to find (optional):</p>`;
+                html += `<div class="form-group"><input type="text" name="${sec.facId}_pubTarget" placeholder="e.g. Zevlor the Tiefling (leave blank for general rumours)" style="width:100%;"></div>`;
+            }
+            html += `</fieldset>`;
+        }
+
+        const formData = await foundry.applications.api.DialogV2.prompt({
+            window: { title: "Bastion Turn: Hireling Reports", icon: "fa-solid fa-chess-rook" },
+            content: `<div style="max-height:65vh; overflow-y:auto; padding-right:6px;">${html}</div>`,
+            ok: { label: "Proceed", callback: (event, button) => new foundry.applications.ux.FormDataExtended(button.form).object },
+            rejectClose: false
+        });
+
+        // If dialog cancelled, keep prerolled answers (prevents re-rolling Observatory d6)
+        // and handlers fall back to individual dialogs only for non-prerolled data.
+        if (formData) {
+            for (const sec of sections) {
+                if (sec.type === "barrack-names") {
+                    const names = [];
+                    for (let d = 0; d < sec.count; d++) {
+                        names.push((formData[`${sec.facId}_name_${d}`] || "").trim());
+                    }
+                    answers[sec.facId] = { ...(answers[sec.facId] || {}), names };
+                } else if (sec.type === "barrack-manual") {
+                    const count = parseInt(formData[`${sec.facId}_manual_count`]) || 0;
+                    // For manual mode we still need to ask for names if nameHirelings is on.
+                    // Store manualCount; the handler will prompt names if needed (no recursive dialog).
+                    answers[sec.facId] = { manualCount: count };
+                } else if (sec.type === "observatory") {
+                    answers[sec.facId] = {
+                        ...(answers[sec.facId] || {}),
+                        charmId:     formData[`${sec.facId}_charmId`],
+                        recipientId: formData[`${sec.facId}_recipientId`],
+                    };
+                } else if (sec.type === "pub-research") {
+                    answers[sec.facId] = { pubTarget: (formData[`${sec.facId}_pubTarget`] || "").trim() };
+                }
+            }
+        }
+        return answers;
+    }
+
+    static async _resolveOrders(actor, facilities, turns, defenders, hasSmithy, level, preflightAnswers = {}) {
         let orderSummary = "";
         let constructionSummary = "";
         let totalGold = 0;
@@ -5421,6 +5955,47 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             await actor.unsetFlag(MODULE_ID, "fortifiedSaves");
         }
 
+        // --- 7-Day Bastion Charm Cleanup ---
+        // Primary: find items stamped with the isBastionCharm flag at creation time.
+        // This is robust in v13 because it uses item.getFlag() rather than trying to
+        // enumerate actor-level flag keys (which is unreliable when flags is a Proxy).
+        const bastionCharmItems = actor.items.filter(i => i.getFlag(MODULE_ID, "isBastionCharm"));
+        // Secondary fallback: also look up any active*CharmNames flags for charms that were
+        // created before the isBastionCharm marker was introduced.
+        const legacyCharmNames = [
+            ...(actor.getFlag(MODULE_ID, "activeObservatoryCharmNames")        || []),
+            ...(actor.getFlag(MODULE_ID, "activeObservatoryEldritchCharmNames") || []),
+        ];
+        const markedIds = new Set(bastionCharmItems.map(i => i.id));
+        const legacyItems = legacyCharmNames.length > 0
+            ? actor.items.filter(i => legacyCharmNames.includes(i.name) && !markedIds.has(i.id))
+            : [];
+        const allCharmItemsToRemove = [...bastionCharmItems, ...legacyItems];
+        if (allCharmItemsToRemove.length > 0) {
+            await actor.deleteEmbeddedDocuments("Item", allCharmItemsToRemove.map(i => i.id));
+            orderSummary += `<li style="margin-bottom: 6px; padding: 4px; background: rgba(255,215,0,0.08); border-radius: 3px;"><i class="fa-solid fa-star"></i> <b>Bastion Charms:</b> Your bastion's temporary charms have faded with the turning of the heavens.</li>`;
+        }
+        // Always clean up all known charm flags regardless of whether items were found.
+        for (const key of [
+            "activeObservatoryCharmIds", "activeObservatoryCharmNames",
+            "activeObservatoryEldritchCharmIds", "activeObservatoryEldritchCharmNames",
+            "activeReliquaryCharmIds", "activeReliquaryCharmNames",
+        ]) await actor.unsetFlag(MODULE_ID, key);
+
+        // Reliquary Talisman persists across turns (permanent until the setting caps it or player removes it).
+        // We do NOT clean up activeReliquaryTalismanId here — it is permanent until overwritten.
+
+        // --- Pub: Reset served drinks at start of new turn ---
+        // Clear pubSpecialsGrantedTo for all Pub facilities so taps are unlocked each turn.
+        for (const facEntry of facilities) {
+            if (!(facEntry.name || facEntry.doc?.name || "").includes("Pub")) continue;
+            if (facEntry.isFlag) {
+                foundry.utils.setProperty(facEntry.doc, `flags.${MODULE_ID}.pubSpecialsGrantedTo`, []);
+            } else {
+                itemUpdates.push({ _id: facEntry.doc.id, [`flags.${MODULE_ID}.pubSpecialsGrantedTo`]: [] });
+            }
+        }
+
         // Handle Defensive Wall Progress
 
         let wallDays = actor.getFlag(MODULE_ID, "pendingWallDays") || 0;
@@ -5449,9 +6024,20 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             }
         }
 
+        // Armory-relevant defenders: exclude Menagerie creature-defenders when menagerieArmoryBonus is off
+        const menagerieArmoryBonusOrders = game.settings.get(MODULE_ID, "menagerieArmoryBonus");
+        const armoryTargetDefenders = menagerieArmoryBonusOrders ? defenders :
+            facilities.reduce((sum, fac) => {
+                if ((fac.name || "").toLowerCase().includes("menagerie")) return sum;
+                const d = fac.isFlag ? fac.doc.flags?.[MODULE_ID]?.defenders : fac.doc.getFlag(MODULE_ID, "defenders");
+                return sum + (d?.count || 0);
+            }, 0);
+
         for (const facEntry of facilities) {
             const facDoc = facEntry.doc;
             const facName = facEntry.name || facDoc.name || "";
+            const facId = facEntry.isFlag ? facDoc._id : facDoc.id;
+            const facPreflight = preflightAnswers[facId] || null;
 
             // Unified flag reader to ensure reactive data access
             const getFacFlag = (key) => facEntry.isFlag ? (facDoc.flags?.[MODULE_ID]?.[key]) : (facDoc.getFlag(MODULE_ID, key));
@@ -5466,6 +6052,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             const isBasic = facDoc.system?.type?.value === "basic";
             let order = isBasic ? "Maintain" : (getFacFlag("order") || "Maintain");
+            // Normalize any "Order: Sub-type" label variant to its base order (e.g. "Harvest: Talisman" → "Harvest", "Research: Rumours" → "Research")
+            if (order.includes(": ")) order = order.split(": ")[0].trim();
             let subType = getFacFlag("subType");
             let progress = Number(getFacFlag("progress") || 0);
             let craftChoice = getFacFlag("craftChoice");
@@ -5489,6 +6077,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const isGreenhouse = facName.includes("Greenhouse");
             const isLaboratory = facName.includes("Laboratory");
             const isReliquary = facName.includes("Reliquary");
+            if (order === "Craft" && isReliquary) order = "Harvest"; // Correct stale Craft order for Reliquary
 
             // Narrative Hireling Context
             const hNames = getFacFlag("hirelings") || [];
@@ -5538,7 +6127,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             // Armory: Auto-maintain if already fully stocked at turn start
             let armoryAutoMaintained = false;
-            if (facName.includes("Armory") && order === "Trade" && isStocked && currentStockedCount >= defenders) {
+            if (facName.includes("Armory") && order === "Trade" && isStocked && currentStockedCount >= armoryTargetDefenders) {
                 order = "Maintain";
                 armoryAutoMaintained = true;
             }
@@ -5622,7 +6211,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
                 if (order === "Maintain") {
                     if (armoryAutoMaintained) {
-                        currentResultText = `${getH()} notes the Armory is already fully stocked for your ${defenders} defenders.`;
+                        currentResultText = `${getH()} notes the Armory is already fully stocked for your ${armoryTargetDefenders} defenders.`;
                     } else if (!currentResultText) currentResultText = insufficientReason ? `Maintained operations (${insufficientReason}).` : "Maintained standard operations.";
                 } else if (order === "Trade") {
                     if (facDoc.name.includes("Storehouse")) {
@@ -5667,9 +6256,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         // Persist the stored GP back to the local variable for the batch update
                         facEntry.storedGp = storedGp; 
                     } else if (facDoc.name.includes("Armory")) {
-                        if (!isStocked || currentStockedCount < defenders) {
+                        if (!isStocked || currentStockedCount < armoryTargetDefenders) {
                             // Cost is 100 base (if empty) + 100 per new defender needed
-                            const gap = Math.max(0, defenders - currentStockedCount);
+                            const gap = Math.max(0, armoryTargetDefenders - currentStockedCount);
                             let cost = (!isStocked ? 100 : 0) + (gap * 100);
                             if (hasSmithy) cost = Math.floor(cost / 2);
                             const currentActorGP = Number(actor.system.currency?.gp || 0) || 0;
@@ -5679,8 +6268,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                                 localGold -= cost;
                                 isStocked = true;
                                 facEntry.isStocked = true;
-                                facEntry.stockedCount = defenders;
-                                currentResultText = `${getH()} has finished stocking superior equipment for your ${defenders} defenders. Defense rolls will now use <b>d8s</b>.`;
+                                facEntry.stockedCount = armoryTargetDefenders;
+                                currentResultText = `${getH()} has finished stocking superior equipment for your ${armoryTargetDefenders} defenders. Defense rolls will now use <b>d8s</b>.`;
                                 order = "Maintain";
                             }
                         }
@@ -5753,17 +6342,18 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         order = "Craft"; i--; // Re-inject into craft logic loop
                         continue;
                     } else {
-                        let harvestRes = await BastionManager._handleHarvest(facDoc.name, subType, facEntry, false, getH());
+                        let harvestRes = await BastionManager._handleHarvest(facDoc.name, subType, facEntry, false, getH(), actor);
                         if (harvestRes.item) items.push(harvestRes.item);
+                        if (harvestRes.isTalisman) facEntry._pendingTalismanName = harvestRes.talismanDoc?.name;
                         currentResultText = harvestRes.text;
                         if (facDoc.name.includes("Garden") && facSize === "Vast" && facSubType2) {
-                            let harvestRes2 = await BastionManager._handleHarvest(facDoc.name, facSubType2, facEntry, true, getH());
+                            let harvestRes2 = await BastionManager._handleHarvest(facDoc.name, facSubType2, facEntry, true, getH(), actor);
                             if (harvestRes2.item) items.push(harvestRes2.item);
                             currentResultText += ` and ${harvestRes2.text}`;
                         }
                     }
                 } else if (order === "Research") {
-                    let resRes = await BastionManager._handleResearch(facDoc.name, facEntry, subType, getH());
+                    let resRes = await BastionManager._handleResearch(facDoc.name, facEntry, subType, getH(), facPreflight);
                     currentResultText = resRes.text;
                     if (resRes.item) items.push(resRes.item);
                 } else if (order === "Craft" || order === "Progress Queue" || order === "Continue Project") {
@@ -5828,6 +6418,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     if (!projectLabel || projectLabel === "Blank Book") projectLabel = craftChoice;
 
                     let projectTier = "";
+                    const isMagicItem = ["Magic Item (Arcana)", "Magic Item (Armament)", "Magic Item (Implement)", "Magic Item (Relic)", "Spell Scroll"].includes(craftChoice);
                     const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
 
                     if (outPack) {
@@ -5835,7 +6426,6 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         const entry = index.find(e => e.name.toLowerCase() === projectLabel?.toLowerCase());
                         
                         if (entry) {
-                            const isMagicItem = ["Magic Item (Arcana)", "Magic Item (Armament)", "Magic Item (Implement)", "Magic Item (Relic)", "Spell Scroll"].includes(craftChoice);
                             const isScroll = entry.name.toLowerCase().includes("spell scroll");
                             
                             let days;
@@ -5891,9 +6481,66 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                                 turnsNeeded = calculationMode === "days" ? days : Math.max(1, Math.ceil(days / daysPerTurn));
                             }
                         }
+                    } else if (isLaboratory) {
+                        const choice = craftChoice === "Poison" ? laboratoryPoisonChoice : laboratoryAlchemistChoice;
+                        const isLabPoison = craftChoice === "Poison";
+
+                        if (isLabPoison) {
+                            turnsNeeded = calculationMode === "days" ? BastionManager._getEffectiveDays(7) : 1;
+                        }
+
+                        if (outPack) {
+                            const index = await outPack.getIndex({fields: ["system.price"]});
+                            const entry = index.find(e => e.name.toLowerCase() === choice.toLowerCase());
+                            let p = entry?.system?.price?.value ?? entry?.system?.price ?? 0;
+                            if (typeof p === "string") p = parseFloat(p.replace(/[^0-9.]/g, ""));
+                            const price = Number(p || 0);
+                            materialCost = Math.floor(price / 2);
+                            if (!isLabPoison) {
+                                const days = Math.max(1, Math.ceil(price / 10));
+                                turnsNeeded = calculationMode === "days" ? days : Math.max(1, Math.ceil(days / daysPerTurn));
+                            }
+                        }
                     } else if (isReliquary && order === "Harvest") {
                         materialCost = 0;
                         turnsNeeded = calculationMode === "days" ? BastionManager._getEffectiveDays(7) : 1;
+                    }
+
+                    // Check for required base item (weapon/armor) per crafting magic items rules.
+                    let baseItemCost = 0;
+                    let baseItemName = null;
+                    let baseItemProvidedNote = "";
+
+                    if (isMagicItem && progress === 0 && outPack) {
+                        const baseIndex = await outPack.getIndex({ fields: ["folder", "system.price"] });
+                        const baseItems = baseIndex.filter(i => (i.folder?.id || i.folder) === BASE_ITEMS_FOLDER_ID);
+                        // Find the longest base item name that appears in the magic item name
+                        const matchedBase = baseItems
+                            .filter(b => projectLabel?.toLowerCase().includes(b.name.toLowerCase()))
+                            .sort((a, b) => b.name.length - a.name.length)[0];
+
+                        if (matchedBase) {
+                            baseItemName = matchedBase.name;
+                            let bp = matchedBase.system?.price?.value ?? matchedBase.system?.price ?? 0;
+                            if (typeof bp === "string") bp = parseFloat(bp.replace(/[^0-9.]/g, "")) || 0;
+                            const basePrice = Number(bp || 0);
+
+                            // Check actor inventory for the base item
+                            const actorBaseItem = actor.items.find(i =>
+                                i.name.toLowerCase() === baseItemName.toLowerCase() && i.type !== "facility"
+                            );
+
+                            if (actorBaseItem) {
+                                // Consume one from inventory
+                                const qty = actorBaseItem.system?.quantity ?? 1;
+                                if (qty > 1) await actorBaseItem.update({ "system.quantity": qty - 1 });
+                                else await actorBaseItem.delete();
+                                baseItemProvidedNote = ` <em style="color:#2e7d32;">(Base item provided: 1x <b>${baseItemName}</b> consumed from inventory.)</em>`;
+                            } else {
+                                baseItemCost = basePrice;
+                                baseItemProvidedNote = ` <em style="color:#a32a22;">(Base item cost: <b>${basePrice} GP</b> for ${baseItemName}.)</em>`;
+                            }
+                        }
                     }
 
                     // 2. Initial Turn: Check and Deduct Gold
@@ -5910,11 +6557,13 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         }
 
                         const currentGP = actor.system.currency?.gp || 0;
-                        if ((currentGP + totalGold + localGold) < materialCost) {
+                        if ((currentGP + totalGold + localGold) < materialCost + baseItemCost) {
                             currentResultText = `${getH()} had to pause work on <b>${projectLabel}</b> due to lack of funds for materials.`;
                             break;
                         }
                         localGold -= materialCost;
+                        if (baseItemCost > 0) localGold -= baseItemCost;
+                        if (baseItemProvidedNote) currentResultText = (currentResultText || "") + baseItemProvidedNote;
                     }
 
                     // 3. Advance Progress
@@ -5978,6 +6627,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                                     cost = BastionManager._getMenagerieCost(mEntry.name, mEntry.system?.details?.cr);
                                 }
                             }
+                            const currentActorGP = Number(actor.system.currency?.gp || 0) || 0;
                             let creatures = Array.from(getFacFlag("menagerieCreatures") || []);
                             const usedSlots = creatures.reduce((s, c) => s + (c.slots ?? 0.25), 0);
                             if (currentActorGP + totalGold + localGold < cost) {
@@ -6007,11 +6657,13 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                             } else currentResultText = `${getH()} sent out invitations, but no spellcasters were available to visit this week.`;
                         }
                     } else {
-                        let recRes = await BastionManager._handleRecruit(facDoc.name, facEntry, actor, getH());
-                        currentResultText = recRes.text; facDoc.newDefenders = { count: recRes.newCount, names: recRes.newNames };
+                        if (i === 0) {  // preflight pre-sums recruits for all turns; process once for the full span
+                            let recRes = await BastionManager._handleRecruit(facDoc.name, facEntry, actor, getH(), facPreflight);
+                            currentResultText = recRes.text; facDoc.newDefenders = { count: recRes.newCount, names: recRes.newNames };
+                        }
                     }
                 } else if (order === "Empower") {
-                    let empRes = await BastionManager._handleEmpower(facDoc.name, facEntry, actor, theaterPhase, theaterProgress, getH(), getPs());
+                    let empRes = await BastionManager._handleEmpower(facDoc.name, facEntry, actor, theaterPhase, theaterProgress, getH(), getPs(), facPreflight);
                     if (empRes) {
                         currentResultText = empRes.text;
                         if (empRes.theaterPhase) {
@@ -6188,10 +6840,15 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         // Finalize the flag array
         const finalGroupFacilities = groupFacilities.filter(f => !flagsToRemove.includes(f._id));
 
+        // Collect pending talisman names for post-inventory ID tracking
+        const pendingTalismanNames = facilities
+            .map(f => f._pendingTalismanName)
+            .filter(Boolean);
+
         return { 
             orderSummary, constructionSummary, totalGold, items, itemUpdates, 
             itemsToPromote: promotedData, groupFacilities: finalGroupFacilities,
-            effectivelyAllMaintaining,
+            effectivelyAllMaintaining, pendingTalismanNames,
             updatedFacilities: facilities // Return the updated facilities array
         };
     }
@@ -6476,7 +7133,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     // --- HELPER: EMPOWER ---
-    static async _handleEmpower(baseName, fac, actor, theaterPhase = "Idle", theaterProgress = 0, hString = "The hireling", psString = "The hirelings") {
+    static async _handleEmpower(baseName, fac, actor, theaterPhase = "Idle", theaterProgress = 0, hString = "The hireling", psString = "The hirelings", preflightData = null) {
         const getFacFlag = (key) => fac.isFlag ? (fac.doc.flags?.[MODULE_ID]?.[key]) : (fac.doc.getFlag(MODULE_ID, key));
         const daysPerTurn = game.settings.get(MODULE_ID, "daysPerTurn") || 7;
 
@@ -6556,15 +7213,127 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         } else if (baseName === "Meditation Chamber") {
             await actor.setFlag("dnd-2024-bastion-manager", "innerPeaceActive", true);
             return { text: `The hireling uses the Meditation Chamber to gain inner peace. The next time you roll for a Bastion event, you can roll twice and choose either result.` };
-        } else if (baseName === "Observatory") {
-            const DialogV2 = foundry.applications.api.DialogV2;
-            let accept = await DialogV2.confirm({ window: { title: `Empower: Observatory` }, content: `<p>Roll 1d2 to explore the eldritch mysteries of the stars?</p>`, rejectClose: false });
-            if (accept) {
-                const roll = (await new Roll("1d2").evaluate()).total;
-                if (roll === 1) return { text: `Explored the stars. An unknown power bestows a <b>Charm of Darkvision</b>, <b>Charm of Heroism</b>, or <b>Charm of Vitality</b> on you or a creature of your choice.` };
-                else return { text: `Explored the stars. Nothing is gained.` };
+        } else if (baseName.includes("Observatory")) {
+            // Use pre-rolled result from preflight if available (avoids rolling d6 twice)
+            let rollTotal;
+            if (preflightData?.rollTotal !== undefined) {
+                rollTotal = preflightData.rollTotal;
+            } else {
+                const surveyRoll = await new Roll("1d6").evaluate();
+                await surveyRoll.toMessage({ flavor: "<b>Observatory:</b> Surveying the eldritch mysteries of the stars…", rollMode: "publicroll" });
+                rollTotal = surveyRoll.total;
             }
-            return { text: `You declined to explore the stars.` };
+            if (rollTotal % 2 === 0) {
+                return { text: `<i class="fa-solid fa-star"></i> <b>Observatory (Empower):</b> Rolled a <b>${rollTotal}</b> — the stars remain inscrutable. No Eldritch Discovery is granted this turn.` };
+            }
+
+            const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+            if (!outPack) return { text: "Observatory error: output compendium missing." };
+
+            // Dynamically resolve the Eldritch Discovery subfolder by name
+            const empowerFolder = outPack.folders.find(f => {
+                const pid = f.parentId || f.folder?.id || f.folder;
+                return pid === OBSERVATORY_ROOT_FOLDER_ID && f.name.toLowerCase().includes("eldritch");
+            });
+            if (!empowerFolder) return { text: "Observatory error: Eldritch Discovery folder not found in compendium." };
+
+            const index = await outPack.getIndex({ fields: ["folder"] });
+            const choices = index.filter(i => (i.folder?.id || i.folder) === empowerFolder.id);
+            if (choices.length === 0) return { text: "Observatory error: No charms found in the Eldritch Discovery folder." };
+
+            // Use preflight-gathered charm + recipient selection, or fall back to individual dialog
+            let dialogResult;
+            if (preflightData?.charmId && preflightData?.recipientId) {
+                dialogResult = { charmId: preflightData.charmId, recipientId: preflightData.recipientId };
+            } else {
+                const optionsHtml = choices.map(c => `<option value="${c._id}">${c.name}</option>`).join("");
+                const recipientActors = game.actors.filter(a =>
+                    (a.type === "character" || a.type === "npc") && (a.hasPlayerOwner || a.id === actor.id)
+                );
+                const recipientOptionsHtml = recipientActors
+                    .map(a => `<option value="${a.id}"${a.id === actor.id ? " selected" : ""}>${a.name}</option>`)
+                    .join("");
+
+                dialogResult = await foundry.applications.api.DialogV2.prompt({
+                    window: { title: "Observatory: Eldritch Discovery", icon: "fa-solid fa-star" },
+                    content: `
+                    <p>Your studies of the eldritch mysteries of the stars have borne fruit. Choose a recipient and an Eldritch Discovery charm to bestow.</p>
+                    <div class="form-group">
+                        <label>Recipient:</label>
+                        <select name="recipientId">${recipientOptionsHtml}</select>
+                    </div>
+                    <div class="form-group">
+                        <label>Charm:</label>
+                        <select name="charmId">${optionsHtml}</select>
+                    </div>`,
+                    ok: { label: "Grant Charm", callback: (event, button) => ({
+                        recipientId: button.form.elements.recipientId.value,
+                        charmId:     button.form.elements.charmId.value
+                    }) },
+                    rejectClose: false
+                });
+            }
+            if (!dialogResult) return { text: "Eldritch Discovery: selection cancelled." };
+
+            const targetActor = game.actors.get(dialogResult.recipientId) || actor;
+            const charmDoc = await outPack.getDocument(dialogResult.charmId);
+            if (!charmDoc) return { text: "Observatory: Failed to load charm document." };
+
+            // DMG: A character can't benefit from multiple instances of the same Charm.
+            // Remove any existing version of this charm from the recipient (by flag ID and by name).
+            const existingEldritchIds = targetActor.getFlag(MODULE_ID, "activeObservatoryEldritchCharmIds") || [];
+            const toDeleteEldritch = targetActor.items
+                .filter(i => existingEldritchIds.includes(i.id) || i.name === charmDoc.name)
+                .map(i => i.id);
+            if (toDeleteEldritch.length > 0) await targetActor.deleteEmbeddedDocuments("Item", toDeleteEldritch);
+
+            const charmData = charmDoc.toObject();
+            // Stamp the item so _resolveOrders can find it reliably at turn advance.
+            foundry.utils.setProperty(charmData, `flags.${MODULE_ID}.isBastionCharm`, true);
+            const created = await targetActor.createEmbeddedDocuments("Item", [charmData]);
+            await targetActor.setFlag(MODULE_ID, "activeObservatoryEldritchCharmIds",   created.map(i => i.id));
+            await targetActor.setFlag(MODULE_ID, "activeObservatoryEldritchCharmNames", created.map(i => i.name));
+
+            const recipientLabel = targetActor.id === actor.id ? "you" : `<b>${targetActor.name}</b>`;
+            return { text: `<i class="fa-solid fa-star"></i> <b>Eldritch Discovery (rolled ${surveyRoll.total}):</b> The eldritch mysteries of the stars have bestowed <b>${charmDoc.name}</b> upon ${recipientLabel}.` };
+        } else if (baseName.includes("Reliquary")) {
+            // Empower: grant the Reliquary Charm (expires next turn via isBastionCharm cleanup)
+            const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+            if (!outPack) return { text: "Reliquary error: output compendium missing." };
+
+            const charmSubfolder = outPack.folders.find(f => {
+                const pid = f.parentId || f.folder?.id || f.folder;
+                return pid === RELIQUARY_ROOT_ID && f.name.toLowerCase().includes("charm");
+            });
+            if (!charmSubfolder) return { text: "Reliquary error: Charm subfolder not found in compendium." };
+
+            const idx = await outPack.getIndex({ fields: ["folder"] });
+            const charmEntries = idx.filter(i => (i.folder?.id || i.folder) === charmSubfolder.id);
+            if (charmEntries.length === 0) return { text: "Reliquary error: No items in the Reliquary Charm folder." };
+
+            // Remove any existing Reliquary Charm first
+            const existingIds = actor.getFlag(MODULE_ID, "activeReliquaryCharmIds") || [];
+            const charmNames = charmEntries.map(e => e.name);
+            const toDelete = actor.items
+                .filter(i => existingIds.includes(i.id) || charmNames.includes(i.name))
+                .map(i => i.id);
+            if (toDelete.length > 0) await actor.deleteEmbeddedDocuments("Item", toDelete);
+
+            const toCreate = [];
+            for (const entry of charmEntries) {
+                const doc = await outPack.getDocument(entry._id);
+                if (doc) {
+                    const data = doc.toObject();
+                    foundry.utils.setProperty(data, `flags.${MODULE_ID}.isBastionCharm`, true);
+                    toCreate.push(data);
+                }
+            }
+            const created = await actor.createEmbeddedDocuments("Item", toCreate);
+            await actor.setFlag(MODULE_ID, "activeReliquaryCharmIds",   created.map(i => i.id));
+            await actor.setFlag(MODULE_ID, "activeReliquaryCharmNames", created.map(i => i.name));
+
+            const charmNameList = created.map(i => i.name).join(", ");
+            return { text: `<i class="fa-solid fa-khanda"></i> <b>Reliquary (Empower):</b> ${hString} has completed sacred rites. ${actor.name} gains the Reliquary Charm: <b>${charmNameList}</b>. This charm expires at the next Bastion Turn.` };
         } else if (baseName === "Demiplane") {
             return { text: `Magical runes appear on the walls of the demiplane. For the next 7 days, you gain Temporary Hit Points equal to five times your level after spending an entire Long Rest here.` };
         } else if (baseName === "Sanctum") {
@@ -6790,7 +7559,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         for (const app of foundry.applications.instances.values()) if (app.constructor.name === "BastionManager" && app.actor.id === actor.id) app.render();
     }
 
-    static async _handleResearch(baseName, fac, subType, hString = "The hireling") {
+    static async _handleResearch(baseName, fac, subType, hString = "The hireling", preflightData = null) {
         const getFacFlag = (key) => fac.isFlag ? (fac.doc.flags?.[MODULE_ID]?.[key]) : (fac.doc.getFlag(MODULE_ID, key));
 
         if (baseName === "Library") {
@@ -6836,19 +7605,29 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const topic = getFacFlag("libraryTopic");
             return { text: `${hString} studied the trophies to research <b>${topic || "a significant topic"}</b>, discovering up to 3 accurate pieces of information.` };
         } else if (baseName === "Pub") {
-            return { text: `${hString} taps into their local spy network to gather rumors and information.` };
+            // Read the topic from the facility panel flag (no dialog — blank means general rumours).
+            let target = "";
+            if (preflightData && "pubTarget" in preflightData) {
+                target = preflightData.pubTarget;
+            } else {
+                target = (getFacFlag("libraryTopic") || "").trim();
+            }
+            if (target) {
+                return { text: `<i class="fa-solid fa-user-secret"></i> <b>Pub (Research):</b> ${hString} tasks the spy network with locating <b>${target}</b>. Over the next 7 days, spies will report their last known position within 50 miles of your Bastion — and where they have been for the previous 7 days — unless the target is shielded by magic or beyond the network's reach.` };
+            }
+            return { text: `<i class="fa-solid fa-user-secret"></i> <b>Pub (Research):</b> ${hString} orders the spy network to report all notable events within 10 miles of your Bastion over the next 7 days.` };
         }
         return { text: `Executed Research order.` };
     }
 
     // --- HELPER: RECRUIT ---
-    static async _handleRecruit(baseName, fac, actor, hString = "The hireling") {
+    static async _handleRecruit(baseName, fac, actor, hString = "The hireling", preflightData = null) {
         let facDefendersCount = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.defenders?.count || 0) : (fac.doc.getFlag("dnd-2024-bastion-manager", "defenders.count") || 0);
-        let facDefenderNames = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.defenders?.names || []) : (fac.doc.getFlag("dnd-2024-bastion-manager", "defenders.names") || []);
+        // Spread-copy to avoid mutating the live flag reference across multiple turn iterations
+        let facDefenderNames = [...(fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.defenders?.names || []) : (fac.doc.getFlag("dnd-2024-bastion-manager", "defenders.names") || []))];
         
-        let maxDefenders = 12; // Assuming roomy by default
         const facSize = fac.isFlag ? (fac.doc.flags?.["dnd-2024-bastion-manager"]?.size || "Roomy") : (fac.doc.getFlag("dnd-2024-bastion-manager", "size") || "Roomy");
-        if (facSize === "Vast") maxDefenders = 25;
+        let maxDefenders = facSize === "Vast" ? 25 : facSize === "Cramped" ? 6 : 12; // Cramped:6, Roomy:12, Vast:25
 
         if (facDefendersCount >= maxDefenders) {
             return { text: `${hString} reports that recruitment failed because the facility is fully occupied.`, newCount: facDefendersCount, newNames: facDefenderNames };
@@ -6860,15 +7639,19 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (recruitMode === "max") {
             newlyRecruited = Math.min(4, maxDefenders - facDefendersCount);
         } else if (recruitMode === "manual") {
-            const DialogV2 = foundry.applications.api.DialogV2;
-            newlyRecruited = await DialogV2.prompt({
-                window: { title: "Manual Recruitment" },
-                content: `<p>How many defenders did you recruit for the ${fac.name}?</p><input type="number" name="count" value="0" min="0" max="${Math.min(4, maxDefenders - facDefendersCount)}" autofocus>`,
-                ok: { callback: (event, button) => parseInt(button.form.elements.count.value) || 0 }
-            });
+            if (preflightData?.manualCount !== undefined) {
+                newlyRecruited = preflightData.manualCount;
+            } else {
+                const DialogV2 = foundry.applications.api.DialogV2;
+                newlyRecruited = await DialogV2.prompt({
+                    window: { title: "Manual Recruitment" },
+                    content: `<p>How many defenders did you recruit for the ${fac.name}?</p><input type="number" name="count" value="0" min="0" max="${Math.min(4, maxDefenders - facDefendersCount)}" autofocus>`,
+                    ok: { callback: (event, button) => parseInt(button.form.elements.count.value) || 0 }
+                });
+            }
         } else {
-            const recruitRoll = await new Roll("1d4").evaluate();
-            newlyRecruited = Math.min(recruitRoll.total, maxDefenders - facDefendersCount);
+            // Use pre-rolled count from preflight if available (avoids duplicate rolls)
+            newlyRecruited = preflightData?.recruited ?? Math.min((await new Roll("1d4").evaluate()).total, maxDefenders - facDefendersCount);
         }
 
         if (newlyRecruited > 0) {
@@ -6886,21 +7669,30 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             };
 
             if (game.settings.get(MODULE_ID, "nameHirelings") && promptNames) {
-                let namingContent = `<p>You have recruited <b>${newlyRecruited}</b> defenders. Please name them:</p>`;
-                for (let d = 0; d < newlyRecruited; d++) {
-                    namingContent += `<div class="form-group"><label>Defender ${d+1}:</label><input type="text" name="name_${d}" placeholder="Auto-generate if blank" value=""></div>`;
-                }
+                if (preflightData?.names) {
+                    // Use names gathered in consolidated preflight dialog
+                    for (let d = 0; d < newlyRecruited; d++) {
+                        const dName = (preflightData.names[d] || "").trim() || generateFullName();
+                        newNames.push(dName);
+                    }
+                } else {
+                    // Fall back to individual naming dialog
+                    let namingContent = `<p>You have recruited <b>${newlyRecruited}</b> defenders. Please name them:</p>`;
+                    for (let d = 0; d < newlyRecruited; d++) {
+                        namingContent += `<div class="form-group"><label>Defender ${d+1}:</label><input type="text" name="name_${d}" placeholder="Auto-generate if blank" value=""></div>`;
+                    }
 
-                const nameData = await DialogV2.prompt({
-                    window: { title: `Founding Defenders: ${fac.name}` },
-                    content: namingContent,
-                    ok: { label: "Establish Names", callback: (event, button) => new foundry.applications.ux.FormDataExtended(button.form).object }
-                });
+                    const nameData = await DialogV2.prompt({
+                        window: { title: `Founding Defenders: ${fac.name}` },
+                        content: namingContent,
+                        ok: { label: "Establish Names", callback: (event, button) => new foundry.applications.ux.FormDataExtended(button.form).object }
+                    });
 
-                for (let d = 0; d < newlyRecruited; d++) {
-                    let dName = nameData?.[`name_${d}`]?.trim();
-                    if (!dName) dName = generateFullName();
-                    newNames.push(dName);
+                    for (let d = 0; d < newlyRecruited; d++) {
+                        let dName = nameData?.[`name_${d}`]?.trim();
+                        if (!dName) dName = generateFullName();
+                        newNames.push(dName);
+                    }
                 }
             } else {
                 // Background auto-generation if prompting is off but names are enabled globally
@@ -6951,12 +7743,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     // --- HELPER: HARVEST ---
-    static async _handleHarvest(baseName, subType, fac, isSecondPlot = false, hString = "The hireling") {
+    static async _handleHarvest(baseName, subType, fac, isSecondPlot = false, hString = "The hireling", actor = null) {
         const outPack = game.packs.get("dnd-2024-bastion-manager.bastion-output-items");
         if (!outPack) return { item: null, text: "Output compendium missing." };
         const allDocs = await outPack.getDocuments(); 
 
-        const rootIds = { "Garden": GARDEN_ROOT_ID, "Workshop": WORKSHOP_ROOT_ID, "Smithy": SMITHY_ROOT_ID };
+        const rootIds = { "Garden": GARDEN_ROOT_ID, "Workshop": WORKSHOP_ROOT_ID, "Smithy": SMITHY_ROOT_ID, "Reliquary": RELIQUARY_ROOT_ID };
         const isGarden = baseName.includes("Garden");
         
         const rootId = rootIds[baseName];
@@ -6981,6 +7773,38 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             possible = allDocs.filter(i => i.folder?.id === rootFolder.id);
             const kwMap = { "Wood": ["wood", "staff", "bow", "club"], "Stone": ["stone", "statue", "block"], "Cloth": ["cloth", "robe", "garment"], "Leather": ["leather", "hide", "armor"], "Metal": ["iron", "steel", "sword", "shield"] };
             if (kwMap[subType]) possible = possible.filter(i => kwMap[subType].some(kw => i.name.toLowerCase().includes(kw)));
+        } else if (baseName.includes("Reliquary")) {
+            // Harvest: craft the Reliquary Talisman from the Talisman subfolder.
+            // The talisman is permanent (not cleaned up at turn advance) unless overwritten.
+            const talismanSubfolder = outPack.folders.find(f => {
+                const pid = f.parentId || f.folder?.id || f.folder;
+                return pid === RELIQUARY_ROOT_ID && f.name.toLowerCase().includes("talisman");
+            });
+            if (!talismanSubfolder) return { item: null, text: "Reliquary error: Talisman subfolder not found in compendium." };
+
+            const talismanIdx = await outPack.getIndex({ fields: ["folder"] });
+            const talismanEntries = talismanIdx.filter(i => (i.folder?.id || i.folder) === talismanSubfolder.id);
+            if (talismanEntries.length === 0) return { item: null, text: "Reliquary: No items in the Talisman folder." };
+
+            // One-talisman limit: if setting is on and actor already has one, do not grant another.
+            const limitOne = game.settings.get(MODULE_ID, "reliquaryOneTalismanLimit");
+            const existingTalismanId = actor.getFlag(MODULE_ID, "activeReliquaryTalismanId");
+            if (limitOne && existingTalismanId) {
+                const existingItem = actor.items.get(existingTalismanId);
+                const existingName = existingItem?.name || "their Talisman";
+                return { item: null, text: `<i class="fa-solid fa-khanda"></i> <b>Reliquary (Harvest):</b> ${hString} notes that ${actor.name} already bears <b>${existingName}</b>. The one-talisman limit is active — remove the existing talisman before crafting a new one.` };
+            }
+
+            // Pick one talisman at random from the subfolder
+            const chosen = talismanEntries[Math.floor(Math.random() * talismanEntries.length)];
+            const talismanDoc = await outPack.getDocument(chosen._id);
+            if (!talismanDoc) return { item: null, text: "Reliquary: Failed to load Talisman document." };
+
+            const talismanData = talismanDoc.toObject();
+            // Stamp so we can track it
+            foundry.utils.setProperty(talismanData, `flags.${MODULE_ID}.isReliquaryTalisman`, true);
+
+            return { item: talismanData, text: `<i class="fa-solid fa-khanda"></i> <b>Reliquary (Harvest):</b> ${hString} has fashioned a sacred <b>${talismanDoc.name}</b>. It is a permanent keepsake until willingly relinquished.`, isTalisman: true, talismanDoc };
         } else {
             possible = allDocs.filter(i => i.folder?.id === rootFolder.id);
         }
@@ -7402,21 +8226,66 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             isStockedBool = !!(armoryFac.isStocked ?? getFlag("isStocked"));
         }
 
+        const menagerieArmoryBonus = game.settings.get(MODULE_ID, "menagerieArmoryBonus");
+        const crScaleMode = game.settings.get(MODULE_ID, "menagerieDiceMode") !== "raw";
+
+        // Tag Menagerie facility IDs so pool entries can be identified and handled separately
+        const menagerieFacIds = new Set(facs.filter(f => f.name.toLowerCase().includes("menagerie")).map(f => f.isFlag ? f.doc._id : f.doc.id));
+
+        // Build defender pool; menagerie creatures are sourced from menagerieCreatures flag directly
         const defenderPool = [];
         facs.forEach(f => {
-            const dData = f.isFlag ? f.doc.flags?.[MODULE_ID]?.defenders : f.doc.getFlag(MODULE_ID, "defenders");
-            const count = dData?.count || 0; 
-            const names = dData?.names || [];
-            for (let i = 0; i < count; i++) {
-                defenderPool.push({ name: names[i] || `Unnamed Defender`, facId: f.isFlag ? f.doc._id : f.doc.id, isFlag: f.isFlag });
+            const facId = f.isFlag ? f.doc._id : f.doc.id;
+            if (menagerieFacIds.has(facId)) {
+                const creatures = f.isFlag
+                    ? (f.doc.flags?.[MODULE_ID]?.menagerieCreatures || [])
+                    : (f.doc.getFlag(MODULE_ID, "menagerieCreatures") || []);
+                creatures.filter(c => c.isDefender).forEach(c => {
+                    defenderPool.push({ name: c.nickname || c.species, species: c.species, facId, isFlag: f.isFlag, owner: f.owner, isMenagerie: true, cr: 0 });
+                });
+            } else {
+                const dData = f.isFlag ? f.doc.flags?.[MODULE_ID]?.defenders : f.doc.getFlag(MODULE_ID, "defenders");
+                const count = dData?.count || 0;
+                const names = dData?.names || [];
+                for (let i = 0; i < count; i++) {
+                    defenderPool.push({ name: names[i] || `Unnamed Defender`, facId, isFlag: f.isFlag, owner: f.owner });
+                }
             }
         });
 
+        // CR lookup for menagerie creatures when CR-scaling mode is active
+        if (crScaleMode) {
+            const menagerieEntries = defenderPool.filter(d => d.isMenagerie);
+            if (menagerieEntries.length > 0) {
+                const actorPack = game.packs.get(`${MODULE_ID}.bastion-facility-actors`);
+                if (actorPack) {
+                    const mIdx = await actorPack.getIndex({ fields: ["system.details.cr"] });
+                    menagerieEntries.forEach(d => {
+                        const entry = mIdx.find(e => e.name.toLowerCase() === d.species.toLowerCase());
+                        if (entry) {
+                            const cr = entry.system?.details?.cr;
+                            let crNum = 0;
+                            if (typeof cr === "string") {
+                                if (cr === "1/8") crNum = 0.125;
+                                else if (cr === "1/4") crNum = 0.25;
+                                else if (cr === "1/2") crNum = 0.5;
+                                else crNum = parseFloat(cr) || 0;
+                            } else crNum = Number(cr) || 0;
+                            d.cr = crNum;
+                        }
+                    });
+                }
+            }
+        }
+
         const totalDefenders = defenderPool.length;
-        // Executive Decision: Scale dice based on ratio of stock to total defenders.
-        // Fallback: If isStocked is true but count is 0/missing, assume full coverage for existing defenders.
-        const effectiveStock = (isStockedBool && stockedCount === 0) ? totalDefenders : stockedCount;
-        const numD8s = (totalDefenders > 0 && isStockedBool) ? Math.round(6 * Math.clamp(effectiveStock / totalDefenders, 0, 1)) : 0;
+        const totalMenagerie = defenderPool.filter(d => d.isMenagerie).length;
+        const totalRegular = totalDefenders - totalMenagerie;
+
+        // Armory stock ratio: menagerieArmoryBonus controls whether menagerie count toward the equipped pool
+        const armoryBase = menagerieArmoryBonus ? totalDefenders : totalRegular;
+        const effectiveStock = (isStockedBool && stockedCount === 0) ? armoryBase : stockedCount;
+        const numD8s = (armoryBase > 0 && isStockedBool) ? Math.round(6 * Math.clamp(effectiveStock / armoryBase, 0, 1)) : 0;
         const numD6s = 6 - numD8s;
 
         let formula = "";
@@ -7425,8 +8294,29 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
         if (totalDefenders > 0) {
             const diceParts = [];
+            // Standard 6-die pool (RAW attack intensity for non-menagerie defenders)
             if (numD8s > 0) diceParts.push(`${numD8s}d8`);
             if (numD6s > 0) diceParts.push(`${numD6s}d6`);
+            // Menagerie creatures each contribute one individual die at their CR-appropriate size
+            const diceMode = game.settings.get(MODULE_ID, "menagerieDiceMode");
+            const PHYS_STEP = { "d4": "d6", "d6": "d8", "d8": "d12", "d10": "d12", "d12": "d20", "d20": "d20" };
+            const STD_STEPS = ["d4", "d6", "d8", "d10", "d12", "d20"];
+            defenderPool.filter(d => d.isMenagerie).forEach(d => {
+                const baseDie = BastionManager._getMenagerieDie(d.cr || 0);
+                let finalDie = baseDie;
+                if (menagerieArmoryBonus && isStockedBool && diceMode !== "raw") {
+                    if (diceMode === "digital") {
+                        const n = parseInt(baseDie.slice(1), 10);
+                        if (!isNaN(n)) finalDie = `d${n + 1}`;
+                    } else if (diceMode === "physical") {
+                        finalDie = PHYS_STEP[baseDie] || baseDie;
+                    } else { // custom
+                        const idx = STD_STEPS.indexOf(baseDie);
+                        finalDie = (idx >= 0 && idx < STD_STEPS.length - 1) ? STD_STEPS[idx + 1] : baseDie;
+                    }
+                }
+                diceParts.push(`1${finalDie}`);
+            });
             formula = diceParts.join(" + ") || "6d6";
             atkRoll = await new Roll(formula).evaluate();
             ones = atkRoll.dice.flatMap(d => d.results).filter(r => r.result === 1).length;
@@ -7439,13 +8329,19 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const shuffled = defenderPool.sort(() => 0.5 - Math.random());
             const killed = shuffled.slice(0, deaths);
             const updatesByOwner = {};
+            const menagerieDeathsByFac = {}; // facId -> { isFlag, owner, deceased: [species] }
             for (const d of killed) {
                 deceasedNames.push(d.name);
-                const oId = d.owner.id;
-                if (!updatesByOwner[oId]) updatesByOwner[oId] = {};
-                if (!updatesByOwner[oId][d.facId]) updatesByOwner[oId][d.facId] = { isFlag: d.isFlag, deaths: 0, deceased: [] };
-                updatesByOwner[oId][d.facId].deaths++;
-                updatesByOwner[oId][d.facId].deceased.push(d.name);
+                if (d.isMenagerie) {
+                    if (!menagerieDeathsByFac[d.facId]) menagerieDeathsByFac[d.facId] = { isFlag: d.isFlag, owner: d.owner, deceased: [] };
+                    menagerieDeathsByFac[d.facId].deceased.push(d.species);
+                } else {
+                    const oId = d.owner.id;
+                    if (!updatesByOwner[oId]) updatesByOwner[oId] = {};
+                    if (!updatesByOwner[oId][d.facId]) updatesByOwner[oId][d.facId] = { isFlag: d.isFlag, deaths: 0, deceased: [] };
+                    updatesByOwner[oId][d.facId].deaths++;
+                    updatesByOwner[oId][d.facId].deceased.push(d.name);
+                }
             }
 
             for (const [ownerId, facUpdates] of Object.entries(updatesByOwner)) {
@@ -7496,6 +8392,47 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 ownerDeceased.forEach(n => graveyard.push({ name: n, date, turn }));
                 await targetActor.setFlag(MODULE_ID, "graveyard", graveyard);
             }
+
+            // Process Menagerie creature deaths — remove from menagerieCreatures flag
+            for (const [facId, mData] of Object.entries(menagerieDeathsByFac)) {
+                const mActor = mData.owner;
+                if (!mActor) continue;
+                if (mData.isFlag) {
+                    const gf = Array.from(mActor.getFlag(MODULE_ID, "groupFacilities") || []);
+                    const mFac = gf.find(f => f._id === facId);
+                    if (mFac) {
+                        if (!mFac.flags) mFac.flags = {}; if (!mFac.flags[MODULE_ID]) mFac.flags[MODULE_ID] = {};
+                        let creatures = Array.from(mFac.flags[MODULE_ID].menagerieCreatures || []);
+                        for (const sp of mData.deceased) {
+                            const idx = creatures.findIndex(c => c.nickname === sp || c.species === sp);
+                            if (idx !== -1) creatures.splice(idx, 1);
+                        }
+                        const defenderNames = creatures.filter(c => c.isDefender).map(c => c.nickname || c.species);
+                        mFac.flags[MODULE_ID].menagerieCreatures = creatures;
+                        mFac.flags[MODULE_ID].defenders = { count: defenderNames.length, names: defenderNames };
+                        await mActor.setFlag(MODULE_ID, "groupFacilities", gf);
+                    }
+                } else {
+                    const mItem = mActor.items.get(facId);
+                    if (mItem) {
+                        let creatures = Array.from(mItem.getFlag(MODULE_ID, "menagerieCreatures") || []);
+                        for (const sp of mData.deceased) {
+                            const idx = creatures.findIndex(c => c.nickname === sp || c.species === sp);
+                            if (idx !== -1) creatures.splice(idx, 1);
+                        }
+                        const defenderNames = creatures.filter(c => c.isDefender).map(c => c.nickname || c.species);
+                        await mItem.update({
+                            [`flags.${MODULE_ID}.menagerieCreatures`]: creatures,
+                            [`flags.${MODULE_ID}.defenders`]: { count: defenderNames.length, names: defenderNames }
+                        });
+                    }
+                }
+                const mGraveyard = Array.from(mActor.getFlag(MODULE_ID, "graveyard") || []);
+                const mTurn = mActor.getFlag(MODULE_ID, "turnCount") || 0;
+                const mDate = new Date().toLocaleDateString();
+                mData.deceased.forEach(sp => mGraveyard.push({ name: sp, date: mDate, turn: mTurn }));
+                await mActor.setFlag(MODULE_ID, "graveyard", mGraveyard);
+            }
         }
 
         if (isStockedBool && armoryFac) {
@@ -7535,6 +8472,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         }
 
         let armoryMsg = numD8s > 0 ? `<p style="color: #2e7d32; font-size: 0.95em; margin-bottom: 4px;"><i class="fa-solid fa-shield-halved"></i> <b>${numD8s === 6 ? "Superior" : "Partial"} Equipment:</b> Defenders utilized armory stock, upgrading <b>${numD8s}</b> dice to d8s.</p>` : "";
+        if (totalMenagerie > 0) armoryMsg += `<p style="color: #c8a45e; font-size: 0.9em; margin-bottom: 4px;"><i class="fa-solid fa-paw"></i> <b>${totalMenagerie} Menagerie creature(s)</b> contributed individual dice${crScaleMode ? ` (${game.settings.get(MODULE_ID, "menagerieDiceMode")}-scaled)` : " (d6 RAW)"}${menagerieArmoryBonus && isStockedBool ? ", upgraded +1 die step by Armory stocking" : ""}.</p>`;
         let spellcasterMsg = departing.length > 0 ? `<p style="color: darkred; font-size: 0.95em; margin-top: 8px; border-top: 1px dashed rgba(255,0,0,0.3); padding-top: 5px;"><i class="fa-solid fa-person-running"></i> Visiting spellcaster(s) from <b>${departing.join(", ")}</b> departed immediately due to the chaos.</p>` : "";
 
         let definitiveMsg = "";

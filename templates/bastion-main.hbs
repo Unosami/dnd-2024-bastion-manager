@@ -227,8 +227,28 @@
                                     {{/each}}
                                 </select>
                                 {{#if this.isLibraryResearching}}
-                                    <div style="width: 100%;">
-                                        <input type="text" class="library-topic-input" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" value="{{this.libraryTopic}}" placeholder="Enter topic..." style="height: 20px; font-size: 0.85em; width: 100%; box-sizing: border-box;">
+                                    <div style="width: 100%; margin-top: 2px;">
+                                        {{#if this.isPubResearching}}
+                                            <label style="font-size: 0.8em; opacity: 0.7; display: block; margin-bottom: 1px;">Creature to locate (leave blank for general rumours within 10 miles):</label>
+                                            <input type="text" class="library-topic-input" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" value="{{this.libraryTopic}}"
+                                                placeholder="e.g. Zevlor the Tiefling — last seen near Baldur's Gate"
+                                                style="height: 20px; font-size: 0.85em; width: 100%; box-sizing: border-box;">
+                                        {{else if this.isTrophyResearching}}
+                                            <label style="font-size: 0.8em; opacity: 0.7; display: block; margin-bottom: 1px;">Subject of legendary significance to research:</label>
+                                            <input type="text" class="library-topic-input" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" value="{{this.libraryTopic}}"
+                                                placeholder="e.g. The Eye of Vecna — yields a Legend Lore–style summary if legendary"
+                                                style="height: 20px; font-size: 0.85em; width: 100%; box-sizing: border-box;">
+                                        {{else if this.isArchiveResearching}}
+                                            <label style="font-size: 0.8em; opacity: 0.7; display: block; margin-bottom: 1px;">Subject of legendary significance to research:</label>
+                                            <input type="text" class="library-topic-input" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" value="{{this.libraryTopic}}"
+                                                placeholder="e.g. Strahd von Zarovich — yields a Legend Lore–style summary if legendary"
+                                                style="height: 20px; font-size: 0.85em; width: 100%; box-sizing: border-box;">
+                                        {{else}}
+                                            <label style="font-size: 0.8em; opacity: 0.7; display: block; margin-bottom: 1px;">Topic to research (up to 3 accurate facts):</label>
+                                            <input type="text" class="library-topic-input" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" value="{{this.libraryTopic}}"
+                                                placeholder="e.g. The Cult of the Dragon — history, goals, key members"
+                                                style="height: 20px; font-size: 0.85em; width: 100%; box-sizing: border-box;">
+                                        {{/if}}
                                     </div>
                                 {{/if}}
                                 {{#if this.isArcaneStudyCrafting}}
@@ -646,6 +666,130 @@
                     </div>
                 {{/if}}
 
+                {{#if this.isObservatory}}
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid #c9a227; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                            <span data-tooltip="While in your Bastion during a Long Rest, you receive the Observatory Charm: you can see through magical darkness up to 60 feet, you know when you are being magically observed, and you have advantage on saving throws against spells. This charm expires at the start of the next Bastion Turn." style="cursor: help;"><i class="fa-solid fa-star"></i> <b>Observatory Charm:</b></span>
+                            {{#if this.observatoryCharmActive}}
+                                <span style="color: #c9a227; font-weight: bold;">ACTIVE</span>
+                            {{else}}
+                                <span style="opacity: 0.6; font-style: italic;">Requires Long Rest</span>
+                            {{/if}}
+                        </div>
+                        <hr style="opacity: 0.1; margin: 5px 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span data-tooltip="Grant yourself the Observatory Charm after finishing a Long Rest in your Bastion. The charm is automatically removed when the next Bastion Turn advances." style="cursor: help; font-size: 0.88em; opacity: 0.75;">Long Rest in Bastion</span>
+                            <button type="button" data-action="grantObservatoryCharm" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 24px;">
+                                {{#if this.observatoryCharmActive}}Refresh Charm{{else}}Grant Charm{{/if}}
+                            </button>
+                        </div>
+                        <hr style="opacity: 0.1; margin: 5px 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span data-tooltip="Use an Empower order to choose an Eldritch Discovery charm and bestow it on yourself or a creature of your choice." style="cursor: help; font-size: 0.88em; opacity: 0.75;">Empower: Eldritch Discovery</span>
+                            <span style="font-size: 0.82em; opacity: 0.55; font-style: italic;">via Empower order</span>
+                        </div>
+                    </div>
+                {{/if}}
+
+                {{#if this.isReliquaryFac}}
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid #c9784e; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
+                        {{!-- Reliquary Charm row --}}
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                            <span data-tooltip="Use an Empower order to receive the Reliquary Charm. The charm expires at the start of the next Bastion Turn." style="cursor: help;"><i class="fa-solid fa-khanda"></i> <b>Reliquary Charm:</b></span>
+                            {{#if this.reliquaryCharmActive}}
+                                <span style="color: #c9784e; font-weight: bold;">ACTIVE</span>
+                            {{else}}
+                                <span style="opacity: 0.6; font-style: italic;">Requires Empower order</span>
+                            {{/if}}
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 0.88em; opacity: 0.75;">After Long Rest in Bastion</span>
+                            <button type="button" data-action="grantReliquaryCharm" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 24px;">
+                                {{#if this.reliquaryCharmActive}}Refresh Charm{{else}}Grant Charm{{/if}}
+                            </button>
+                        </div>
+                        <hr style="opacity: 0.1; margin: 5px 0;">
+                        {{!-- Talisman row --}}
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span data-tooltip="Use a Harvest order to craft a Talisman. The Talisman is a permanent keepsake." style="cursor: help; font-size: 0.88em; opacity: 0.75;"><i class="fa-solid fa-diamond"></i> <b>Talisman:</b></span>
+                            {{#if this.reliquaryTalismanActive}}
+                                <span style="color: #c9a227; font-weight: bold; font-size: 0.88em;">CRAFTED</span>
+                            {{else}}
+                                <span style="font-size: 0.82em; opacity: 0.55; font-style: italic;">via Harvest order</span>
+                            {{/if}}
+                        </div>
+                    </div>
+                {{/if}}
+
+                {{#if this.isPub}}
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid #8b6f3e; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <span data-tooltip="The Pub always has magical beverage(s) on tap. Change selection at the start of any Bastion Turn. A pint loses its magic 24h after being poured." style="cursor: help;"><i class="fa-solid fa-beer-mug-empty"></i> <b>Pub Special{{#if (ge this.pubSlotCount 2)}}s{{/if}} (On Tap):</b></span>
+                            <span style="font-size: 0.8em; opacity: 0.6;">{{this.pubSlotCount}} tap{{#if (ge this.pubSlotCount 2)}}s{{/if}}</span>
+                        </div>
+                        {{!-- Tap 1 --}}
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                            <label style="font-size: 0.85em; white-space: nowrap; opacity: 0.75; min-width: 36px;">Tap 1:</label>
+                            {{#if (lookup this.pubSpecialsGrantedTo 0)}}
+                                <span style="flex: 1; font-size: 0.85em; font-style: italic; color: #c9a227; opacity: 0.85;">On tap: <b>{{lookup this.pubSpecials 0}}</b> <em style="opacity: 0.6; font-style: normal;">(locked)</em></span>
+                                <button type="button" class="pub-grant-btn" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-slot-index="0"
+                                        style="height: 24px; padding: 0 6px; font-size: 0.8em; flex-shrink: 0; background: #3a2008; color: #c9a227; border: 1px solid #8b6f3e; border-radius: 3px; cursor: pointer;"
+                                        data-tooltip="Pour another pint of {{lookup this.pubSpecials 0}}">
+                                    <i class="fa-solid fa-beer-mug-empty"></i>
+                                </button>
+                            {{else}}
+                                <select class="pub-special-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-slot-index="0"
+                                        style="flex: 1; font-size: 0.85em; height: 24px; background: #1e1508; color: #eee; border: 1px solid #8b6f3e; border-radius: 3px;">
+                                    <option value="">— Choose a Special —</option>
+                                    {{#each this.pubSpecialOptions}}
+                                        <option value="{{this.value}}" {{#if (eq this.value (lookup ../pubSpecials 0))}}selected{{/if}}>{{this.label}}</option>
+                                    {{/each}}
+                                </select>
+                                {{#if (lookup this.pubSpecials 0)}}
+                                    <button type="button" class="pub-grant-btn" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-slot-index="0"
+                                            style="height: 24px; padding: 0 6px; font-size: 0.8em; flex-shrink: 0; background: #3a2008; color: #c9a227; border: 1px solid #8b6f3e; border-radius: 3px; cursor: pointer;"
+                                            data-tooltip="Pour a pint for a character — locks this tap until the next Bastion Turn">
+                                        <i class="fa-solid fa-beer-mug-empty"></i>
+                                    </button>
+                                {{/if}}
+                            {{/if}}
+                        </div>
+                        {{!-- Tap 2 (Vast only) --}}
+                        {{#if (ge this.pubSlotCount 2)}}
+                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                                <label style="font-size: 0.85em; white-space: nowrap; opacity: 0.75; min-width: 36px;">Tap 2:</label>
+                                {{#if (lookup this.pubSpecialsGrantedTo 1)}}
+                                    <span style="flex: 1; font-size: 0.85em; font-style: italic; color: #c9a227; opacity: 0.85;">On tap: <b>{{lookup this.pubSpecials 1}}</b> <em style="opacity: 0.6; font-style: normal;">(locked)</em></span>
+                                    <button type="button" class="pub-grant-btn" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-slot-index="1"
+                                            style="height: 24px; padding: 0 6px; font-size: 0.8em; flex-shrink: 0; background: #3a2008; color: #c9a227; border: 1px solid #8b6f3e; border-radius: 3px; cursor: pointer;"
+                                            data-tooltip="Pour another pint of {{lookup this.pubSpecials 1}}">
+                                        <i class="fa-solid fa-beer-mug-empty"></i>
+                                    </button>
+                                {{else}}
+                                    <select class="pub-special-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-slot-index="1"
+                                            style="flex: 1; font-size: 0.85em; height: 24px; background: #1e1508; color: #eee; border: 1px solid #8b6f3e; border-radius: 3px;">
+                                        <option value="">— Choose a Special —</option>
+                                        {{#each this.pubSpecialOptions}}
+                                            <option value="{{this.value}}" {{#if (eq this.value (lookup ../pubSpecials 1))}}selected{{/if}}>{{this.label}}</option>
+                                        {{/each}}
+                                    </select>
+                                    {{#if (lookup this.pubSpecials 1)}}
+                                        <button type="button" class="pub-grant-btn" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-slot-index="1"
+                                                style="height: 24px; padding: 0 6px; font-size: 0.8em; flex-shrink: 0; background: #3a2008; color: #c9a227; border: 1px solid #8b6f3e; border-radius: 3px; cursor: pointer;"
+                                                data-tooltip="Pour a pint for a character — locks this tap until the next Bastion Turn">
+                                            <i class="fa-solid fa-beer-mug-empty"></i>
+                                        </button>
+                                    {{/if}}
+                                {{/if}}
+                            </div>
+                        {{/if}}
+                        <hr style="opacity: 0.1; margin: 5px 0;">
+                        <div style="font-size: 0.82em; opacity: 0.65;">
+                            <i class="fa-solid fa-user-secret" style="width: 12px;"></i> <b>Spy Network</b> — use a Research order to locate a creature within 50 miles.
+                        </div>
+                    </div>
+                {{/if}}
+
                                 {{#if this.isStable}}
                                     <div style="font-size: 0.75em; color: #eee; margin-top: 4px;">
                                         <i class="fa-solid fa-horse"></i> <b>Stocked Mounts:</b>
@@ -972,6 +1116,10 @@
                             title="Toggle Name Prompting ({{#if this.promptNames}}On{{else}}Off{{/if}})">
                             <i class="fa-solid fa-id-card"></i>
                         </button>
+                        <span data-tooltip="Defenders: {{this.barrackDefenderCount}} / {{this.barrackMaxDefenders}} (cap based on facility size)"
+                              style="font-size: 0.7em; font-weight: bold; color: {{#if (ge this.barrackDefenderCount this.barrackMaxDefenders)}}#ef9a9a{{else}}#e8e4d9{{/if}}; white-space: nowrap; cursor: help; padding: 1px 4px; background: rgba(0,0,0,0.3); border-radius: 4px; border: 1px solid rgba(255,255,255,0.12);">
+                            <i class="fa-solid fa-shield" style="color:#ef9a9a;"></i> {{this.barrackDefenderCount}}/{{this.barrackMaxDefenders}}
+                        </span>
                     {{/if}}
 
                     {{#if (eq this.itemName "Storehouse")}}
