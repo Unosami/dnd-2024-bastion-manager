@@ -1210,6 +1210,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let effectiveLabPoisonChoice = "";
             let effectiveStableItemChoice = "";
 
+            const focusChoice = storedFocusChoice;
             const magicItemChoice = storedMagicItemChoice;
             const sacredFocusChoice = storedSacredFocusChoice;
             const smithyItemChoice = storedSmithyItemChoice;
@@ -1798,6 +1799,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 storehouseMarkup,
                 showArcanaItemSelect: isArcaneStudyCrafting && (craftChoice === "Magic Item (Arcana)" || isPausedProjectInQueue && storedCraftChoice === "Magic Item (Arcana)"),
                 magicItemChoice: magicItemChoice, // This is the currently selected magic item in the UI
+                focusChoice: focusChoice,
                 magicItemOptions: magicItemOptions,
                 focusOptions: focusOptions,
                 magicItemUuid: magicItemUuid,
@@ -1974,6 +1976,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 upgradeTurns: upgradeTurns,
                 upgradeProgressPct: Math.round((Math.min(upgradeProgress, upgradeTurns) / (upgradeTurns || 1)) * 100),
                 isBasic: isBasic,
+                scrollChoice: scrollChoice,
                 isEnlargeable: isEnlargeable,
                 isQueueCollapsed: this._queueStates[fac.id] || false,
                 isOrderDisabled: fac.isInherited || isBuilding || isDamaged,
