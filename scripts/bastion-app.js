@@ -31,6 +31,7 @@ const TRAINING_AREA_ROOT_ID   = "cxAgMJ71ADZ2APKu";
 const PUB_ROOT_ID             = "soSkXpUmtteM4mgD";
 const BASE_ITEMS_FOLDER_ID    = "AQ0XdVgHpL5IaNjC"; // Weapons & Armor used as base items for magic item crafting
 const RELIQUARY_ROOT_ID       = "zOMONoelQli72ZI7"; // Reliquary output folder
+const SANCTUM_ROOT_ID         = "eqeKF3pxcKuI6EX0"; // Sanctum output folder
 
 const BASTION_EVENTS_LIST = [
     { label: "All Is Well (01-50)", roll: 1 },
@@ -324,8 +325,15 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             toggleMenagerieDefender: BastionManager.onToggleMenagerieDefender,
             removeMenagerieCreature: BastionManager.onRemoveMenagerieCreature,
             toggleMeditation: BastionManager.onToggleMeditation,
-            grantObservatoryCharm: BastionManager.onGrantObservatoryCharm,
-            grantReliquaryCharm:   BastionManager.onGrantReliquaryCharm,
+            grantObservatoryCharm:   BastionManager.onGrantObservatoryCharm,
+            grantReliquaryCharm:     BastionManager.onGrantReliquaryCharm,
+            grantArcaneStudyCharm:   BastionManager.onGrantArcaneStudyCharm,
+            grantDemiplaneThp:       BastionManager.onGrantDemiplaneThp,
+            toggleFabrication:       BastionManager.onToggleFabrication,
+            grantSanctumCharm:       BastionManager.onGrantSanctumCharm,
+            grantSanctumRitesThp:    BastionManager.onGrantSanctumRitesThp,
+            grantWordOfRecall:       BastionManager.onGrantWordOfRecall,
+            applySanctumRecallHeal:  BastionManager.onApplySanctumRecallHeal,
             viewGraveyard: BastionManager.onViewGraveyard,
             renameBastionName: BastionManager.onRenameBastionName,
         }
@@ -381,7 +389,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const baseOrder = systemOrder.split(":")[0].trim();
             const formattedOrder = baseOrder.charAt(0).toUpperCase() + baseOrder.slice(1).toLowerCase();
             let label = formattedOrder;
-            if (formattedOrder === "Empower" && item.name.includes("Theater")) label = "Empower: Theatrical Event";
+            if (formattedOrder === "Empower" && item.name.includes("Theater"))   label = "Empower: Theatrical Event";
+            if (formattedOrder === "Empower" && item.name.includes("Demiplane")) label = "Empower: Arcane Resilience";
+            if (formattedOrder === "Empower" && item.name.includes("Sanctum"))   label = "Empower: Fortifying Rites";
             if (formattedOrder === "Trade" && item.name.includes("Armory")) label = "Trade: Stock Armory";
             if (formattedOrder !== "Maintain" && !availableOrders.includes(label)) availableOrders.push(label);
         }
@@ -396,7 +406,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
         BASTION_ORDERS.forEach(order => {
             let label = order;
-            if (order === "Empower" && item.name.includes("Theater")) label = "Empower: Theatrical Event";
+            if (order === "Empower" && item.name.includes("Theater"))   label = "Empower: Theatrical Event";
+            if (order === "Empower" && item.name.includes("Demiplane")) label = "Empower: Arcane Resilience";
+            if (order === "Empower" && item.name.includes("Sanctum"))   label = "Empower: Fortifying Rites";
             if (order === "Trade" && item.name.includes("Armory")) label = "Trade: Stock Armory";
             if (order === "Maintain" || availableOrders.includes(label)) return;
 
@@ -481,7 +493,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
         // Compute the UI-facing current order label (maps stored flag value → dropdown option)
         let currentUIOrder = (currentOrder === "Craft" && craftChoice) ? `Craft: ${craftChoice}` : currentOrder;
-        if (currentOrder === "Empower" && item.name.includes("Theater")) currentUIOrder = "Empower: Theatrical Event";
+        if (currentOrder === "Empower" && item.name.includes("Theater"))   currentUIOrder = "Empower: Theatrical Event";
+        if (currentOrder === "Empower" && item.name.includes("Demiplane")) currentUIOrder = "Empower: Arcane Resilience";
+        if (currentOrder === "Empower" && item.name.includes("Sanctum"))   currentUIOrder = "Empower: Fortifying Rites";
         if (currentOrder === "Trade" && item.name.includes("Armory")) currentUIOrder = "Trade: Stock Armory";
         if (currentOrder === "Harvest" && item.name.includes("Greenhouse")) currentUIOrder = `Harvest: ${craftChoice || "Healing Herbs"}`;
         if (currentOrder === "Research" && item.name.includes("Trophy Room")) currentUIOrder = `Research: ${craftChoice || "Lore"}`;
@@ -1116,6 +1130,13 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const isReliquaryFac = fac.name.includes("Reliquary");
             const reliquaryCharmActive = isReliquaryFac && !!(this.actor.getFlag(MODULE_ID, "activeReliquaryCharmIds") || []).length;
             const reliquaryTalismanActive = isReliquaryFac && !!(this.actor.getFlag(MODULE_ID, "activeReliquaryTalismanId"));
+            const isDemiplane = fac.name.includes("Demiplane");
+            const demiplaneRunesActive = isDemiplane && !!(this.actor.getFlag(MODULE_ID, "demiplaneRunesActive"));
+            const demiplanesFabricationUsed = isDemiplane && !!(this.actor.getFlag(MODULE_ID, "demiplanesFabricationUsed"));
+            const isSanctum = fac.name.includes("Sanctum");
+            const sanctumCharmActive = isSanctum && !!(this.actor.getFlag(MODULE_ID, "activeSanctumCharmIds") || []).length;
+            const sanctumFortifyingRitesActive = isSanctum && !!(this.actor.getFlag(MODULE_ID, "sanctumFortifyingRitesActive"));
+            const sanctumBeneficiaryName = isSanctum ? (this.actor.getFlag(MODULE_ID, "sanctumBeneficiaryName") || "") : "";
             const isPub = fac.name.includes("Pub");
             const pubSlotCount = isPub ? (facSize === "Vast" ? 2 : 1) : 0;
             const pubSpecials = isPub ? (getFacFlag("pubSpecials") || []) : [];
@@ -1259,9 +1280,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const hasOrders = availableOrders.length > 1;
 
             const isLibraryResearching = (fac.name.includes("Library") && safeOrder === "Research") || (fac.name.includes("Trophy Room") && safeOrder.includes("Lore")) || (fac.name.includes("Archive") && safeOrder === "Research: Helpful Lore") || (fac.name === "Pub" && safeOrder === "Research");
-            const isPubResearching      = fac.name === "Pub" && safeOrder === "Research";
-            const isTrophyResearching   = fac.name.includes("Trophy Room") && safeOrder.includes("Lore");
-            const isArchiveResearching  = fac.name.includes("Archive") && safeOrder === "Research: Helpful Lore";
+            const isPubResearching          = fac.name === "Pub" && safeOrder === "Research";
+            const isTrophyResearching       = fac.name.includes("Trophy Room") && safeOrder.includes("Lore");
+            const isTrinketTrophyResearching = fac.name.includes("Trophy Room") && safeOrder === "Research: Trinket Trophy";
+            const isArchiveResearching      = fac.name.includes("Archive") && safeOrder === "Research: Helpful Lore";
             const libraryTopic = fac.isFlag ? (fac.sourceDoc.flags?.["dnd-2024-bastion-manager"]?.libraryTopic || "") : (fac.sourceDoc.getFlag("dnd-2024-bastion-manager", "libraryTopic") || "");
 
             const craftQueue = rawQueue.map((q, idx) => {
@@ -1404,7 +1426,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
                     focusOptions = await BastionManager._getNestedCompendiumOptions(outPack, ARCANE_FOCUSES_FOLDER_ID, effectiveFocusChoice, calculationMode, daysPerTurn, progressLabel, false, null, "Magic Item");
                     arcaneFocusUuid = findUuid(focusOptions, effectiveFocusChoice);
-                    magicItemOptions = await BastionManager._getNestedCompendiumOptions(outPack, arcaneBranch, effectiveMagicItemChoice, calculationMode, daysPerTurn, progressLabel, true, null, "Focus|Book");
+                    magicItemOptions = await BastionManager._getNestedCompendiumOptions(outPack, arcaneBranch, effectiveMagicItemChoice, calculationMode, daysPerTurn, progressLabel, true, null, "Focus|Book|Charm");
                     magicItemUuid = findUuid(magicItemOptions, effectiveMagicItemChoice);
                 }
 
@@ -1573,6 +1595,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
              let currentMaxCraftTurns = 0;
             let currentGoldCost = 0;
             const isArcaneStudy = fac.name.includes("Arcane Study");
+            const arcaneStudyCharmActive = isArcaneStudy && !!(this.actor.getFlag(MODULE_ID, "activeArcaneStudyCharmIds") || []).length;
             const isSmithy = fac.name.includes("Smithy");
             const isWorkshop = fac.name.includes("Workshop");
             const isSanctuary = fac.name.includes("Sanctuary");
@@ -1782,6 +1805,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 isLibraryResearching: isLibraryResearching,
                 isPubResearching: isPubResearching,
                 isTrophyResearching: isTrophyResearching,
+                isTrinketTrophyResearching: isTrinketTrophyResearching,
                 isArchiveResearching: isArchiveResearching,
                 isArchive: isArchive,
                 archiveBooks: archiveBooks,
@@ -1923,6 +1947,15 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 isReliquaryFac,
                 reliquaryCharmActive,
                 reliquaryTalismanActive,
+                isDemiplane,
+                demiplaneRunesActive,
+                demiplanesFabricationUsed,
+                isSanctum,
+                sanctumCharmActive,
+                sanctumFortifyingRitesActive,
+                sanctumBeneficiaryName,
+                isArcaneStudyFac: isArcaneStudy,
+                arcaneStudyCharmActive,
                 isPub,
                 pubSlotCount,
                 pubSpecials,
@@ -3317,6 +3350,188 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         await actor.setFlag(MODULE_ID, "activeReliquaryCharmNames", created.map(i => i.name));
 
         ui.notifications.info(`${actor.name} has gained the Reliquary Charm from the sacred rites.`);
+        this.render?.();
+    }
+
+    /**
+     * Arcane Study: Grant the Arcane Study Charm after a Long Rest in the Bastion.
+     * The charm is automatically removed when the next Bastion Turn advances.
+     */
+    static async onGrantArcaneStudyCharm(event, target) {
+        const actor = this.actor;
+        const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+        if (!outPack) return ui.notifications.error("Arcane Study error: Output compendium missing.");
+
+        const charmSubfolder = outPack.folders.find(f => {
+            const pid = f.parentId || f.folder?.id || f.folder;
+            return pid === ARCANE_STUDY_ROOT_ID && f.name.toLowerCase().includes("arcane study charm");
+        });
+        if (!charmSubfolder) return ui.notifications.error("Arcane Study: 'Arcane Study Charm' subfolder not found in compendium.");
+
+        const index = await outPack.getIndex({ fields: ["folder"] });
+        const charmEntries = index.filter(i => (i.folder?.id || i.folder) === charmSubfolder.id);
+        if (charmEntries.length === 0) return ui.notifications.error("Arcane Study: No items found in the Arcane Study Charm folder.");
+
+        const existingIds = actor.getFlag(MODULE_ID, "activeArcaneStudyCharmIds") || [];
+        const charmNames = charmEntries.map(e => e.name);
+        const toDelete = actor.items
+            .filter(i => existingIds.includes(i.id) || charmNames.includes(i.name))
+            .map(i => i.id);
+        if (toDelete.length > 0) await actor.deleteEmbeddedDocuments("Item", toDelete);
+
+        const toCreate = [];
+        for (const entry of charmEntries) {
+            const doc = await outPack.getDocument(entry._id);
+            if (doc) {
+                const data = doc.toObject();
+                foundry.utils.setProperty(data, `flags.${MODULE_ID}.isBastionCharm`, true);
+                toCreate.push(data);
+            }
+        }
+        const created = await actor.createEmbeddedDocuments("Item", toCreate);
+        await actor.setFlag(MODULE_ID, "activeArcaneStudyCharmIds",   created.map(i => i.id));
+        await actor.setFlag(MODULE_ID, "activeArcaneStudyCharmNames", created.map(i => i.name));
+
+        ui.notifications.info(`${actor.name} has gained the Arcane Study Charm from their Long Rest in the Bastion.`);
+        this.render?.();
+    }
+
+    static async onGrantDemiplaneThp(event, target) {
+        const actor = this.actor;
+        if (!actor.getFlag(MODULE_ID, "demiplaneRunesActive")) {
+            ui.notifications.warn("The Demiplane's Arcane Resilience runes are not active. Use an Empower order first.");
+            return;
+        }
+        const level = actor.system?.details?.level || 1;
+        const thp = level * 5;
+        const currentTemp = actor.system?.attributes?.hp?.temp || 0;
+        await actor.update({ "system.attributes.hp.temp": Math.max(currentTemp, thp) });
+        ui.notifications.info(`${actor.name} gains ${thp} Temporary Hit Points from the Demiplane's Arcane Resilience runes.`);
+        this.render?.();
+    }
+
+    static async onToggleFabrication(event, target) {
+        const actor = this.actor;
+        const current = actor.getFlag(MODULE_ID, "demiplanesFabricationUsed") || false;
+        await actor.setFlag(MODULE_ID, "demiplanesFabricationUsed", !current);
+        this.render?.();
+    }
+
+    static async onGrantSanctumCharm(event, target) {
+        const actor = this.actor;
+        const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+        if (!outPack) return ui.notifications.error("Sanctum: output compendium not found.");
+
+        const charmSubfolder = outPack.folders.find(f => {
+            const pid = f.parentId || f.folder?.id || f.folder;
+            return pid === SANCTUM_ROOT_ID && f.name.toLowerCase().includes("charm");
+        });
+        if (!charmSubfolder) return ui.notifications.error("Sanctum: 'Sanctum Charm' subfolder not found in compendium.");
+
+        const index = await outPack.getIndex({ fields: ["folder"] });
+        const charmEntries = index.filter(i => (i.folder?.id || i.folder) === charmSubfolder.id);
+        if (charmEntries.length === 0) return ui.notifications.error("Sanctum: No items found in the Sanctum Charm folder.");
+
+        // Can't gain charm while already holding one
+        const existingIds = actor.getFlag(MODULE_ID, "activeSanctumCharmIds") || [];
+        const charmNames = charmEntries.map(e => e.name);
+        const alreadyHas = actor.items.some(i => existingIds.includes(i.id) || charmNames.includes(i.name));
+        if (alreadyHas) {
+            ui.notifications.warn(`${actor.name} already has the Sanctum Charm. Use it before gaining another.`);
+            return;
+        }
+
+        const toCreate = [];
+        for (const entry of charmEntries) {
+            const doc = await outPack.getDocument(entry._id);
+            if (doc) {
+                const data = doc.toObject();
+                foundry.utils.setProperty(data, `flags.${MODULE_ID}.isBastionCharm`, true);
+                toCreate.push(data);
+            }
+        }
+        const created = await actor.createEmbeddedDocuments("Item", toCreate);
+        await actor.setFlag(MODULE_ID, "activeSanctumCharmIds",   created.map(i => i.id));
+        await actor.setFlag(MODULE_ID, "activeSanctumCharmNames", created.map(i => i.name));
+
+        ui.notifications.info(`${actor.name} has gained the Sanctum Charm — Heal can be cast once without expending a spell slot.`);
+        this.render?.();
+    }
+
+    static async onGrantSanctumRitesThp(event, target) {
+        const actor = this.actor;
+        if (!actor.getFlag(MODULE_ID, "sanctumFortifyingRitesActive")) {
+            ui.notifications.warn("Fortifying Rites are not active. Use an Empower order first.");
+            return;
+        }
+        const benefId = actor.getFlag(MODULE_ID, "sanctumBeneficiaryId");
+        const beneficiary = benefId ? game.actors.get(benefId) : null;
+        if (!beneficiary) {
+            ui.notifications.warn("No beneficiary found. Re-issue the Empower order to designate one.");
+            return;
+        }
+        const ownerLevel = actor.system?.details?.level || 1;
+        const currentTemp = beneficiary.system?.attributes?.hp?.temp || 0;
+        await beneficiary.update({ "system.attributes.hp.temp": Math.max(currentTemp, ownerLevel) });
+        ui.notifications.info(`${beneficiary.name} gains ${ownerLevel} Temporary Hit Point${ownerLevel !== 1 ? "s" : ""} from ${actor.name}'s Sanctum Fortifying Rites.`);
+        this.render?.();
+    }
+
+    static async onGrantWordOfRecall(event, target) {
+        const actor = this.actor;
+        const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+        if (!outPack) return ui.notifications.error("Sanctum: output compendium not found.");
+
+        const spellSubfolder = outPack.folders.find(f => {
+            const pid = f.parentId || f.folder?.id || f.folder;
+            return pid === SANCTUM_ROOT_ID && f.name.toLowerCase().includes("recall");
+        });
+        if (!spellSubfolder) return ui.notifications.error("Sanctum: 'Word of Recall' subfolder not found in compendium.");
+
+        const index = await outPack.getIndex({ fields: ["folder"] });
+        const spellEntries = index.filter(i => (i.folder?.id || i.folder) === spellSubfolder.id);
+        if (spellEntries.length === 0) return ui.notifications.error("Sanctum: No items found in the Word of Recall folder.");
+
+        for (const entry of spellEntries) {
+            const already = actor.items.find(i => i.name === entry.name);
+            if (already) {
+                ui.notifications.info(`${actor.name} already has ${entry.name} in their spell list.`);
+                continue;
+            }
+            const doc = await outPack.getDocument(entry._id);
+            if (doc) await actor.createEmbeddedDocuments("Item", [doc.toObject()]);
+        }
+        ui.notifications.info(`Word of Recall added to ${actor.name}'s spell list (always prepared via Sanctum).`);
+        this.render?.();
+    }
+
+    static async onApplySanctumRecallHeal(event, target) {
+        const actor = this.actor;
+        const recipients = game.actors.filter(a =>
+            (a.type === "character" || a.type === "npc") && (a.hasPlayerOwner || a.id === actor.id)
+        );
+        const recipOpts = recipients.map(a =>
+            `<option value="${a.id}"${a.id === actor.id ? " selected" : ""}>${a.name}</option>`
+        ).join("");
+
+        const targetId = await foundry.applications.api.DialogV2.prompt({
+            window: { title: "Sanctum Recall: Apply Heal", icon: "fa-solid fa-heart-pulse" },
+            content: `<p>One creature that arrives in the Sanctum via <b>Word of Recall</b> gains the benefit of a <b>Heal</b> spell (restores 70 Hit Points; ends Blinded, Deafened, and Poisoned conditions).</p>
+            <div class="form-group"><label>Creature:</label><select name="t" style="width:100%;">${recipOpts}</select></div>`,
+            ok: { label: "Apply Heal", callback: (e, b) => b.form.elements.t.value },
+            rejectClose: false
+        });
+        if (!targetId) return;
+
+        const targetActor = game.actors.get(targetId);
+        if (!targetActor) return;
+
+        const maxHp = targetActor.system?.attributes?.hp?.max || 0;
+        const healAmt = Math.min(70, maxHp - (targetActor.system?.attributes?.hp?.value || 0));
+        if (healAmt > 0) {
+            await targetActor.update({ "system.attributes.hp.value": (targetActor.system.attributes.hp.value || 0) + healAmt });
+        }
+        ui.notifications.info(`${targetActor.name} is healed for ${healAmt} HP by the Sanctum's Recall magic. Blinded, Deafened, and Poisoned conditions (if any) are also ended.`);
         this.render?.();
     }
 
@@ -5954,8 +6169,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 await actor.deleteEmbeddedDocuments("Item", itemsToRemove);
                 orderSummary += `<li style="margin-bottom: 6px; padding: 4px; background: rgba(130,207,255,0.1); border-radius: 3px;"><i class="fa-solid fa-brain"></i> <b>Meditation:</b> Your inner focus has faded. Saving throw benefits have been removed.</li>`;
             }
-            await actor.unsetFlag(MODULE_ID, "activeMeditationItems");
-            await actor.unsetFlag(MODULE_ID, "fortifiedSaves");
+            await actor.update({
+                [`flags.${MODULE_ID}.-=activeMeditationItems`]: null,
+                [`flags.${MODULE_ID}.-=fortifiedSaves`]:        null,
+            });
         }
 
         // --- 7-Day Bastion Charm Cleanup ---
@@ -5979,11 +6196,23 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             orderSummary += `<li style="margin-bottom: 6px; padding: 4px; background: rgba(255,215,0,0.08); border-radius: 3px;"><i class="fa-solid fa-star"></i> <b>Bastion Charms:</b> Your bastion's temporary charms have faded with the turning of the heavens.</li>`;
         }
         // Always clean up all known charm flags regardless of whether items were found.
-        for (const key of [
-            "activeObservatoryCharmIds", "activeObservatoryCharmNames",
-            "activeObservatoryEldritchCharmIds", "activeObservatoryEldritchCharmNames",
-            "activeReliquaryCharmIds", "activeReliquaryCharmNames",
-        ]) await actor.unsetFlag(MODULE_ID, key);
+        // Batched into one update to avoid 8 sequential round-trips.
+        await actor.update({
+            [`flags.${MODULE_ID}.-=activeObservatoryCharmIds`]:          null,
+            [`flags.${MODULE_ID}.-=activeObservatoryCharmNames`]:        null,
+            [`flags.${MODULE_ID}.-=activeObservatoryEldritchCharmIds`]:  null,
+            [`flags.${MODULE_ID}.-=activeObservatoryEldritchCharmNames`]:null,
+            [`flags.${MODULE_ID}.-=activeReliquaryCharmIds`]:            null,
+            [`flags.${MODULE_ID}.-=activeReliquaryCharmNames`]:          null,
+            [`flags.${MODULE_ID}.-=activeArcaneStudyCharmIds`]:          null,
+            [`flags.${MODULE_ID}.-=activeArcaneStudyCharmNames`]:        null,
+            [`flags.${MODULE_ID}.demiplaneRunesActive`]:                 false,
+            [`flags.${MODULE_ID}.-=activeSanctumCharmIds`]:              null,
+            [`flags.${MODULE_ID}.-=activeSanctumCharmNames`]:            null,
+            [`flags.${MODULE_ID}.sanctumFortifyingRitesActive`]:         false,
+            [`flags.${MODULE_ID}.-=sanctumBeneficiaryId`]:               null,
+            [`flags.${MODULE_ID}.-=sanctumBeneficiaryName`]:             null,
+        });
 
         // Reliquary Talisman persists across turns (permanent until the setting caps it or player removes it).
         // We do NOT clean up activeReliquaryTalismanId here — it is permanent until overwritten.
@@ -6016,9 +6245,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             wallCount += actualFinished;
             wallRemainder = elapsedDays % 10;
             
-            await actor.setFlag(MODULE_ID, "completedWalls", wallCount);
-            await actor.setFlag(MODULE_ID, "pendingWallDays", remainingPending);
-            await actor.setFlag(MODULE_ID, "wallDayRemainder", remainingPending > 0 ? wallRemainder : 0);
+            await actor.update({
+                [`flags.${MODULE_ID}.completedWalls`]:   wallCount,
+                [`flags.${MODULE_ID}.pendingWallDays`]:  remainingPending,
+                [`flags.${MODULE_ID}.wallDayRemainder`]: remainingPending > 0 ? wallRemainder : 0,
+            });
 
             if (actualFinished > 0) {
                 orderSummary += `<li style="margin-bottom: 6px; padding: 4px; background: rgba(163,42,34,0.1); border-radius: 3px;">
@@ -7298,7 +7529,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             await targetActor.setFlag(MODULE_ID, "activeObservatoryEldritchCharmNames", created.map(i => i.name));
 
             const recipientLabel = targetActor.id === actor.id ? "you" : `<b>${targetActor.name}</b>`;
-            return { text: `<i class="fa-solid fa-star"></i> <b>Eldritch Discovery (rolled ${surveyRoll.total}):</b> The eldritch mysteries of the stars have bestowed <b>${charmDoc.name}</b> upon ${recipientLabel}.` };
+            return { text: `<i class="fa-solid fa-star"></i> <b>Eldritch Discovery (rolled ${rollTotal}):</b> The eldritch mysteries of the stars have bestowed <b>${charmDoc.name}</b> upon ${recipientLabel}.` };
         } else if (baseName.includes("Reliquary")) {
             // Empower: grant the Reliquary Charm (expires next turn via isBastionCharm cleanup)
             const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
@@ -7338,9 +7569,33 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const charmNameList = created.map(i => i.name).join(", ");
             return { text: `<i class="fa-solid fa-khanda"></i> <b>Reliquary (Empower):</b> ${hString} has completed sacred rites. ${actor.name} gains the Reliquary Charm: <b>${charmNameList}</b>. This charm expires at the next Bastion Turn.` };
         } else if (baseName === "Demiplane") {
-            return { text: `Magical runes appear on the walls of the demiplane. For the next 7 days, you gain Temporary Hit Points equal to five times your level after spending an entire Long Rest here.` };
+            await actor.setFlag(MODULE_ID, "demiplaneRunesActive", true);
+            return { text: `<i class="fa-solid fa-circle-nodes"></i> <b>Arcane Resilience:</b> Magical runes appear on the walls of the Demiplane. For the next 7 days, you gain Temporary Hit Points equal to five times your level after spending an entire Long Rest inside the Demiplane.` };
         } else if (baseName === "Sanctum") {
-            return { text: `${psString} perform daily rites. The designated beneficiary gains Temporary Hit Points equal to your level after each Long Rest for 7 days.` };
+            const ownerLevel = actor.system?.details?.level || 1;
+            const recipients = game.actors.filter(a =>
+                (a.type === "character" || a.type === "npc") && (a.hasPlayerOwner || a.id === actor.id)
+            );
+            const recipOpts = recipients.map(a =>
+                `<option value="${a.id}"${a.id === actor.id ? " selected" : ""}>${a.name}</option>`
+            ).join("");
+
+            const beneficiaryId = await foundry.applications.api.DialogV2.prompt({
+                window: { title: "Fortifying Rites: Designate Beneficiary", icon: "fa-solid fa-cross" },
+                content: `<p>${psString} begin daily rites of fortification. Choose a beneficiary — they will gain <b>${ownerLevel} Temporary Hit Point${ownerLevel !== 1 ? "s" : ""}</b> after each Long Rest for the next 7 days. The beneficiary does not need to be in the Bastion.</p>
+                <div class="form-group"><label>Beneficiary:</label><select name="b" style="width:100%;">${recipOpts}</select></div>`,
+                ok: { label: "Designate Beneficiary", callback: (e, b) => b.form.elements.b.value },
+                rejectClose: false
+            });
+            if (!beneficiaryId) return { text: null };
+
+            const beneficiary = game.actors.get(beneficiaryId);
+            if (!beneficiary) return { text: "Sanctum error: beneficiary actor not found." };
+            await actor.setFlag(MODULE_ID, "sanctumFortifyingRitesActive", true);
+            await actor.setFlag(MODULE_ID, "sanctumBeneficiaryId", beneficiaryId);
+            await actor.setFlag(MODULE_ID, "sanctumBeneficiaryName", beneficiary.name);
+
+            return { text: `<i class="fa-solid fa-cross"></i> <b>Fortifying Rites:</b> ${psString} have ordained daily rites for <b>${beneficiary.name}</b>. They will gain <b>${ownerLevel} Temporary Hit Point${ownerLevel !== 1 ? "s" : ""}</b> after each Long Rest for the next 7 days.` };
         }
         return { text: `Executed Empower order.` };
     }
@@ -7586,24 +7841,29 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         } else if (baseName === "Trophy Room") {
             const researchChoice = getFacFlag("craftChoice") || "Lore";
             if (researchChoice === "Trinket Trophy") {
-                const roll = (await new Roll("1d2").evaluate()).total;
-                if (roll === 2) { // Even success
+                const rollResult = await new Roll("1d6").evaluate();
+                const roll = rollResult.total;
+                await rollResult.toMessage({ flavor: `${baseName} — Trinket Trophy Search (even = success)`, rollMode: "publicroll" });
+                if (roll % 2 === 0) { // Even = success
                     const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
                     const index = await outPack?.getIndex({fields: ["folder", "system.rarity"]});
-                    const folder = outPack?.folders.find(f => f.name.toLowerCase().includes("implement"));
-                    
+                    const workshopRootId = "XkNDvStirzNpw8G2";
+                    const allSubIds = BastionManager._getAllSubfolderIds(outPack, workshopRootId);
+                    allSubIds.push(workshopRootId);
+                    const folder = outPack?.folders.find(f => allSubIds.includes(f.id) && f.name.toLowerCase().includes("implement"));
+
                     if (index && folder) {
                         const possible = index.filter(i => (i.folder?.id || i.folder) === folder.id && i.system.rarity?.toLowerCase() === "common");
                         if (possible.length > 0) {
                             const chosen = possible[Math.floor(Math.random() * possible.length)];
                             const doc = await outPack.getDocument(chosen._id);
                             const item = doc.toObject();
-                            return { text: `${hString} searched through the trophies and discovered a useful trinket: <b>${item.name}</b>!`, item };
+                            return { text: `${hString} searched the trophies and found a useful magic implement: <b>${item.name}</b>! (Roll: ${roll} — even)`, item };
                         }
                     }
-                    return { text: `${hString} found a valuable implement among the trophies, but no specific item data was found in the compendium.` };
+                    return { text: `${hString} found a valuable implement among the trophies, but no specific item data was found in the compendium. (Roll: ${roll} — even)` };
                 }
-                return { text: `${hString} spent the week searching the trophies but found nothing of immediate use (Roll: ${roll}).` };
+                return { text: `${hString} spent the week searching the trophies but found nothing of immediate use. (Roll: ${roll} — odd)` };
             }
             const topic = getFacFlag("libraryTopic");
             return { text: `${hString} studied the trophies to research <b>${topic || "a significant topic"}</b>, discovering up to 3 accurate pieces of information.` };
@@ -7794,8 +8054,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const existingTalismanId = actor.getFlag(MODULE_ID, "activeReliquaryTalismanId");
             if (limitOne && existingTalismanId) {
                 const existingItem = actor.items.get(existingTalismanId);
-                const existingName = existingItem?.name || "their Talisman";
-                return { item: null, text: `<i class="fa-solid fa-khanda"></i> <b>Reliquary (Harvest):</b> ${hString} notes that ${actor.name} already bears <b>${existingName}</b>. The one-talisman limit is active — remove the existing talisman before crafting a new one.` };
+                if (existingItem) {
+                    return { item: null, text: `<i class="fa-solid fa-khanda"></i> <b>Reliquary (Harvest):</b> ${hString} notes that ${actor.name} already bears <b>${existingItem.name}</b>. The one-talisman limit is active — remove the existing talisman before crafting a new one.` };
+                }
+                // Flag is stale — item was manually deleted; clear it and fall through to grant.
+                await actor.unsetFlag(MODULE_ID, "activeReliquaryTalismanId");
             }
 
             // Pick one talisman at random from the subfolder

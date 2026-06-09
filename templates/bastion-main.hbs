@@ -226,7 +226,11 @@
                                         <option value="{{this.value}}" {{#if this.selected}}selected{{/if}} style="font-size: 0.9em;">{{this.label}}</option>
                                     {{/each}}
                                 </select>
-                                {{#if this.isLibraryResearching}}
+                                {{#if this.isTrinketTrophyResearching}}
+                                    <div style="width: 100%; margin-top: 2px; font-size: 0.8em; opacity: 0.75; font-style: italic; line-height: 1.4;">
+                                        <i class="fa-solid fa-dice"></i> After 7 days, roll any die — <b>even</b>: hireling finds a Common magic implement; <b>odd</b>: nothing found.
+                                    </div>
+                                {{else if this.isLibraryResearching}}
                                     <div style="width: 100%; margin-top: 2px;">
                                         {{#if this.isPubResearching}}
                                             <label style="font-size: 0.8em; opacity: 0.7; display: block; margin-bottom: 1px;">Creature to locate (leave blank for general rumours within 10 miles):</label>
@@ -691,6 +695,26 @@
                     </div>
                 {{/if}}
 
+                {{#if this.isArcaneStudyFac}}
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid #b39ddb; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                            <span data-tooltip="After each Long Rest in your Bastion, you may cast Identify as a Charm (no spell slot required). This charm expires at the start of the next Bastion Turn." style="cursor: help;"><i class="fa-solid fa-sparkles"></i> <b>Arcane Study Charm:</b></span>
+                            {{#if this.arcaneStudyCharmActive}}
+                                <span style="color: #b39ddb; font-weight: bold;">ACTIVE</span>
+                            {{else}}
+                                <span style="opacity: 0.6; font-style: italic;">Requires Long Rest</span>
+                            {{/if}}
+                        </div>
+                        <hr style="opacity: 0.1; margin: 5px 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span data-tooltip="Grant yourself the Arcane Study Charm after finishing a Long Rest in your Bastion. The charm is automatically removed when the next Bastion Turn advances." style="cursor: help; font-size: 0.88em; opacity: 0.75;">Long Rest in Bastion</span>
+                            <button type="button" data-action="grantArcaneStudyCharm" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 24px;">
+                                {{#if this.arcaneStudyCharmActive}}Refresh Charm{{else}}Grant Charm{{/if}}
+                            </button>
+                        </div>
+                    </div>
+                {{/if}}
+
                 {{#if this.isReliquaryFac}}
                     <div style="font-size: 0.9em; color: #eee; border: 2px solid #c9784e; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
                         {{!-- Reliquary Charm row --}}
@@ -717,6 +741,98 @@
                             {{else}}
                                 <span style="font-size: 0.82em; opacity: 0.55; font-style: italic;">via Harvest order</span>
                             {{/if}}
+                        </div>
+                    </div>
+                {{/if}}
+
+                {{#if this.isDemiplane}}
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid #7e57c2; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
+                        {{!-- Arcane Resilience row --}}
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                            <span data-tooltip="Use an Empower order to inscribe magical runes on the Demiplane's walls. Until they fade (7 days), you gain Temporary Hit Points equal to 5× your level after each Long Rest spent in the Demiplane." style="cursor: help;"><i class="fa-solid fa-circle-nodes"></i> <b>Arcane Resilience:</b></span>
+                            {{#if this.demiplaneRunesActive}}
+                                <span style="color: #b39ddb; font-weight: bold;">ACTIVE</span>
+                            {{else}}
+                                <span style="opacity: 0.6; font-style: italic;">Requires Empower</span>
+                            {{/if}}
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 0.88em; opacity: 0.75;">After Long Rest in Demiplane</span>
+                            <button type="button" data-action="grantDemiplaneThp" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                    {{#unless this.demiplaneRunesActive}}disabled{{/unless}}
+                                    style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 24px;">
+                                Gain THP
+                            </button>
+                        </div>
+                        <hr style="opacity: 0.1; margin: 5px 0;">
+                        {{!-- Fabrication row --}}
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span data-tooltip="While in the Demiplane, you can take a Magic action to create a nonmagical object (max 5 ft in any dimension, max 5 GP value, made of wood/stone/clay/porcelain/glass/paper/nonprecious crystal or metal). Once per Long Rest." style="cursor: help;"><i class="fa-solid fa-wand-sparkles"></i> <b>Fabrication:</b></span>
+                            <button type="button" data-action="toggleFabrication" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                    style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 24px; {{#if this.demiplanesFabricationUsed}}opacity: 0.55; font-style: italic;{{/if}}">
+                                {{#if this.demiplanesFabricationUsed}}Used{{else}}Use{{/if}}
+                            </button>
+                        </div>
+                    </div>
+                {{/if}}
+
+                {{#if this.isSanctum}}
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid #c9a227; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
+                        {{!-- Sanctum Charm row --}}
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                            <span data-tooltip="After spending a Long Rest in your Bastion, you gain the Sanctum Charm: cast Heal once without expending a spell slot (lasts 7 days or until used). You cannot gain this Charm again while you still have it." style="cursor: help;"><i class="fa-solid fa-heart-pulse"></i> <b>Sanctum Charm:</b></span>
+                            {{#if this.sanctumCharmActive}}
+                                <span style="color: #c9a227; font-weight: bold;">ACTIVE</span>
+                            {{else}}
+                                <span style="opacity: 0.6; font-style: italic;">Not granted</span>
+                            {{/if}}
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 0.88em; opacity: 0.75;">After Long Rest in Bastion</span>
+                            <button type="button" data-action="grantSanctumCharm" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                    {{#if this.sanctumCharmActive}}disabled{{/if}}
+                                    style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 24px;">
+                                Grant Charm
+                            </button>
+                        </div>
+                        <hr style="opacity: 0.1; margin: 5px 0;">
+                        {{!-- Fortifying Rites row --}}
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                            <span data-tooltip="Use an Empower order to designate a beneficiary. They gain Temporary Hit Points equal to your level after each Long Rest for 7 days. The beneficiary does not need to be in the Bastion." style="cursor: help;"><i class="fa-solid fa-cross"></i> <b>Fortifying Rites:</b></span>
+                            {{#if this.sanctumFortifyingRitesActive}}
+                                <span style="color: #c9a227; font-weight: bold;">ACTIVE</span>
+                            {{else}}
+                                <span style="opacity: 0.6; font-style: italic;">Requires Empower</span>
+                            {{/if}}
+                        </div>
+                        {{#if this.sanctumBeneficiaryName}}
+                            <div style="font-size: 0.85em; opacity: 0.75; text-align: right; margin-bottom: 2px;">Beneficiary: <b>{{this.sanctumBeneficiaryName}}</b></div>
+                        {{/if}}
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                            <span style="font-size: 0.88em; opacity: 0.75;">After beneficiary's Long Rest</span>
+                            <button type="button" data-action="grantSanctumRitesThp" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                    {{#unless this.sanctumFortifyingRitesActive}}disabled{{/unless}}
+                                    style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 24px;">
+                                Grant THP
+                            </button>
+                        </div>
+                        <hr style="opacity: 0.1; margin: 5px 0;">
+                        {{!-- Sanctum Recall row --}}
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <span data-tooltip="While the Sanctum exists, Word of Recall is always prepared. When cast, you can set the Sanctum as the destination. One creature that arrives gains the benefit of a Heal spell." style="cursor: help;"><i class="fa-solid fa-person-walking-arrow-right"></i> <b>Sanctum Recall:</b></span>
+                            <span style="font-size: 0.8em; opacity: 0.65; font-style: italic;">Always available</span>
+                        </div>
+                        <div style="display: flex; gap: 4px;">
+                            <button type="button" data-action="grantWordOfRecall" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                    data-tooltip="Add Word of Recall to your prepared spell list (one-time setup)"
+                                    style="flex: 1; padding: 2px 6px; font-size: 0.82em; height: 24px;">
+                                <i class="fa-solid fa-book-open"></i> Prepare Spell
+                            </button>
+                            <button type="button" data-action="applySanctumRecallHeal" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                    data-tooltip="Apply the benefit of a Heal spell to one creature that arrived via Word of Recall"
+                                    style="flex: 1; padding: 2px 6px; font-size: 0.82em; height: 24px;">
+                                <i class="fa-solid fa-heart-pulse"></i> Apply Heal
+                            </button>
                         </div>
                     </div>
                 {{/if}}

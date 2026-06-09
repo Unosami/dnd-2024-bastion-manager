@@ -617,7 +617,6 @@ const integrateBastionDashboard = (bastionTab) => {
             if (!orderSlot) return;
             orderSlot.classList.remove('empty');
             orderSlot.setAttribute('data-tooltip', tooltipLabel);
-            orderSlot.title = tooltipLabel;
             // Reuse existing dnd5e-icon if present, otherwise create one.
             // IMPORTANT: set src BEFORE appending — the web component fetches on connectedCallback.
             let icon = orderSlot.querySelector('dnd5e-icon');
@@ -706,66 +705,234 @@ const integrateBastionDashboard = (bastionTab) => {
 
             // Add Research Topic input for Libraries/Archives/Pub
             if (availableOrders.some(o => o.includes("Research")) && safeOrder.startsWith("Research")) {
-                const isPub      = facName === "Pub";
-                const isTrophy   = facName.includes("Trophy Room");
-                const isArchive  = facName.includes("Archive");
+                const isPub             = facName === "Pub";
+                const isTrophy          = facName.includes("Trophy Room");
+                const isArchive         = facName.includes("Archive");
+                const isTrinketTrophy   = isTrophy && safeOrder === "Research: Trinket Trophy";
 
-                const labelEl = document.createElement("label");
-                labelEl.style.cssText = "font-size: 0.8em; opacity: 0.7; display: block; margin-bottom: 1px;";
-                if (isPub)           labelEl.textContent = "Creature to locate (leave blank for general rumours within 10 miles):";
-                else if (isTrophy)   labelEl.textContent = "Subject of legendary significance to research:";
-                else if (isArchive)  labelEl.textContent = "Subject of legendary significance to research:";
-                else                 labelEl.textContent = "Topic to research (up to 3 accurate facts):";
-                choiceContainer.appendChild(labelEl);
+                if (isTrinketTrophy) {
+                    const descEl = document.createElement("div");
+                    descEl.style.cssText = "font-size: 0.8em; opacity: 0.75; font-style: italic; line-height: 1.4;";
+                    descEl.innerHTML = `<i class="fa-solid fa-dice" style="margin-right: 3px;"></i>After 7 days, roll any die — <b>even</b>: hireling finds a Common magic implement; <b>odd</b>: nothing found.`;
+                    choiceContainer.appendChild(descEl);
+                } else {
+                    const labelEl = document.createElement("label");
+                    labelEl.style.cssText = "font-size: 0.8em; opacity: 0.7; display: block; margin-bottom: 1px;";
+                    if (isPub)           labelEl.textContent = "Creature to locate (leave blank for general rumours within 10 miles):";
+                    else if (isTrophy)   labelEl.textContent = "Subject of legendary significance to research:";
+                    else if (isArchive)  labelEl.textContent = "Subject of legendary significance to research:";
+                    else                 labelEl.textContent = "Topic to research (up to 3 accurate facts):";
+                    choiceContainer.appendChild(labelEl);
 
-                const input = document.createElement("input");
-                input.type = "text";
-                input.className = "library-topic-input";
-                if (isPub)          input.placeholder = "e.g. Zevlor the Tiefling — last seen near Baldur's Gate";
-                else if (isTrophy)  input.placeholder = "e.g. The Eye of Vecna — yields a Legend Lore–style summary if legendary";
-                else if (isArchive) input.placeholder = "e.g. Strahd von Zarovich — yields a Legend Lore–style summary if legendary";
-                else                input.placeholder = "e.g. The Cult of the Dragon — history, goals, key members";
-                input.value = fFlags.libraryTopic || "";
-                input.style.cssText = "height: 22px; font-size: 0.85em; width: 100%;";
-                input.addEventListener("change", async (ev) => {
-                    await item.setFlag(MODULE_ID, "libraryTopic", ev.target.value);
-                });
-                choiceContainer.appendChild(input);
+                    const input = document.createElement("input");
+                    input.type = "text";
+                    input.className = "library-topic-input";
+                    if (isPub)          input.placeholder = "e.g. Zevlor the Tiefling — last seen near Baldur's Gate";
+                    else if (isTrophy)  input.placeholder = "e.g. The Eye of Vecna — yields a Legend Lore–style summary if legendary";
+                    else if (isArchive) input.placeholder = "e.g. Strahd von Zarovich — yields a Legend Lore–style summary if legendary";
+                    else                input.placeholder = "e.g. The Cult of the Dragon — history, goals, key members";
+                    input.value = fFlags.libraryTopic || "";
+                    input.style.cssText = "height: 22px; font-size: 0.85em; width: 100%;";
+                    input.addEventListener("change", async (ev) => {
+                        await item.setFlag(MODULE_ID, "libraryTopic", ev.target.value);
+                    });
+                    choiceContainer.appendChild(input);
+                }
             }
 
-            // Example: Add Magic Item / Focus selector logic for Arcane Study
+            // Shared helpers for compendium-backed craft sub-selectors
+            const _buildSelect = (options, currentValue, flagKey, placeholder) => {
+                const sel = document.createElement("select");
+                sel.style.cssText = "height: 22px; font-size: 0.85em; width: 100%;";
+                const blank = document.createElement("option");
+                blank.value = ""; blank.textContent = placeholder; blank.selected = !currentValue;
+                sel.appendChild(blank);
+                options.forEach(opt => {
+                    if (opt.groupOptions) {
+                        const group = document.createElement("optgroup");
+                        group.label = opt.label;
+                        opt.groupOptions.forEach(o => {
+                            const oEl = document.createElement("option");
+                            oEl.value = o.value; oEl.textContent = o.label; oEl.selected = o.selected;
+                            group.appendChild(oEl);
+                        });
+                        sel.appendChild(group);
+                    } else {
+                        const oEl = document.createElement("option");
+                        oEl.value = opt.value; oEl.textContent = opt.label; oEl.selected = opt.selected;
+                        sel.appendChild(oEl);
+                    }
+                });
+                sel.addEventListener("mousedown", ev => ev.stopPropagation());
+                sel.addEventListener("change", async (ev) => { await item.setFlag(MODULE_ID, flagKey, ev.target.value); });
+                return sel;
+            };
+            const _insertBeforeQueue = (el) => {
+                const queueRow = choiceContainer.querySelector(".bastion-queue-row");
+                if (queueRow) choiceContainer.insertBefore(el, queueRow);
+                else choiceContainer.appendChild(el);
+            };
+            const _getOutPack = () => game.packs.get(`${MODULE_ID}.bastion-output-items`);
+            const _craftSettings = () => ({
+                calculationMode: game.settings.get(MODULE_ID, "calculationMode"),
+                daysPerTurn: game.settings.get(MODULE_ID, "daysPerTurn") || 7,
+            });
+
+            // Arcane Study craft sub-selectors
             if (facName.includes("Arcane Study") && safeOrder.startsWith("Craft")) {
                 if (craftChoice === "Magic Item (Arcana)") {
-                    // We call the state builder to get the options list
                     (async () => {
-                        const calculationMode = game.settings.get(MODULE_ID, "calculationMode");
-                        const daysPerTurn = game.settings.get(MODULE_ID, "daysPerTurn") || 7;
-                        const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
-                        if (outPack) {
-                            const options = await BastionManager._getNestedCompendiumOptions(outPack, "8yYUu27NcOQJc3qx", fFlags.magicItemChoice, calculationMode, daysPerTurn, "t", true, null, "Focus|Book");
-                            const sel = document.createElement("select");
-                            sel.style.cssText = "height: 22px; font-size: 0.85em;";
-                            options.forEach(opt => {
-                                if (opt.groupOptions) {
-                                    const group = document.createElement("optgroup");
-                                    group.label = opt.label;
-                                    opt.groupOptions.forEach(o => {
-                                        const oEl = document.createElement("option");
-                                        oEl.value = o.value; oEl.textContent = o.label; oEl.selected = o.selected;
-                                        group.appendChild(oEl);
-                                    });
-                                    sel.appendChild(group);
-                                } else {
-                                    const oEl = document.createElement("option");
-                                    oEl.value = opt.value; oEl.textContent = opt.label; oEl.selected = opt.selected;
-                                    sel.appendChild(oEl);
-                                }
-                            });
-                            sel.addEventListener("change", async (ev) => { await item.setFlag(MODULE_ID, "magicItemChoice", ev.target.value); });
-                            choiceContainer.appendChild(sel);
-                        }
+                        const outPack = _getOutPack(); if (!outPack) return;
+                        const { calculationMode, daysPerTurn } = _craftSettings();
+                        const options = await BastionManager._getNestedCompendiumOptions(outPack, "8yYUu27NcOQJc3qx", fFlags.magicItemChoice, calculationMode, daysPerTurn, "t", true, null, "Focus|Book|Charm");
+                        _insertBeforeQueue(_buildSelect(options, fFlags.magicItemChoice, "magicItemChoice", "— Select Magic Item —"));
+                    })();
+                } else if (craftChoice === "Arcane Focus") {
+                    (async () => {
+                        const outPack = _getOutPack(); if (!outPack) return;
+                        const { calculationMode, daysPerTurn } = _craftSettings();
+                        const options = await BastionManager._getNestedCompendiumOptions(outPack, "ByVgJZyPE5H3M5tV", fFlags.focusChoice, calculationMode, daysPerTurn, "t", false, null, "Magic Item");
+                        _insertBeforeQueue(_buildSelect(options, fFlags.focusChoice, "focusChoice", "— Select Focus Type —"));
                     })();
                 }
+                // Craft: Book always crafts Blank Book — no sub-selection needed
+            }
+
+            // Smithy craft sub-selectors
+            if (facName.includes("Smithy") && safeOrder.startsWith("Craft")) {
+                (async () => {
+                    const outPack = _getOutPack(); if (!outPack) return;
+                    const { calculationMode, daysPerTurn } = _craftSettings();
+                    const smithyRootId = "wti6MOvq9leZqgp9";
+                    if (craftChoice === "Smith's Tools") {
+                        const options = await BastionManager._getNestedCompendiumOptions(outPack, smithyRootId, fFlags.smithyItemChoice, calculationMode, daysPerTurn, "t", false, null, "Armament");
+                        _insertBeforeQueue(_buildSelect(options, fFlags.smithyItemChoice, "smithyItemChoice", "— Select Item to Craft —"));
+                    } else if (craftChoice === "Magic Item (Armament)") {
+                        const allSubIds = BastionManager._getAllSubfolderIds(outPack, smithyRootId);
+                        const armFolder = outPack.folders.find(f => allSubIds.includes(f.id) && f.name.toLowerCase().includes("armament"));
+                        if (armFolder) {
+                            const options = await BastionManager._getNestedCompendiumOptions(outPack, armFolder.id, fFlags.armamentItemChoice, calculationMode, daysPerTurn, "t", true);
+                            _insertBeforeQueue(_buildSelect(options, fFlags.armamentItemChoice, "armamentItemChoice", "— Select Magic Item —"));
+                        }
+                    }
+                })();
+            }
+
+            // Workshop craft sub-selectors
+            if (facName.includes("Workshop") && safeOrder.startsWith("Craft")) {
+                (async () => {
+                    const outPack = _getOutPack(); if (!outPack) return;
+                    const { calculationMode, daysPerTurn } = _craftSettings();
+                    const workshopRootId = "XkNDvStirzNpw8G2";
+                    if (craftChoice === "Adventuring Gear") {
+                        const workshopTools = item.getFlag(MODULE_ID, "workshopTools") || [];
+                        const options = await BastionManager._getNestedCompendiumOptions(outPack, workshopRootId, fFlags.workshopItemChoice, calculationMode, daysPerTurn, "t", false, workshopTools.length > 0 ? workshopTools : null, "Magic Item");
+                        _insertBeforeQueue(_buildSelect(options, fFlags.workshopItemChoice, "workshopItemChoice", "— Select Item to Craft —"));
+                    } else if (craftChoice === "Magic Item (Implement)") {
+                        const allSubIds = BastionManager._getAllSubfolderIds(outPack, workshopRootId);
+                        const magicFolder = outPack.folders.find(f => allSubIds.includes(f.id) && f.name.toLowerCase().includes("magic item"));
+                        const rootId = magicFolder ? magicFolder.id : workshopRootId;
+                        const options = await BastionManager._getNestedCompendiumOptions(outPack, rootId, fFlags.workshopItemChoice, calculationMode, daysPerTurn, "t", true);
+                        _insertBeforeQueue(_buildSelect(options, fFlags.workshopItemChoice, "workshopItemChoice", "— Select Magic Item —"));
+                    }
+                })();
+            }
+
+            // Sanctuary craft sub-selectors (Druidic Focus / Holy Symbol)
+            if (facName.includes("Sanctuary") && safeOrder.startsWith("Craft")) {
+                (async () => {
+                    const outPack = _getOutPack(); if (!outPack) return;
+                    const { calculationMode, daysPerTurn } = _craftSettings();
+                    const folderId = craftChoice === "Druidic Focus" ? "RTYj3BJ6ZRvuKxPq" : "BiV5sM1bdzI3ZWS6";
+                    const placeholder = craftChoice === "Druidic Focus" ? "— Select Druidic Focus —" : "— Select Holy Symbol —";
+                    const options = await BastionManager._getNestedCompendiumOptions(outPack, folderId, fFlags.sacredFocusChoice, calculationMode, daysPerTurn, "t", false);
+                    _insertBeforeQueue(_buildSelect(options, fFlags.sacredFocusChoice, "sacredFocusChoice", placeholder));
+                })();
+            }
+
+            // Sacristy craft sub-selectors (Holy Water has no choice; Relic needs compendium)
+            if (facName.includes("Sacristy") && craftChoice === "Magic Item (Relic)") {
+                (async () => {
+                    const outPack = _getOutPack(); if (!outPack) return;
+                    const { calculationMode, daysPerTurn } = _craftSettings();
+                    const relicFolder = outPack.folders.get("hU4DDWFnK13sSUSP") || outPack.folders.find(f => f.name.toLowerCase().includes("relic"));
+                    if (relicFolder) {
+                        const options = await BastionManager._getNestedCompendiumOptions(outPack, relicFolder.id, fFlags.relicItemChoice, calculationMode, daysPerTurn, "t", true);
+                        _insertBeforeQueue(_buildSelect(options, fFlags.relicItemChoice, "relicItemChoice", "— Select Magic Item —"));
+                    }
+                })();
+            }
+
+            // Scriptorium craft sub-selectors
+            if (facName.includes("Scriptorium") && safeOrder.startsWith("Craft")) {
+                if (craftChoice === "Spell Scroll") {
+                    (async () => {
+                        const outPack = _getOutPack(); if (!outPack) return;
+                        const { calculationMode, daysPerTurn } = _craftSettings();
+                        const scrollFolder = outPack.folders.get("RbGD7EB1jyD26fq6") || outPack.folders.find(f => f.name.toLowerCase().includes("scroll"));
+                        if (scrollFolder) {
+                            const options = await BastionManager._getNestedCompendiumOptions(outPack, scrollFolder.id, fFlags.scrollChoice, calculationMode, daysPerTurn, "t", true);
+                            _insertBeforeQueue(_buildSelect(options, fFlags.scrollChoice, "scrollChoice", "— Select Scroll Level —"));
+                        }
+                    })();
+                } else if (craftChoice === "Book Replica") {
+                    const wrapper = document.createElement("div");
+                    wrapper.style.cssText = "display: flex; flex-direction: column; gap: 2px;";
+                    const lbl = document.createElement("label");
+                    lbl.style.cssText = "font-size: 0.8em; opacity: 0.7;";
+                    lbl.textContent = "Title of book to replicate:";
+                    const inp = document.createElement("input");
+                    inp.type = "text"; inp.placeholder = "e.g. Tome of the Stilled Tongue";
+                    inp.value = fFlags.bookTitle || "";
+                    inp.style.cssText = "height: 22px; font-size: 0.85em; width: 100%;";
+                    inp.addEventListener("mousedown", ev => ev.stopPropagation());
+                    inp.addEventListener("change", async (ev) => { await item.setFlag(MODULE_ID, "bookTitle", ev.target.value); });
+                    wrapper.appendChild(lbl); wrapper.appendChild(inp);
+                    _insertBeforeQueue(wrapper);
+                } else if (craftChoice === "Paperwork") {
+                    const wrapper = document.createElement("div");
+                    wrapper.style.cssText = "display: flex; flex-direction: column; gap: 2px;";
+                    const lbl = document.createElement("label");
+                    lbl.style.cssText = "font-size: 0.8em; opacity: 0.7;";
+                    lbl.textContent = "Paperwork description:";
+                    const inp = document.createElement("input");
+                    inp.type = "text"; inp.placeholder = "e.g. Deed of land ownership";
+                    inp.value = fFlags.paperworkTitle || "";
+                    inp.style.cssText = "height: 22px; font-size: 0.85em; width: 100%;";
+                    inp.addEventListener("mousedown", ev => ev.stopPropagation());
+                    inp.addEventListener("change", async (ev) => { await item.setFlag(MODULE_ID, "paperworkTitle", ev.target.value); });
+                    const qtyRow = document.createElement("div");
+                    qtyRow.style.cssText = "display: flex; align-items: center; gap: 4px; margin-top: 1px;";
+                    const qtyLbl = document.createElement("label");
+                    qtyLbl.style.cssText = "font-size: 0.8em; opacity: 0.7; white-space: nowrap;";
+                    qtyLbl.textContent = "GP value:";
+                    const qtyInp = document.createElement("input");
+                    qtyInp.type = "number"; qtyInp.value = fFlags.paperworkQty || 50; qtyInp.min = "1";
+                    qtyInp.style.cssText = "width: 55px; height: 22px; font-size: 0.85em; text-align: center;";
+                    qtyInp.addEventListener("mousedown", ev => ev.stopPropagation());
+                    qtyInp.addEventListener("change", async (ev) => {
+                        await item.setFlag(MODULE_ID, "paperworkQty", Math.max(1, parseInt(ev.target.value) || 50));
+                    });
+                    qtyRow.appendChild(qtyLbl); qtyRow.appendChild(qtyInp);
+                    wrapper.appendChild(lbl); wrapper.appendChild(inp); wrapper.appendChild(qtyRow);
+                    _insertBeforeQueue(wrapper);
+                }
+                // Craft: Book Replica (no sub-selector needed beyond title)
+            }
+
+            // Laboratory craft sub-selectors
+            if (facName.includes("Laboratory") && safeOrder.startsWith("Craft")) {
+                (async () => {
+                    const outPack = _getOutPack(); if (!outPack) return;
+                    const { calculationMode, daysPerTurn } = _craftSettings();
+                    if (craftChoice === "Alchemist's Supplies") {
+                        const options = await BastionManager._getNestedCompendiumOptions(outPack, "mqk8IahDyEIKpvcj", fFlags.laboratoryAlchemistChoice, calculationMode, daysPerTurn, "t", false);
+                        _insertBeforeQueue(_buildSelect(options, fFlags.laboratoryAlchemistChoice, "laboratoryAlchemistChoice", "— Select Alchemical Item —"));
+                    } else if (craftChoice === "Poison") {
+                        const options = await BastionManager._getNestedCompendiumOptions(outPack, "fwyUIxfHsEGOLHYc", fFlags.laboratoryPoisonChoice, calculationMode, daysPerTurn, "t", false);
+                        _insertBeforeQueue(_buildSelect(options, fFlags.laboratoryPoisonChoice, "laboratoryPoisonChoice", "— Select Poison —"));
+                    }
+                })();
             }
 
             // Menagerie creature selector
@@ -827,6 +994,7 @@ const integrateBastionDashboard = (bastionTab) => {
             // Generic Queue Button for all crafting facilities
             if (safeOrder.startsWith("Craft") && craftChoice) {
                 const qRow = document.createElement("div");
+                qRow.className = "bastion-queue-row";
                 qRow.style.cssText = "display: flex; gap: 4px; align-items: center;";
                 const qInput = document.createElement("input");
                 qInput.type = "number"; qInput.value = "1"; qInput.min = "1";
@@ -1055,9 +1223,8 @@ const integrateBastionDashboard = (bastionTab) => {
             rows.push(`<div style="opacity:0.8;"><i class="fa-solid fa-list-ol" style="opacity:0.6; width:12px;"></i> <b>Queue:</b> ${craftQueue.length} item(s) — ${queueGold} GP, ~${queueTurns} turn(s)</div>`);
         }
 
-        // D9. Facility passive abilities — DMG name, rest type indicator, details in tooltip only
+        // D9. Facility passive abilities — Sanctuary and Sacristy static rows
         const PASSIVE_INFO = {
-            "Arcane Study": { icon: "fa-solid fa-sparkles",     color: "#b39ddb", name: "Arcane Study Charm",  restIcon: "fa-solid fa-moon",          rest: "Long Rest",  tip: "After each Long Rest in your Bastion, you may cast Identify as a Charm (no spell slot required)." },
             "Sanctuary":    { icon: "fa-solid fa-heart-pulse",   color: "#ef9a9a", name: "Healing Word Charm",  restIcon: "fa-solid fa-moon",          rest: "Long Rest",  tip: "After each Long Rest in your Bastion, you may cast Healing Word as a Charm (no spell slot required)." },
             "Sacristy":     { icon: "fa-solid fa-wand-sparkles", color: "#ef9a9a", name: "Sacred Spellcasting", restIcon: "fa-solid fa-hourglass-half", rest: "Short Rest", tip: "After a Short Rest in your Bastion, you regain one expended spell slot of level 5 or lower." },
         };
@@ -1066,6 +1233,28 @@ const integrateBastionDashboard = (bastionTab) => {
                 rows.push(`<div data-tooltip="${info.tip}" style="cursor: help; display: flex; align-items: center; justify-content: space-between; gap: 4px;"><span><i class="${info.icon}" style="color:${info.color}; width:12px;"></i> <b>${info.name}</b></span><span style="opacity: 0.7; font-size: 0.88em; white-space: nowrap;"><i class="${info.restIcon}" style="width:10px;"></i> ${info.rest} · Bastion</span></div>`);
                 break;
             }
+        }
+
+        // D9b. Arcane Study Charm — active status row + grant button
+        if (facName.includes("Arcane Study") && !isUpgrading) {
+            const charmNames = actor.getFlag(MODULE_ID, "activeArcaneStudyCharmNames") || [];
+            if (charmNames.length > 0) {
+                rows.push(`<div><i class="fa-solid fa-sparkles" style="color:#b39ddb; width:12px;"></i> <b>Charm:</b> ${charmNames.join(", ")}</div>`);
+            } else {
+                rows.push(`<div style="opacity:0.55;" data-tooltip="After each Long Rest in your Bastion, you may cast Identify as a Charm (no spell slot required)." style="cursor:help;"><i class="fa-solid fa-sparkles" style="width:12px;"></i> No active Arcane Study Charm</div>`);
+            }
+            postInjectFns.push(() => {
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.innerHTML = `<i class="fa-solid fa-sparkles"></i> ${charmNames.length > 0 ? "Refresh" : "Grant"} Charm`;
+                btn.style.cssText = "width:100%; height:20px; font-size:0.75em; margin-top:2px;";
+                btn.addEventListener("mousedown", ev => ev.stopPropagation());
+                btn.addEventListener("click", (ev) => {
+                    ev.stopPropagation();
+                    BastionManager.onGrantArcaneStudyCharm.call({ actor }, ev, btn);
+                });
+                infoBlock.appendChild(btn);
+            });
         }
 
         // D10. Pub Special — tap status + interactive selectors
@@ -1261,6 +1450,116 @@ const integrateBastionDashboard = (bastionTab) => {
             });
         }
 
+        // D14. Demiplane — Arcane Resilience status + THP button; Fabrication toggle
+        if (facName.includes("Demiplane") && !isUpgrading) {
+            const runesActive = actor.getFlag(MODULE_ID, "demiplaneRunesActive") || false;
+            const fabricationUsed = actor.getFlag(MODULE_ID, "demiplanesFabricationUsed") || false;
+            const level = actor.system?.details?.level || 1;
+            const thp = level * 5;
+
+            if (runesActive) {
+                rows.push(`<div data-tooltip="Until the runes fade (end of Bastion Turn), you gain ${thp} THP after each Long Rest in the Demiplane." style="cursor:help;"><i class="fa-solid fa-circle-nodes" style="color:#b39ddb; width:12px;"></i> <b>Arcane Resilience: <span style="color:#b39ddb;">ACTIVE</span></b> <span style="opacity:0.7;">(+${thp} THP)</span></div>`);
+            } else {
+                rows.push(`<div style="opacity:0.55;" data-tooltip="Use an Empower order to inscribe Arcane Resilience runes. Until they fade (7 days), you gain ${thp} THP after each Long Rest in the Demiplane." style="cursor:help;"><i class="fa-solid fa-circle-nodes" style="width:12px;"></i> Arcane Resilience inactive</div>`);
+            }
+
+            if (fabricationUsed) {
+                rows.push(`<div style="opacity:0.55;" data-tooltip="Fabrication has been used. Resets on your next Long Rest." style="cursor:help;"><i class="fa-solid fa-wand-sparkles" style="width:12px;"></i> <b>Fabrication:</b> <em>Used</em></div>`);
+            } else {
+                rows.push(`<div data-tooltip="While in the Demiplane, take a Magic action to create a nonmagical object (max 5 ft, max 5 GP, wood/stone/clay/porcelain/glass/paper/nonprecious crystal or metal). Once per Long Rest." style="cursor:help;"><i class="fa-solid fa-wand-sparkles" style="color:#b39ddb; width:12px;"></i> <b>Fabrication:</b> Available</div>`);
+            }
+
+            postInjectFns.push(() => {
+                const thpBtn = document.createElement("button");
+                thpBtn.type = "button";
+                thpBtn.innerHTML = `<i class="fa-solid fa-circle-nodes"></i> Gain ${thp} THP (Long Rest)`;
+                thpBtn.style.cssText = `width:100%; height:20px; font-size:0.75em; margin-top:2px;${!runesActive ? " opacity:0.45; cursor:not-allowed;" : ""}`;
+                thpBtn.disabled = !runesActive;
+                thpBtn.addEventListener("mousedown", ev => ev.stopPropagation());
+                thpBtn.addEventListener("click", (ev) => {
+                    ev.stopPropagation();
+                    BastionManager.onGrantDemiplaneThp.call({ actor, render: () => {} }, ev, thpBtn);
+                });
+                infoBlock.appendChild(thpBtn);
+
+                const fabBtn = document.createElement("button");
+                fabBtn.type = "button";
+                fabBtn.innerHTML = fabricationUsed
+                    ? `<i class="fa-solid fa-wand-sparkles"></i> Fabrication Used`
+                    : `<i class="fa-solid fa-wand-sparkles"></i> Use Fabrication`;
+                fabBtn.style.cssText = `width:100%; height:20px; font-size:0.75em; margin-top:2px;${fabricationUsed ? " opacity:0.55; font-style:italic;" : ""}`;
+                fabBtn.addEventListener("mousedown", ev => ev.stopPropagation());
+                fabBtn.addEventListener("click", (ev) => {
+                    ev.stopPropagation();
+                    BastionManager.onToggleFabrication.call({ actor, render: () => {} }, ev, fabBtn);
+                });
+                infoBlock.appendChild(fabBtn);
+            });
+        }
+
+        // D15. Sanctum — Charm status + grant button; Fortifying Rites status; Word of Recall + Heal button
+        if (facName.includes("Sanctum") && !isUpgrading) {
+            const charmIds = actor.getFlag(MODULE_ID, "activeSanctumCharmIds") || [];
+            const charmNames = actor.getFlag(MODULE_ID, "activeSanctumCharmNames") || [];
+            const charmActive = charmIds.length > 0 || charmNames.length > 0;
+            const ritesActive = actor.getFlag(MODULE_ID, "sanctumFortifyingRitesActive") || false;
+            const benefName = actor.getFlag(MODULE_ID, "sanctumBeneficiaryName") || "";
+            const ownerLevel = actor.system?.details?.level || 1;
+
+            if (charmActive) {
+                rows.push(`<div data-tooltip="Sanctum Charm active. Cast Heal once without a spell slot (expires at next Bastion Turn or when used)." style="cursor:help;"><i class="fa-solid fa-heart-pulse" style="color:#c9a227; width:12px;"></i> <b>Sanctum Charm: <span style="color:#c9a227;">ACTIVE</span></b></div>`);
+            } else {
+                rows.push(`<div style="opacity:0.55;" data-tooltip="After a Long Rest in your Bastion, grant yourself the Sanctum Charm to cast Heal once without a spell slot." style="cursor:help;"><i class="fa-solid fa-heart-pulse" style="width:12px;"></i> No active Sanctum Charm</div>`);
+            }
+
+            if (ritesActive) {
+                rows.push(`<div data-tooltip="Fortifying Rites active. ${benefName || "Beneficiary"} gains ${ownerLevel} THP after each Long Rest for 7 days." style="cursor:help;"><i class="fa-solid fa-cross" style="color:#c9a227; width:12px;"></i> <b>Fortifying Rites: <span style="color:#c9a227;">ACTIVE</span></b>${benefName ? ` <span style="opacity:0.7;">(${benefName})</span>` : ""}</div>`);
+            } else {
+                rows.push(`<div style="opacity:0.55;" data-tooltip="Use an Empower order to designate a beneficiary for Fortifying Rites. They gain ${ownerLevel} THP after each Long Rest for 7 days." style="cursor:help;"><i class="fa-solid fa-cross" style="width:12px;"></i> Fortifying Rites inactive</div>`);
+            }
+
+            rows.push(`<div data-tooltip="While the Sanctum exists, Word of Recall is always prepared. When cast, you can designate the Sanctum as the destination." style="cursor:help;"><i class="fa-solid fa-person-walking-arrow-right" style="color:#c9a227; width:12px;"></i> <b>Sanctum Recall:</b> <span style="opacity:0.7; font-style:italic;">Always prepared</span></div>`);
+
+            postInjectFns.push(() => {
+                const charmBtn = document.createElement("button");
+                charmBtn.type = "button";
+                charmBtn.innerHTML = charmActive
+                    ? `<i class="fa-solid fa-heart-pulse"></i> Charm Active`
+                    : `<i class="fa-solid fa-heart-pulse"></i> Grant Charm`;
+                charmBtn.style.cssText = `width:100%; height:20px; font-size:0.75em; margin-top:2px;${charmActive ? " opacity:0.45; cursor:not-allowed;" : ""}`;
+                charmBtn.disabled = charmActive;
+                charmBtn.addEventListener("mousedown", ev => ev.stopPropagation());
+                charmBtn.addEventListener("click", (ev) => {
+                    ev.stopPropagation();
+                    BastionManager.onGrantSanctumCharm.call({ actor, render: () => {} }, ev, charmBtn);
+                });
+                infoBlock.appendChild(charmBtn);
+
+                const ritesThpBtn = document.createElement("button");
+                ritesThpBtn.type = "button";
+                ritesThpBtn.innerHTML = `<i class="fa-solid fa-cross"></i> Grant Rites THP`;
+                ritesThpBtn.style.cssText = `width:100%; height:20px; font-size:0.75em; margin-top:2px;${!ritesActive ? " opacity:0.45; cursor:not-allowed;" : ""}`;
+                ritesThpBtn.disabled = !ritesActive;
+                ritesThpBtn.addEventListener("mousedown", ev => ev.stopPropagation());
+                ritesThpBtn.addEventListener("click", (ev) => {
+                    ev.stopPropagation();
+                    BastionManager.onGrantSanctumRitesThp.call({ actor, render: () => {} }, ev, ritesThpBtn);
+                });
+                infoBlock.appendChild(ritesThpBtn);
+
+                const recallBtn = document.createElement("button");
+                recallBtn.type = "button";
+                recallBtn.innerHTML = `<i class="fa-solid fa-heart-pulse"></i> Apply Recall Heal`;
+                recallBtn.style.cssText = "width:100%; height:20px; font-size:0.75em; margin-top:2px;";
+                recallBtn.addEventListener("mousedown", ev => ev.stopPropagation());
+                recallBtn.addEventListener("click", (ev) => {
+                    ev.stopPropagation();
+                    BastionManager.onApplySanctumRecallHeal.call({ actor, render: () => {} }, ev, recallBtn);
+                });
+                infoBlock.appendChild(recallBtn);
+            });
+        }
+
         // Insert order block and info block after .facility-header
         const headerDiv = li.querySelector('.facility-header');
         if (headerDiv) {
@@ -1284,7 +1583,6 @@ const integrateBastionDashboard = (bastionTab) => {
             if (hirelingNames.length > 0) {
                 li.querySelectorAll(".slot.occupant-slot.hireling").forEach((slot, i) => {
                     if (hirelingNames[i]) {
-                        slot.title = hirelingNames[i];
                         slot.setAttribute("data-tooltip", hirelingNames[i]);
                     }
                 });
@@ -1551,6 +1849,29 @@ Hooks.on("updateActor", (actor, changes) => {
                 tab.querySelectorAll(".bastion-augmented").forEach(el => el.classList.remove("bastion-augmented"));
             }
         });
+    }
+});
+
+// Long Rest cleanup and Sanctum Fortifying Rites THP grant
+Hooks.on("dnd5e.restCompleted", async (actor, result) => {
+    if (!result?.longRest) return;
+
+    // Reset Demiplane Fabrication
+    if (actor.getFlag(MODULE_ID, "demiplanesFabricationUsed")) {
+        actor.setFlag(MODULE_ID, "demiplanesFabricationUsed", false);
+    }
+
+    // Sanctum Fortifying Rites: auto-grant THP on the GM client only (avoids cross-actor permission issues)
+    // Players can also use the manual "Grant Rites THP" button on the Sanctum owner's sheet.
+    if (!game.user.isGM) return;
+    for (const sanctumOwner of game.actors) {
+        if (!sanctumOwner.getFlag(MODULE_ID, "sanctumFortifyingRitesActive")) continue;
+        const benefId = sanctumOwner.getFlag(MODULE_ID, "sanctumBeneficiaryId");
+        if (benefId !== actor.id) continue;
+        const ownerLevel = sanctumOwner.system?.details?.level || 1;
+        const currentTemp = actor.system?.attributes?.hp?.temp || 0;
+        await actor.update({ "system.attributes.hp.temp": Math.max(currentTemp, ownerLevel) });
+        ui.notifications.info(`${actor.name} gains ${ownerLevel} Temporary Hit Point${ownerLevel !== 1 ? "s" : ""} from ${sanctumOwner.name}'s Sanctum Fortifying Rites.`);
     }
 });
 
