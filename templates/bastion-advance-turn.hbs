@@ -1,0 +1,18 @@
+<div style="display: flex; flex-direction: column; gap: 10px; font-family: var(--dnd5e-font-roboto);">
+    {{!-- Header section with lighter colors for visibility on dark backgrounds --}}
+    <div style="display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--dnd5e-color-gold); padding-bottom: 8px; margin-bottom: 2px;">
+        <i class="fa-solid fa-chess-rook" style="font-size: 1.6em; color: var(--dnd5e-color-gold);"></i>
+        <div style="line-height: 1.2;">
+            <h3 style="margin: 0; border: none; font-size: 0.95em; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; color: #eee;">Bastion Advancement</h3>
+            <div style="font-size: 0.8em; color: #bbb;">Player Readiness: <b style="color: #eee;">{{readyCount}} / {{totalBastions}}</b></div>
+        </div>
+    </div>
+
+    {{!-- Controls section --}}
+    <div style="display: flex; gap: 8px; align-items: center;">
+        <input type="number" name="turns" value="1" min="1" style="width: 45px; text-align: center; height: 30px; border: 1px solid var(--dnd5e-color-gold); border-radius: 4px; font-weight: bold; background: rgba(0,0,0,0.3); color: white;" title="Turns to advance">
+        <button type="button" data-action="advance" style="flex: 1; height: 30px; padding: 0 12px; font-weight: bold; background: var(--dnd5e-color-iron); color: white; border: 1px solid var(--dnd5e-color-gold); border-radius: 4px; cursor: pointer; font-size: 0.8em; text-transform: uppercase; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <i class="fa-solid fa-play"></i> Run Global Turn
+        </button>
+    </div>
+</div>

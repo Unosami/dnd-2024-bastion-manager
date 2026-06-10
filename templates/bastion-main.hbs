@@ -1,12 +1,16 @@
 <div class="bastion-manager-container" style="display: flex; gap: 15px; height: 100%; overflow: hidden;">
     
-    <div class="bastion-sidebar" style="flex: 0 0 380px; overflow-y: auto; padding-right: 10px; border-right: 1px solid #ccc; display: flex; flex-direction: column;">
+    <div class="bastion-sidebar" style="flex: 0 0 400px; overflow-y: auto; padding-right: 10px; border-right: 1px solid #ccc; display: flex; flex-direction: column;">
     <div class="sidebar-content-column">
     <div class="bastion-header" style="text-align: center; margin-bottom: 5px;">
-        <h2 style="margin-bottom: 5px; line-height: 1.2;">{{actor.name}}'s Bastion</h2>
+        <h2 style="margin-bottom: 5px; line-height: 1.2; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <span>{{#if bastionName}}{{bastionName}}{{else}}{{actor.name}}'s Bastion{{/if}}</span>
+            <button type="button" data-action="renameBastionName" style="width: auto; padding: 2px 4px; border: none; background: none; color: #888; cursor: pointer; font-size: 0.55em; line-height: 1;" title="Rename Bastion">
+                <i class="fa-solid fa-pencil"></i>
+            </button>
+        </h2>
         <div style="font-size: 1em; display: flex; align-items: center; justify-content: center; gap: 15px; flex-wrap: wrap;">
             <span><b>Total Turns:</b> {{turnCount}}</span>
-            <span><b>Total Defenders:</b> {{totalDefenders}}</span>
 
             {{#if neglectWarning}}
                 <span class="neglect-warning" style="color: {{neglectColor}}; font-weight: bold; display: flex; align-items: center; gap: 4px;" 
@@ -14,6 +18,12 @@
                     <i class="fa-solid fa-triangle-exclamation"></i> 
                     Decaying ({{neglectCounter}}/{{actorLevel}})
                     <i class="fa-solid fa-circle-info" style="font-size: 0.8em; opacity: 0.7;" title="NEGLECT RULES: If no orders are issued for a number of consecutive turns equal to your level, the Bastion is abandoned and looted. Issuing any order other than 'Maintain' resets this counter."></i>
+                </span>
+            {{/if}}
+
+            {{#if fortifiedSaves.length}}
+                <span style="color: #4a86e8; font-weight: bold; display: flex; align-items: center; gap: 4px;" title="Advantage on {{#each fortifiedSaves}}{{this}}{{#unless @last}}, {{/unless}}{{/each}} saves.">
+                    <i class="fa-solid fa-shield-halved"></i> Fortified
                 </span>
             {{/if}}
 
@@ -61,11 +71,23 @@
             </div>
         </div>
         
-        {{#if defenderNames}}
-            <div style="font-size: 0.85em; color: #444; margin-top: 5px; font-style: italic;">
-                Known Defenders: {{defenderNames}}
+        <div style="font-size: 0.85em; color: #444; margin-top: 6px; border-top: 1px solid #ddd; padding-top: 5px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-weight: bold; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.04em;"><i class="fa-solid fa-shield" style="color:#a32a22;"></i> Defenders</span>
+                <button type="button" data-action="viewGraveyard" style="width: auto; padding: 1px 3px; border: none; background: none; color: #888; cursor: pointer; font-size: 0.9em;" title="View Memorial Wall (Fallen Defenders)">
+                    <i class="fa-solid fa-tombstone"></i>
+                </button>
             </div>
-        {{/if}}
+            {{#if defendersByFacility.length}}
+                <div style="margin-top: 3px; display: flex; flex-direction: column; gap: 2px;">
+                {{#each defendersByFacility}}
+                    <div><b>{{this.facilityName}}:</b> {{this.count}}{{#if this.names.length}} — {{#each this.names}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}{{/if}}</div>
+                {{/each}}
+                </div>
+            {{else}}
+                <div style="margin-top: 3px; opacity: 0.6; font-style: italic;">Bastion is undefended.</div>
+            {{/if}}
+        </div>
     </div>
 
     <hr style="margin: 5px 0;">
@@ -129,9 +151,12 @@
                 
                     <div style="flex: 1;">
                     <b style="font-size: 0.95em;">{{this.name}}</b> 
+                    {{#if this.isDamaged}}
+                        <span style="font-size: 0.7em; background: #a32a22; color: white; padding: 1px 4px; border-radius: 3px; margin-left: 4px; vertical-align: middle;">DAMAGED</span>
+                    {{/if}}
                     
                     <span style="font-size: 0.7em; background: {{#if (eq this.size "Construction")}}#a32a22; color: white;{{else}}#ddd; color: #333;{{/if}} padding: 1px 4px; border-radius: 3px; margin-left: 4px; vertical-align: middle;">{{this.size}}</span>
-                    {{#if (and (or this.progress this.isCrafting) (not this.isBuilding) (not this.isOrderChanging))}}
+                    {{#if (and (or this.progress this.isCrafting) (not this.isBuilding) (not this.isDamaged) (not this.isOrderChanging))}}
                         <span style="font-size: 0.65em; background: #2e7d32; color: white; padding: 1px 5px; border-radius: 3px; margin-left: 4px; vertical-align: middle; animation: pulse 2s infinite;" title="Facility is currently working on a project">
                             <i class="fa-solid fa-gear fa-spin" style="font-size: 0.8em;"></i> WORKING
                         </span>
@@ -140,14 +165,38 @@
                         <span style="font-size: 0.8em; color: darkgreen; margin-left: 5px; font-weight: bold;">[{{this.subType}}]</span>
                     {{/if}}
 
-                    {{#if this.defenderCount}}
-                        <span style="background: #a32a22; color: white; padding: 2px 6px; border-radius: 12px; font-size: 0.75em; margin-left: 5px;" title="Defenders housed here">
-                            <i class="fa-solid fa-shield"></i> {{this.defenderCount}}
-                        </span>
-                    {{/if}}
-
                     {{#if this.hirelings}}
                         <span style="font-size: 0.85em; color: #555; font-style: italic; display: block;">(Hirelings: {{this.hirelings}})</span>
+                    {{/if}}
+
+                    {{#if (and this.isGreenhouse (not this.isBuilding))}}
+                        <div style="font-size: 0.8em; color: #2e7d32; margin-top: 4px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 4px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span><i class="fa-solid fa-seedling"></i> <b>Magical Fruits:</b> {{this.greenhouseFruitCount}} / 3</span>
+                                <div style="display: flex; gap: 4px;">
+                                    {{#if this.fruitUuid}}
+                                        <button type="button" data-action="previewItem" data-uuid="{{this.fruitUuid}}" style="width: auto; padding: 0 4px; font-size: 0.8em; height: 18px;" title="View Fruit Details"><i class="fa-solid fa-eye"></i></button>
+                                    {{/if}}
+                                    {{#if (gt this.greenhouseFruitCount 0)}}
+                                        <button type="button" data-action="consumeGreenhouseFruit" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 0 6px; font-size: 0.8em; height: 18px;" title="Harvest one fruit to inventory">Harvest</button>
+                                    {{/if}}
+                                    <button type="button" data-action="refreshGreenhouseFruits" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 0 4px; font-size: 0.8em; height: 18px;" title="Reset fruits (Daily at Dawn)"><i class="fa-solid fa-sun"></i></button>
+                                </div>
+                            </div>
+                            <p style="font-size: 0.9em; opacity: 0.8; margin: 2px 0; font-style: italic;">Benefit: <i>Lesser Restoration</i>.</p>
+                        </div>
+                    {{/if}}
+
+                    {{#if this.isArmory}}
+                        <div style="margin-top: 2px;">
+                            {{#if (and this.isStocked this.isFullyStocked)}}
+                                <span style="font-size: 0.7em; background: #2e7d32; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold;" data-tooltip="All {{this.stockedCount}} defender(s) equipped. Attack event: {{this.armoryAttackFormula}} — each 1 rolled kills a defender."><i class="fa-solid fa-shield-check"></i> STOCK-READY ({{this.stockedCount}}/{{this.armoryTotalDefenders}})</span>
+                            {{else if this.stockedCount}}
+                                <span style="font-size: 0.7em; background: #e65100; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold;" data-tooltip="{{this.stockedCount}} of {{this.armoryTotalDefenders}} defender(s) equipped. Attack event: {{this.armoryAttackFormula}} — each 1 rolled kills a defender. Run a Trade order to fully stock (improves to 6d8)."><i class="fa-solid fa-shield-halved"></i> SEMI-STOCKED ({{this.stockedCount}}/{{this.armoryTotalDefenders}})</span>
+                            {{else}}
+                                <span style="font-size: 0.7em; background: #666; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold; opacity: 0.8;" data-tooltip="No defenders equipped. Attack event: 6d6 — each 1 rolled kills a defender. If none survive, a special facility is damaged. Run a Trade order to stock (upgrades dice to d8s)."><i class="fa-solid fa-shield-slash"></i> UNSTOCKED (0/{{this.armoryTotalDefenders}})</span>
+                            {{/if}}
+                        </div>
                     {{/if}}
 
                     <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 1px;">
@@ -169,19 +218,45 @@
                     </div>
 
                     {{#if this.hasOrders}}
-                        <div style="font-size: 0.85em; margin-top: 2px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+                        <div style="font-size: 0.85em; margin-top: 2px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; width: 100%;">
                             {{#if this.showOrderDropdown}}
                                 <label>Order: </label>
-                                <select class="facility-order-select" data-item-id="{{this.id}}" data-item-name="{{this.itemName}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" {{#if this.isOrderDisabled}}disabled{{/if}}>
+                                <select class="facility-order-select" data-item-id="{{this.id}}" data-item-name="{{this.itemName}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" {{#if this.isOrderDisabled}}disabled{{/if}} style="flex: 1;">
                                     {{#each this.orderOptions}}
                                         <option value="{{this.value}}" {{#if this.selected}}selected{{/if}} style="font-size: 0.9em;">{{this.label}}</option>
                                     {{/each}}
                                 </select>
-                                {{#if this.isLibraryResearching}}
-                                    <input type="text" class="library-topic-input" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" value="{{this.libraryTopic}}" placeholder="Enter topic..." style="height: 20px; font-size: 0.85em; width: 120px;">
+                                {{#if this.isTrinketTrophyResearching}}
+                                    <div style="width: 100%; margin-top: 2px; font-size: 0.8em; opacity: 0.75; font-style: italic; line-height: 1.4;">
+                                        <i class="fa-solid fa-dice"></i> After 7 days, roll any die — <b>even</b>: hireling finds a Common magic implement; <b>odd</b>: nothing found.
+                                    </div>
+                                {{else if this.isLibraryResearching}}
+                                    <div style="width: 100%; margin-top: 2px;">
+                                        {{#if this.isPubResearching}}
+                                            <label style="font-size: 0.8em; opacity: 0.7; display: block; margin-bottom: 1px;">Creature to locate (leave blank for general rumours within 10 miles):</label>
+                                            <input type="text" class="library-topic-input" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" value="{{this.libraryTopic}}"
+                                                placeholder="e.g. Zevlor the Tiefling — last seen near Baldur's Gate"
+                                                style="height: 20px; font-size: 0.85em; width: 100%; box-sizing: border-box;">
+                                        {{else if this.isTrophyResearching}}
+                                            <label style="font-size: 0.8em; opacity: 0.7; display: block; margin-bottom: 1px;">Subject of legendary significance to research:</label>
+                                            <input type="text" class="library-topic-input" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" value="{{this.libraryTopic}}"
+                                                placeholder="e.g. The Eye of Vecna — yields a Legend Lore–style summary if legendary"
+                                                style="height: 20px; font-size: 0.85em; width: 100%; box-sizing: border-box;">
+                                        {{else if this.isArchiveResearching}}
+                                            <label style="font-size: 0.8em; opacity: 0.7; display: block; margin-bottom: 1px;">Subject of legendary significance to research:</label>
+                                            <input type="text" class="library-topic-input" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" value="{{this.libraryTopic}}"
+                                                placeholder="e.g. Strahd von Zarovich — yields a Legend Lore–style summary if legendary"
+                                                style="height: 20px; font-size: 0.85em; width: 100%; box-sizing: border-box;">
+                                        {{else}}
+                                            <label style="font-size: 0.8em; opacity: 0.7; display: block; margin-bottom: 1px;">Topic to research (up to 3 accurate facts):</label>
+                                            <input type="text" class="library-topic-input" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" value="{{this.libraryTopic}}"
+                                                placeholder="e.g. The Cult of the Dragon — history, goals, key members"
+                                                style="height: 20px; font-size: 0.85em; width: 100%; box-sizing: border-box;">
+                                        {{/if}}
+                                    </div>
                                 {{/if}}
                                 {{#if this.isArcaneStudyCrafting}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; {{#if this.isContinuingProject}}display: none;{{/if}}">
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; width: 100%; {{#if this.isContinuingProject}}display: none;{{/if}}">
                                         {{#if (and this.showArcanaItemSelect (not this.isContinuingProject))}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                                 <select class="arcane-study-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
@@ -223,15 +298,18 @@
                                             </select>
                                             </div>
                                         {{/if}}
-                                        {{#if (and this.craftChoice (not this.isInherited) (not this.isContinuingProject))}}
-                                            <button type="button" data-action="addToQueue" data-item-id="{{this.id}}" style="height: 20px; font-size: 0.75em; margin-top: 2px;">
-                                                <i class="fa-solid fa-plus"></i> Add to Craft Queue
-                                            </button>
+                                        {{#if (and this.craftChoice (not this.isInherited) (not (eq this.safeOrder "Continue Project")))}}
+                                            <div style="display: flex; align-items: center; gap: 4px; margin-top: 2px;">
+                                                <input type="number" class="queue-qty" value="1" min="1" style="width: 40px; height: 20px; font-size: 0.8em; text-align: center;" title="Quantity to add">
+                                                <button type="button" data-action="addToQueue" data-item-id="{{this.id}}" style="height: 20px; font-size: 0.75em; flex: 1;">
+                                                    <i class="fa-solid fa-plus"></i> Add to Craft Queue
+                                                </button>
+                                            </div>
                                         {{/if}}
                                     </div>
                                 {{/if}}
                                 {{#if this.isSanctuaryCrafting}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; {{#if this.isContinuingProject}}display: none;{{/if}}">
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; width: 100%; {{#if this.isContinuingProject}}display: none;{{/if}}">
                                         {{#if this.showSacredFocusSelect}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                                 <select class="sanctuary-focus-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
@@ -250,7 +328,7 @@
                                     </div>
                                 {{/if}}
                                 {{#if this.isScriptoriumCrafting}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; {{#if this.isContinuingProject}}display: none;{{/if}}">
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; width: 100%; {{#if this.isContinuingProject}}display: none;{{/if}}">
                                         {{#if (eq this.craftChoice "Spell Scroll")}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                                 <select class="scriptorium-scroll-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
@@ -284,7 +362,7 @@
                                     </div>
                                 {{/if}}
                                 {{#if this.isSmithyCrafting}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; {{#if this.isContinuingProject}}display: none;{{/if}}">
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; width: 100%; {{#if this.isContinuingProject}}display: none;{{/if}}">
                                         {{#if (and this.showSmithyItemSelect (not this.isContinuingProject))}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                                 <select class="smithy-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
@@ -331,15 +409,18 @@
                                                 {{/if}}
                                             </div>
                                         {{/if}}
-                                        {{#if (and this.craftChoice (not this.isInherited) (not this.isContinuingProject))}}
-                                            <button type="button" data-action="addToQueue" data-item-id="{{this.id}}" style="height: 20px; font-size: 0.75em; margin-top: 2px;">
-                                                <i class="fa-solid fa-plus"></i> Add to Craft Queue
-                                            </button>
+                                        {{#if (and this.craftChoice (not this.isInherited) (not (eq this.safeOrder "Continue Project")))}}
+                                            <div style="display: flex; align-items: center; gap: 4px; margin-top: 2px;">
+                                                <input type="number" class="queue-qty" value="1" min="1" style="width: 40px; height: 20px; font-size: 0.8em; text-align: center;" title="Quantity to add">
+                                                <button type="button" data-action="addToQueue" data-item-id="{{this.id}}" style="height: 20px; font-size: 0.75em; flex: 1;">
+                                                    <i class="fa-solid fa-plus"></i> Add to Craft Queue
+                                                </button>
+                                            </div>
                                         {{/if}}
                                     </div>
                                 {{/if}}
                                 {{#if this.isWorkshopCrafting}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; {{#if this.isContinuingProject}}display: none;{{/if}}">
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px; width: 100%; {{#if this.isContinuingProject}}display: none;{{/if}}">
                                         {{#if (and this.showWorkshopItemSelect (not this.isContinuingProject))}}
                                             <div style="display: flex; align-items: center; gap: 4px;">
                                                 <select class="workshop-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-is-inherited="{{this.isInherited}}" data-member-id="{{this.memberId}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
@@ -363,16 +444,19 @@
                                                 {{/if}}
                                             </div>
                                         {{/if}}
-                                        {{#if (and this.craftChoice (not this.isInherited) (not this.isContinuingProject))}}
-                                            <button type="button" data-action="addToQueue" data-item-id="{{this.id}}" style="height: 20px; font-size: 0.75em; margin-top: 2px;">
-                                                <i class="fa-solid fa-plus"></i> Add to Craft Queue
-                                            </button>
+                                        {{#if (and this.craftChoice (not this.isInherited) (not (eq this.safeOrder "Continue Project")))}}
+                                            <div style="display: flex; align-items: center; gap: 4px; margin-top: 2px;">
+                                                <input type="number" class="queue-qty" value="1" min="1" style="width: 40px; height: 20px; font-size: 0.8em; text-align: center;" title="Quantity to add">
+                                                <button type="button" data-action="addToQueue" data-item-id="{{this.id}}" style="height: 20px; font-size: 0.75em; flex: 1;">
+                                                    <i class="fa-solid fa-plus"></i> Add to Craft Queue
+                                                </button>
+                                            </div>
                                         {{/if}}
                                     </div>
                                 {{/if}}
 
                                 {{#if (and this.isTrainingArea (eq this.safeOrder "Empower"))}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px; width: 100%;">
                                         <div style="display: flex; align-items: center; gap: 4px;">
                                             <label style="font-size: 0.85em; flex-shrink: 0;">Trainer:</label>
                                             <select class="training-trainer-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
@@ -391,7 +475,7 @@
                                 {{/if}}
 
                                 {{#if this.isStableTrade}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px; width: 100%;">
                                         <div style="display: flex; gap: 4px; align-items: center;">
                                             <select class="stable-trade-choice" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 20px; font-size: 0.85em; flex: 0 0 60px;">
                                                 <option value="buy" {{#if (eq this.stableTradeChoice "buy")}}selected{{/if}}>Buy</option>
@@ -408,11 +492,11 @@
                                 {{/if}}
 
                                 {{#if this.isStable}}
-                                    <div class="bastion-fence-divider" style="margin: 10px 0; height: 6px; width: 100%; background: repeating-linear-gradient(90deg, #5D2E0A 0px, #5D2E0A 4px, #8B4513 4px, #8B4513 20px, #5D2E0A 20px, #5D2E0A 24px); border-top: 2px solid #3d1e07; border-bottom: 2px solid #3d1e07; opacity: 0.8;" title="Stable Partition"></div>
+                                    <div class="bastion-fence-divider" style="margin: 10px 0; height: 6px; width: 100%; background: repeating-linear-gradient(90deg, #5D2E0A 0px, #5D2E0A 4px, #8B4513 4px, #8B4513 20px, #5D2E0A 20px, #5D2E0A 24px); border-top: 2px solid #3d1e07; border-bottom: 2px solid #3d1e07; opacity: 0.8; flex: 0 0 100%;" title="Stable Partition"></div>
                                 {{/if}}
 
                                 {{#if this.isStable}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;" title="Instant Animal Transfer">
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px; width: 100%;" title="Instant Animal Transfer">
                                         <div style="display: flex; gap: 4px; align-items: center;">
                                             <select class="stable-transfer-type" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 20px; font-size: 0.85em; flex: 0 0 65px;">
                                                 <option value="claim" {{#if (eq this.stableTransferType "claim")}}selected{{/if}}>Claim</option>
@@ -432,7 +516,7 @@
                                 {{/if}}
 
                                 {{#if (and this.isStorehouse this.isTradeOrder)}}
-                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 4px;">
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 4px; width: 100%;">
                                         <div style="display: flex; gap: 4px; align-items: center;">
                                             <select class="storehouse-trade-choice" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" 
                                                     style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isAutoTrade}}disabled style="opacity: 0.5;"{{/if}}>
@@ -456,9 +540,84 @@
                                     </div>
                                 {{/if}}
 
+                                {{#if (and this.isArmory this.isTradeOrder)}}
+                                    <div style="font-size: 0.85em; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(0,0,0,0.1); color: #a32a22; font-weight: bold; width: 100%;">
+                                        <i class="fa-solid fa-coins"></i> Expected Cost: {{this.armoryStockCost}} GP
+                                    </div>
+                                {{/if}}
+
+                                {{#if this.isMenagerieRecruit}}
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px; width: 100%;">
+                                        <select class="menagerie-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 20px; font-size: 0.85em; flex: 1; {{#if this.menagerieFull}}border-color: #a32a22;{{/if}}">
+                                            <option value="">-- Select Creature to Recruit --</option>
+                                            {{#each this.menagerieItemOptions}}
+                                                <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                                            {{/each}}
+                                        </select>
+                                        {{#if this.menagerieFull}}
+                                            <div style="font-size: 0.8em; color: #a32a22; font-weight: bold;"><i class="fa-solid fa-triangle-exclamation"></i> Menagerie is full ({{this.menagerieUsedSlots}}/{{this.menagerieMaxSlots}} slots)</div>
+                                        {{/if}}
+                                    </div>
+                                {{/if}}
+
+                                {{#if this.isGuildhall}}
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px; width: 100%;">
+                                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                                            <div style="font-size:0.9em;"><i class="fa-solid fa-users" style="color:#4caf50;"></i> <b>Guild:</b> <span style="color:#81c784;">{{this.guildhallGuildType}}</span></div>
+                                            <button type="button" data-action="showGuildhallAssignment" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                                style="height:20px; padding:0 6px; font-size:0.78em; background:#1a3a1a; color:#81c784; border:1px solid #4caf50; border-radius:3px; cursor:pointer;"
+                                                data-tooltip="View this guild's assignment description">
+                                                <i class="fa-solid fa-scroll"></i> Assignment
+                                            </button>
+                                        </div>
+                                        {{#if this.isAdventurersGuild}}
+                                        <div style="display:flex; align-items:center; gap:6px;">
+                                            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap;">Mission outcome:</label>
+                                            <select class="guildhall-outcome-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                                style="flex:1; font-size:0.85em; height:22px;">
+                                                <option value="slay" {{#if (eq this.guildhallAdventurersOutcome "slay")}}selected{{/if}}>Slay the beast</option>
+                                                <option value="capture" {{#if (eq this.guildhallAdventurersOutcome "capture")}}selected{{/if}}>Capture the beast</option>
+                                            </select>
+                                        </div>
+                                        {{/if}}
+                                        {{#if this.guildhallLastAssignment}}
+                                        <div style="font-size:0.85em; opacity:0.8;">
+                                            <i class="fa-solid fa-scroll" style="width:12px;"></i> <em>Last: {{this.guildhallLastAssignment}}</em>
+                                        </div>
+                                        {{else}}
+                                        <div style="font-size:0.85em; opacity:0.55;">
+                                            <i class="fa-solid fa-scroll" style="width:12px;"></i> <em>No assignment issued yet.</em>
+                                        </div>
+                                        {{/if}}
+                                    </div>
+                                {{/if}}
+
+                                {{#if this.isSanctum}}
+                                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px; width: 100%;">
+                                        <label style="font-size: 0.88em; opacity: 0.75; white-space: nowrap;">Rites beneficiary:</label>
+                                        <select class="sanctum-beneficiary-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                                style="flex: 1; font-size: 0.85em; height: 22px; padding: 0 4px;">
+                                            {{#each this.sanctumBeneficiaryOptions}}
+                                                <option value="{{this.id}}" {{#if (eq this.id ../sanctumBeneficiaryId)}}selected{{/if}}>{{this.name}}</option>
+                                            {{/each}}
+                                        </select>
+                                    </div>
+                                {{/if}}
+
+                                {{#if this.isWarRoom}}
+                                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px; width: 100%;">
+                                        <label style="font-size: 0.88em; opacity: 0.75; white-space: nowrap;">Recruit:</label>
+                                        <select class="war-room-recruit-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                                style="flex: 1; font-size: 0.85em; height: 22px; padding: 0 4px;">
+                                            <option value="lieutenant" {{#if (eq this.warRoomRecruitOption "lieutenant")}}selected{{/if}}>Lieutenant ({{this.warRoomLieutenantCount}}/10)</option>
+                                            <option value="soldiers" {{#if (eq this.warRoomRecruitOption "soldiers")}}selected{{/if}}>Soldiers (muster army)</option>
+                                        </select>
+                                    </div>
+                                {{/if}}
                 </div>
+
                 {{#if this.isTheater}}
-                    <div style="font-size: 0.9em; color: #eee; border: 2px solid {{this.theaterPhaseColor}}; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px;">
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid {{this.theaterPhaseColor}}; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
                         <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px;">
                             <span><i class="fa-solid fa-masks-theater"></i> <b>Production Status:</b> <span style="color: #82cfff;">{{this.theaterPhase}}</span></span>
                             <div style="display: flex; gap: 5px; flex-wrap: nowrap;">
@@ -530,6 +689,313 @@
                     </div>
                 {{/if}}
 
+                {{#if (and this.isArchive (not this.isBuilding))}}
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid #005a9e; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
+                        <div style="margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 2px;">
+                            <i class="fa-solid fa-book-sparkles"></i> <b>Reference Library:</b> Reference books provide benefits while in the Bastion.
+                        </div>
+                        <ul style="list-style: none; padding-left: 0; margin: 0;">
+                            {{#each this.archiveBooksList}}
+                                <li style="margin-top: 4px;">
+                                    <div style="color: #82cfff; font-weight: bold; font-size: 0.95em;"><i class="fa-solid fa-book" style="font-size: 0.8em;"></i> {{this.name}}</div>
+                                    <div style="font-style: italic; opacity: 0.85; padding-left: 12px; line-height: 1.2; font-size: 0.95em;">{{{this.desc}}}</div>
+                                </li>
+                            {{/each}}
+                        </ul>
+                    </div>
+                {{/if}}
+
+                {{#if this.isMeditationChamber}}
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid #82cfff; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                            <span data-tooltip="When you next roll on the Bastion Events table, you may roll twice and choose either result. This benefit is consumed on use." style="cursor: help;"><i class="fa-solid fa-brain"></i> <b>Inner Peace:</b></span>
+                            {{#if ../innerPeaceActive}}
+                                <span style="color: #4caf50; font-weight: bold;">ACTIVE</span>
+                            {{else}}
+                                <span style="opacity: 0.6; font-style: italic;">Requires Empower</span>
+                            {{/if}}
+                        </div>
+                        <hr style="opacity: 0.1; margin: 5px 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span data-tooltip="Use an Empower order to activate Fortify Self, which adds double your Proficiency Bonus to saving throws with chosen abilities while in your Bastion." style="cursor: help;"><b>Fortify Self:</b></span>
+                            <button type="button" data-action="toggleMeditation" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 24px;">
+                                Meditation
+                            </button>
+                        </div>
+                    </div>
+                {{/if}}
+
+                {{#if this.isObservatory}}
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid #c9a227; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                            <span data-tooltip="While in your Bastion during a Long Rest, you receive the Observatory Charm: you can see through magical darkness up to 60 feet, you know when you are being magically observed, and you have advantage on saving throws against spells. This charm expires at the start of the next Bastion Turn." style="cursor: help;"><i class="fa-solid fa-star"></i> <b>Observatory Charm:</b></span>
+                            {{#if this.observatoryCharmActive}}
+                                <span style="color: #c9a227; font-weight: bold;">ACTIVE</span>
+                            {{else}}
+                                <span style="opacity: 0.6; font-style: italic;">Requires Long Rest</span>
+                            {{/if}}
+                        </div>
+                        <hr style="opacity: 0.1; margin: 5px 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span data-tooltip="Grant yourself the Observatory Charm after finishing a Long Rest in your Bastion. The charm is automatically removed when the next Bastion Turn advances." style="cursor: help; font-size: 0.88em; opacity: 0.75;">Long Rest in Bastion</span>
+                            <button type="button" data-action="grantObservatoryCharm" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 24px;">
+                                {{#if this.observatoryCharmActive}}Refresh Charm{{else}}Grant Charm{{/if}}
+                            </button>
+                        </div>
+                        <hr style="opacity: 0.1; margin: 5px 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span data-tooltip="Use an Empower order to choose an Eldritch Discovery charm and bestow it on yourself or a creature of your choice." style="cursor: help; font-size: 0.88em; opacity: 0.75;">Empower: Eldritch Discovery</span>
+                            <span style="font-size: 0.82em; opacity: 0.55; font-style: italic;">via Empower order</span>
+                        </div>
+                    </div>
+                {{/if}}
+
+                {{#if this.isArcaneStudyFac}}
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid #b39ddb; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                            <span data-tooltip="After each Long Rest in your Bastion, you may cast Identify as a Charm (no spell slot required). This charm expires at the start of the next Bastion Turn." style="cursor: help;"><i class="fa-solid fa-sparkles"></i> <b>Arcane Study Charm:</b></span>
+                            {{#if this.arcaneStudyCharmActive}}
+                                <span style="color: #b39ddb; font-weight: bold;">ACTIVE</span>
+                            {{else}}
+                                <span style="opacity: 0.6; font-style: italic;">Requires Long Rest</span>
+                            {{/if}}
+                        </div>
+                        <hr style="opacity: 0.1; margin: 5px 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span data-tooltip="Grant yourself the Arcane Study Charm after finishing a Long Rest in your Bastion. The charm is automatically removed when the next Bastion Turn advances." style="cursor: help; font-size: 0.88em; opacity: 0.75;">Long Rest in Bastion</span>
+                            <button type="button" data-action="grantArcaneStudyCharm" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 24px;">
+                                {{#if this.arcaneStudyCharmActive}}Refresh Charm{{else}}Grant Charm{{/if}}
+                            </button>
+                        </div>
+                    </div>
+                {{/if}}
+
+                {{#if this.isReliquaryFac}}
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid #c9784e; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
+                        {{!-- Reliquary Charm row --}}
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                            <span data-tooltip="Use an Empower order to receive the Reliquary Charm. The charm expires at the start of the next Bastion Turn." style="cursor: help;"><i class="fa-solid fa-khanda"></i> <b>Reliquary Charm:</b></span>
+                            {{#if this.reliquaryCharmActive}}
+                                <span style="color: #c9784e; font-weight: bold;">ACTIVE</span>
+                            {{else}}
+                                <span style="opacity: 0.6; font-style: italic;">Requires Empower order</span>
+                            {{/if}}
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 0.88em; opacity: 0.75;">After Long Rest in Bastion</span>
+                            <button type="button" data-action="grantReliquaryCharm" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 24px;">
+                                {{#if this.reliquaryCharmActive}}Refresh Charm{{else}}Grant Charm{{/if}}
+                            </button>
+                        </div>
+                        <hr style="opacity: 0.1; margin: 5px 0;">
+                        {{!-- Talisman row --}}
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span data-tooltip="Use a Harvest order to craft a Talisman. The Talisman is a permanent keepsake." style="cursor: help; font-size: 0.88em; opacity: 0.75;"><i class="fa-solid fa-diamond"></i> <b>Talisman:</b></span>
+                            {{#if this.reliquaryTalismanActive}}
+                                <span style="color: #c9a227; font-weight: bold; font-size: 0.88em;">CRAFTED</span>
+                            {{else}}
+                                <span style="font-size: 0.82em; opacity: 0.55; font-style: italic;">via Harvest order</span>
+                            {{/if}}
+                        </div>
+                    </div>
+                {{/if}}
+
+                {{#if this.isDemiplane}}
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid #7e57c2; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
+                        {{!-- Arcane Resilience row --}}
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                            <span data-tooltip="Use an Empower order to inscribe magical runes on the Demiplane's walls. Until they fade (7 days), you gain Temporary Hit Points equal to 5× your level after each Long Rest spent in the Demiplane." style="cursor: help;"><i class="fa-solid fa-circle-nodes"></i> <b>Arcane Resilience:</b></span>
+                            {{#if this.demiplaneRunesActive}}
+                                <span style="color: #b39ddb; font-weight: bold;">ACTIVE</span>
+                            {{else}}
+                                <span style="opacity: 0.6; font-style: italic;">Requires Empower</span>
+                            {{/if}}
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 0.88em; opacity: 0.75;">After Long Rest in Demiplane</span>
+                            <button type="button" data-action="grantDemiplaneThp" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                    {{#unless this.demiplaneRunesActive}}disabled{{/unless}}
+                                    style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 24px;">
+                                Gain THP
+                            </button>
+                        </div>
+                        <hr style="opacity: 0.1; margin: 5px 0;">
+                        {{!-- Fabrication row --}}
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span data-tooltip="While in the Demiplane, you can take a Magic action to create a nonmagical object (max 5 ft in any dimension, max 5 GP value, made of wood/stone/clay/porcelain/glass/paper/nonprecious crystal or metal). Once per Long Rest." style="cursor: help;"><i class="fa-solid fa-wand-sparkles"></i> <b>Fabrication:</b></span>
+                            <button type="button" data-action="toggleFabrication" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                    style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 24px; {{#if this.demiplanesFabricationUsed}}opacity: 0.55; font-style: italic;{{/if}}">
+                                {{#if this.demiplanesFabricationUsed}}Used{{else}}Use{{/if}}
+                            </button>
+                        </div>
+                    </div>
+                {{/if}}
+
+                {{#if this.isSanctum}}
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid #c9a227; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
+                        {{!-- Sanctum Charm row --}}
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                            <span data-tooltip="After spending a Long Rest in your Bastion, you gain the Sanctum Charm: cast Heal once without expending a spell slot (lasts 7 days or until used). You cannot gain this Charm again while you still have it." style="cursor: help;"><i class="fa-solid fa-heart-pulse"></i> <b>Sanctum Charm:</b></span>
+                            {{#if this.sanctumCharmActive}}
+                                <span style="color: #c9a227; font-weight: bold;">ACTIVE</span>
+                            {{else}}
+                                <span style="opacity: 0.6; font-style: italic;">Not granted</span>
+                            {{/if}}
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 0.88em; opacity: 0.75;">After Long Rest in Bastion</span>
+                            <button type="button" data-action="grantSanctumCharm" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                    {{#if this.sanctumCharmActive}}disabled{{/if}}
+                                    style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 24px;">
+                                Grant Charm
+                            </button>
+                        </div>
+                        <hr style="opacity: 0.1; margin: 5px 0;">
+                        {{!-- Fortifying Rites row --}}
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                            <span data-tooltip="Use an Empower order to designate a beneficiary. They gain Temporary Hit Points equal to your level after each Long Rest for 7 days. The beneficiary does not need to be in the Bastion." style="cursor: help;"><i class="fa-solid fa-cross"></i> <b>Fortifying Rites:</b></span>
+                            {{#if this.sanctumFortifyingRitesActive}}
+                                <span style="color: #c9a227; font-weight: bold;">ACTIVE</span>
+                            {{else}}
+                                <span style="opacity: 0.6; font-style: italic;">Requires Empower</span>
+                            {{/if}}
+                        </div>
+                        {{#if this.sanctumBeneficiaryName}}
+                        <div style="font-size: 0.85em; opacity: 0.75; margin-bottom: 4px;">Beneficiary: <b>{{this.sanctumBeneficiaryName}}</b></div>
+                        {{/if}}
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                            <span style="font-size: 0.88em; opacity: 0.75;">After beneficiary's Long Rest</span>
+                            <button type="button" data-action="grantSanctumRitesThp" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                    {{#unless this.sanctumFortifyingRitesActive}}disabled{{/unless}}
+                                    style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 24px;">
+                                Grant THP
+                            </button>
+                        </div>
+                        <hr style="opacity: 0.1; margin: 5px 0;">
+                        {{!-- Sanctum Recall row --}}
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <span data-tooltip="While the Sanctum exists, Word of Recall is always prepared. When cast, you can set the Sanctum as the destination. One creature that arrives gains the benefit of a Heal spell." style="cursor: help;"><i class="fa-solid fa-person-walking-arrow-right"></i> <b>Sanctum Recall:</b></span>
+                            <span style="font-size: 0.8em; opacity: 0.65; font-style: italic;">Always available</span>
+                        </div>
+                        <div style="display: flex; gap: 4px;">
+                            <button type="button" data-action="grantWordOfRecall" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                    data-tooltip="Add Word of Recall to your prepared spell list (one-time setup)"
+                                    style="flex: 1; padding: 2px 6px; font-size: 0.82em; height: 24px;">
+                                <i class="fa-solid fa-book-open"></i> Prepare Spell
+                            </button>
+                            <button type="button" data-action="applySanctumRecallHeal" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                    data-tooltip="Apply the benefit of a Heal spell to one creature that arrived via Word of Recall"
+                                    style="flex: 1; padding: 2px 6px; font-size: 0.82em; height: 24px;">
+                                <i class="fa-solid fa-heart-pulse"></i> Apply Heal
+                            </button>
+                        </div>
+                    </div>
+                {{/if}}
+
+                {{#if this.isWarRoom}}
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid #b71c1c; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
+                        {{!-- Lieutenant count / defense bonus --}}
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <span data-tooltip="Each lieutenant housed in your Bastion reduces by 1 the number of dice rolled to determine Bastion Defender losses during an Attack event." style="cursor: help;"><i class="fa-solid fa-chess-rook" style="color: #ef5350;"></i> <b>Lieutenants:</b></span>
+                            <span style="color: #ef9a9a; font-weight: bold;">{{this.warRoomLieutenantCount}} / 10</span>
+                        </div>
+                        {{#if this.warRoomLieutenantCount}}
+                        <div style="font-size: 0.85em; opacity: 0.75; margin-bottom: 5px;">Attack dice reduced by <b>{{this.warRoomLieutenantCount}}</b> (6 → {{subtract 6 this.warRoomLieutenantCount}} dice pool)</div>
+                        {{/if}}
+                        {{#if this.warRoomLieutenantCount}}
+                        <div style="font-size: 0.82em; opacity: 0.7; margin-bottom: 5px; font-style: italic;">
+                            {{#each this.warRoomLieutenants}}{{#unless @first}}, {{/unless}}{{this.name}}{{/each}}
+                        </div>
+                        {{/if}}
+                        {{#if this.warRoomArmyActive}}
+                        <hr style="opacity: 0.15; margin: 5px 0;">
+                        <div style="margin-bottom: 3px;"><i class="fa-solid fa-shield-halved" style="color: #ef5350;"></i> <b>Army:</b> <span style="color: #ef9a9a;">ACTIVE</span></div>
+                        <div style="font-size: 0.85em; opacity: 0.8; margin-bottom: 2px;">{{this.warRoomArmyGuards}} Guards{{#if this.warRoomArmyMounted}} (mounted){{/if}}</div>
+                        <div style="font-size: 0.85em; opacity: 0.8; margin-bottom: 5px;">Commander: <b>{{this.warRoomArmyLeaderName}}</b></div>
+                        <button type="button" data-action="disbandWarRoomArmy" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                style="width: auto; padding: 2px 8px; font-size: 0.82em; height: 24px; background: rgba(100,0,0,0.4); color: #ef9a9a; border-color: #b71c1c;">
+                            <i class="fa-solid fa-flag-checkered"></i> Disband Army
+                        </button>
+                        {{/if}}
+                        <hr style="opacity: 0.1; margin: 5px 0;">
+                        <div style="display: flex; gap: 4px;">
+                            <button type="button" data-action="showWarRoomRoster" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                    style="flex: 1; padding: 2px 6px; font-size: 0.82em; height: 24px;">
+                                <i class="fa-solid fa-chess-rook"></i> Lieutenant Roster
+                            </button>
+                        </div>
+                    </div>
+                {{/if}}
+
+                {{#if this.isPub}}
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid #8b6f3e; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <span data-tooltip="The Pub always has magical beverage(s) on tap. Change selection at the start of any Bastion Turn. A pint loses its magic 24h after being poured." style="cursor: help;"><i class="fa-solid fa-beer-mug-empty"></i> <b>Pub Special{{#if (ge this.pubSlotCount 2)}}s{{/if}} (On Tap):</b></span>
+                            <span style="font-size: 0.8em; opacity: 0.6;">{{this.pubSlotCount}} tap{{#if (ge this.pubSlotCount 2)}}s{{/if}}</span>
+                        </div>
+                        {{!-- Tap 1 --}}
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                            <label style="font-size: 0.85em; white-space: nowrap; opacity: 0.75; min-width: 36px;">Tap 1:</label>
+                            {{#if (lookup this.pubSpecialsGrantedTo 0)}}
+                                <span style="flex: 1; font-size: 0.85em; font-style: italic; color: #c9a227; opacity: 0.85;">On tap: <b>{{lookup this.pubSpecials 0}}</b> <em style="opacity: 0.6; font-style: normal;">(locked)</em></span>
+                                <button type="button" class="pub-grant-btn" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-slot-index="0"
+                                        style="height: 24px; padding: 0 6px; font-size: 0.8em; flex-shrink: 0; background: #3a2008; color: #c9a227; border: 1px solid #8b6f3e; border-radius: 3px; cursor: pointer;"
+                                        data-tooltip="Pour another pint of {{lookup this.pubSpecials 0}}">
+                                    <i class="fa-solid fa-beer-mug-empty"></i>
+                                </button>
+                            {{else}}
+                                <select class="pub-special-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-slot-index="0"
+                                        style="flex: 1; font-size: 0.85em; height: 24px; background: #1e1508; color: #eee; border: 1px solid #8b6f3e; border-radius: 3px;">
+                                    <option value="">— Choose a Special —</option>
+                                    {{#each this.pubSpecialOptions}}
+                                        <option value="{{this.value}}" {{#if (eq this.value (lookup ../pubSpecials 0))}}selected{{/if}}>{{this.label}}</option>
+                                    {{/each}}
+                                </select>
+                                {{#if (lookup this.pubSpecials 0)}}
+                                    <button type="button" class="pub-grant-btn" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-slot-index="0"
+                                            style="height: 24px; padding: 0 6px; font-size: 0.8em; flex-shrink: 0; background: #3a2008; color: #c9a227; border: 1px solid #8b6f3e; border-radius: 3px; cursor: pointer;"
+                                            data-tooltip="Pour a pint for a character — locks this tap until the next Bastion Turn">
+                                        <i class="fa-solid fa-beer-mug-empty"></i>
+                                    </button>
+                                {{/if}}
+                            {{/if}}
+                        </div>
+                        {{!-- Tap 2 (Vast only) --}}
+                        {{#if (ge this.pubSlotCount 2)}}
+                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                                <label style="font-size: 0.85em; white-space: nowrap; opacity: 0.75; min-width: 36px;">Tap 2:</label>
+                                {{#if (lookup this.pubSpecialsGrantedTo 1)}}
+                                    <span style="flex: 1; font-size: 0.85em; font-style: italic; color: #c9a227; opacity: 0.85;">On tap: <b>{{lookup this.pubSpecials 1}}</b> <em style="opacity: 0.6; font-style: normal;">(locked)</em></span>
+                                    <button type="button" class="pub-grant-btn" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-slot-index="1"
+                                            style="height: 24px; padding: 0 6px; font-size: 0.8em; flex-shrink: 0; background: #3a2008; color: #c9a227; border: 1px solid #8b6f3e; border-radius: 3px; cursor: pointer;"
+                                            data-tooltip="Pour another pint of {{lookup this.pubSpecials 1}}">
+                                        <i class="fa-solid fa-beer-mug-empty"></i>
+                                    </button>
+                                {{else}}
+                                    <select class="pub-special-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-slot-index="1"
+                                            style="flex: 1; font-size: 0.85em; height: 24px; background: #1e1508; color: #eee; border: 1px solid #8b6f3e; border-radius: 3px;">
+                                        <option value="">— Choose a Special —</option>
+                                        {{#each this.pubSpecialOptions}}
+                                            <option value="{{this.value}}" {{#if (eq this.value (lookup ../pubSpecials 1))}}selected{{/if}}>{{this.label}}</option>
+                                        {{/each}}
+                                    </select>
+                                    {{#if (lookup this.pubSpecials 1)}}
+                                        <button type="button" class="pub-grant-btn" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-slot-index="1"
+                                                style="height: 24px; padding: 0 6px; font-size: 0.8em; flex-shrink: 0; background: #3a2008; color: #c9a227; border: 1px solid #8b6f3e; border-radius: 3px; cursor: pointer;"
+                                                data-tooltip="Pour a pint for a character — locks this tap until the next Bastion Turn">
+                                            <i class="fa-solid fa-beer-mug-empty"></i>
+                                        </button>
+                                    {{/if}}
+                                {{/if}}
+                            </div>
+                        {{/if}}
+                        <hr style="opacity: 0.1; margin: 5px 0;">
+                        <div style="font-size: 0.82em; opacity: 0.65;">
+                            <i class="fa-solid fa-user-secret" style="width: 12px;"></i> <b>Spy Network</b> — use a Research order to locate a creature within 50 miles.
+                        </div>
+                    </div>
+                {{/if}}
+
                                 {{#if this.isStable}}
                                     <div style="font-size: 0.75em; color: #eee; margin-top: 4px;">
                                         <i class="fa-solid fa-horse"></i> <b>Stocked Mounts:</b>
@@ -545,6 +1011,40 @@
                                             {{/each}}
                                         </div>
                                         ({{this.stableUsedSlots}} / {{this.stableMaxSlots}} slots)
+                                    </div>
+                                {{/if}}
+
+                                {{#if this.isMenagerie}}
+                                    <div style="font-size: 0.75em; color: #eee; margin-top: 4px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                                            <span><i class="fa-solid fa-paw"></i> <b>Menagerie Creatures:</b></span>
+                                            <span style="opacity: 0.7;">{{this.menagerieUsedSlots}} / {{this.menagerieMaxSlots}} slots</span>
+                                        </div>
+                                        <div style="display: flex; flex-direction: column; gap: 3px;">
+                                            {{#each this.menagerieCreatures}}
+                                                <div style="display: flex; align-items: center; gap: 4px; background: rgba(255,255,255,0.06); border-radius: 6px; padding: 2px 6px;">
+                                                    <span style="flex: 1; color: #eee;">
+                                                        {{#if this.nickname}}<b>{{this.nickname}}</b> <span style="opacity:0.7;">({{this.species}})</span>{{else}}{{this.species}}{{/if}}
+                                                        <span style="opacity: 0.5; font-size: 0.9em; margin-left: 3px;">·{{#if (eq this.slots 1)}} Large{{else}} Small/Med{{/if}}</span>
+                                                    </span>
+                                                    <button type="button" data-action="toggleMenagerieDefender" data-index="{{@index}}" data-item-id="{{../id}}" data-is-flag="{{../isFlag}}"
+                                                            style="width: auto; padding: 1px 5px; font-size: 0.85em; border-radius: 8px; {{#if this.isDefender}}background:#2e7d32; color:white;{{else}}background:rgba(255,255,255,0.1); color:#aaa;{{/if}}"
+                                                            title="{{#if this.isDefender}}Counts as a Bastion Defender (click to exclude){{else}}Not defending (click to include){{/if}}">
+                                                        <i class="fa-solid fa-shield-halved"></i>
+                                                    </button>
+                                                    <button type="button" data-action="renameMenagerieCreature" data-index="{{@index}}" data-item-id="{{../id}}" data-is-flag="{{../isFlag}}"
+                                                            style="width: auto; padding: 1px 5px; font-size: 0.85em; background: none; color: #aaa; border: none;" title="Nickname">
+                                                        <i class="fa-solid fa-pen" style="font-size: 0.8em;"></i>
+                                                    </button>
+                                                    <button type="button" data-action="removeMenagerieCreature" data-index="{{@index}}" data-item-id="{{../id}}" data-is-flag="{{../isFlag}}"
+                                                            style="width: auto; padding: 1px 5px; font-size: 0.85em; background: none; color: #a32a22; border: none;" title="Release creature">
+                                                        <i class="fa-solid fa-xmark"></i>
+                                                    </button>
+                                                </div>
+                                            {{else}}
+                                                <div style="font-style: italic; opacity: 0.6; padding-left: 4px;">No creatures yet. Issue a Recruit order to add one.</div>
+                                            {{/each}}
+                                        </div>
                                     </div>
                                 {{/if}}
 
@@ -625,8 +1125,9 @@
                     {{/if}}
                     
                     {{#if (and (eq this.itemName "Arcane Study") (not this.isBuilding))}}
-                        <div style="font-size: 0.8em; color: purple; margin-top: 2px;">
-                            <i class="fa-solid fa-sparkles"></i> <b>Passive:</b> Gain <i>Identify</i> charm after Long Rest.
+                        <div style="font-size: 0.8em; margin-top: 2px; display: flex; align-items: center; justify-content: space-between; gap: 4px; cursor: help;" data-tooltip="After each Long Rest in your Bastion, you may cast Identify as a Charm (no spell slot required). At level 9+, your hireling also assists with magic item crafting.">
+                            <span style="color: #b39ddb;"><i class="fa-solid fa-sparkles"></i> <b>Arcane Study Charm</b></span>
+                            <span style="opacity: 0.7; font-size: 0.9em; white-space: nowrap;"><i class="fa-solid fa-moon"></i> Long Rest · Bastion</span>
                         </div>
                     {{/if}}
                                 {{#if this.isSacristyCrafting}}
@@ -654,24 +1155,109 @@
                                                 {{/if}}
                                             </div>
                                         {{/if}}
-                                        {{#if (and this.craftChoice (not this.isInherited) (not this.isContinuingProject))}}
-                                            <button type="button" data-action="addToQueue" data-item-id="{{this.id}}" style="height: 20px; font-size: 0.75em; margin-top: 2px;">
-                                                <i class="fa-solid fa-plus"></i> Add to Craft Queue
-                                            </button>
+                                        {{#if (and this.craftChoice (not this.isInherited) (not (eq this.safeOrder "Continue Project")))}}
+                                            <div style="display: flex; align-items: center; gap: 4px; margin-top: 2px;">
+                                                <input type="number" class="queue-qty" value="1" min="1" style="width: 40px; height: 20px; font-size: 0.8em; text-align: center;" title="Quantity to add">
+                                                <button type="button" data-action="addToQueue" data-item-id="{{this.id}}" style="height: 20px; font-size: 0.75em; flex: 1;">
+                                                    <i class="fa-solid fa-plus"></i> Add to Craft Queue
+                                                </button>
+                                            </div>
                                         {{/if}}
                                     </div>
                                 {{/if}}
 
                     {{#if (and (eq this.itemName "Sanctuary") (not this.isBuilding))}}
-                        <div style="font-size: 0.8em; color: #a32a22; margin-top: 2px;">
-                            <i class="fa-solid fa-heart-pulse"></i> <b>Passive:</b> Gain <i>Healing Word</i> charm after Long Rest.
+                        <div style="font-size: 0.8em; margin-top: 2px; display: flex; align-items: center; justify-content: space-between; gap: 4px; cursor: help;" data-tooltip="After each Long Rest in your Bastion, you may cast Healing Word as a Charm (no spell slot required).">
+                            <span style="color: #ef9a9a;"><i class="fa-solid fa-heart-pulse"></i> <b>Healing Word Charm</b></span>
+                            <span style="opacity: 0.7; font-size: 0.9em; white-space: nowrap;"><i class="fa-solid fa-moon"></i> Long Rest · Bastion</span>
                         </div>
                     {{/if}}
 
                                 {{#if (and (eq this.itemName "Sacristy") (not this.isBuilding))}}
-                                    <div style="font-size: 0.8em; color: #a32a22; margin-top: 2px;">
-                                        <i class="fa-solid fa-wand-sparkles"></i> <b>Passive:</b> Spell slot refreshment (Level 5 or lower) after Short Rest.
+                                    <div style="font-size: 0.8em; margin-top: 2px; display: flex; align-items: center; justify-content: space-between; gap: 4px; cursor: help;" data-tooltip="After a Short Rest in your Bastion, you regain one expended spell slot of level 5 or lower.">
+                                        <span style="color: #ef9a9a;"><i class="fa-solid fa-wand-sparkles"></i> <b>Sacred Spellcasting</b></span>
+                                        <span style="opacity: 0.7; font-size: 0.9em; white-space: nowrap;"><i class="fa-solid fa-hourglass-half"></i> Short Rest · Bastion</span>
                                     </div>
+                                {{/if}}
+
+                                {{#if this.isGreenhouse}}
+                                    {{#if this.showPoisonSelect}}
+                                        <div style="display: flex; align-items: center; gap: 4px; margin-top: 4px;">
+                                            <label style="font-size: 0.85em; flex-shrink: 0;">Poison:</label>
+                                            <select class="greenhouse-poison-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
+                                                {{#each poisonOptions}}
+                                                    <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.value}}</option>
+                                                {{/each}}
+                                            </select>
+                                            {{#if this.greenhousePoisonUuid}}
+                                                <button type="button" data-action="previewItem" data-uuid="{{this.greenhousePoisonUuid}}" style="width: auto; padding: 0 4px; font-size: 0.8em; height: 18px;" title="View Poison Details"><i class="fa-solid fa-eye"></i></button>
+                                            {{/if}}
+                                        </div>
+                                    {{else}}
+                                        {{#if (eq this.craftChoice "Healing Herbs")}}
+                                            {{#if this.greenhouseHealingHerbsUuid}}
+                                                <div style="font-size: 0.8em; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                                                    <i class="fa-solid fa-mortar-pestle"></i> <b>Harvesting:</b> Potion of Greater Healing
+                                                    <button type="button" data-action="previewItem" data-uuid="{{this.greenhouseHealingHerbsUuid}}" style="width: auto; padding: 0 4px; font-size: 0.8em; height: 18px;" title="View Potion Details"><i class="fa-solid fa-eye"></i></button>
+                                                </div>
+                                            {{/if}}
+                                        {{/if}}
+                                    {{/if}}
+                                {{/if}}
+
+                                {{#if this.isLaboratory}}
+                                    {{#if this.showLabPoisonSelect}}
+                                        <div style="display: flex; align-items: center; gap: 4px; margin-top: 4px;">
+                                            <label style="font-size: 0.85em; flex-shrink: 0;">Poison:</label>
+                                            <select class="laboratory-poison-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
+                                                <option value="">-- Select Poison --</option>
+                                                {{#each labPoisonOptions}}
+                                                    {{#if this.groupOptions}}
+                                                        <optgroup label="{{this.label}}">
+                                                            {{#each this.groupOptions}}
+                                                                <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                                                            {{/each}}
+                                                        </optgroup>
+                                                    {{else}}
+                                                        <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                                                    {{/if}}
+                                                {{/each}}
+                                            </select>
+                                            {{#if this.labPoisonUuid}}
+                                                <button type="button" data-action="previewItem" data-uuid="{{this.labPoisonUuid}}" style="width: auto; padding: 0 4px; font-size: 0.8em; height: 18px;" title="View Poison Details"><i class="fa-solid fa-eye"></i></button>
+                                            {{/if}}
+                                        </div>
+                                    {{/if}}
+                                    {{#if this.showLabAlchemistSelect}}
+                                        <div style="display: flex; align-items: center; gap: 4px; margin-top: 4px;">
+                                            <label style="font-size: 0.85em; flex-shrink: 0;">Supply:</label>
+                                            <select class="laboratory-alchemist-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isSelectionDisabled}}disabled{{/if}}>
+                                                <option value="">-- Select Item --</option>
+                                                {{#each labAlchemistOptions}}
+                                                    {{#if this.groupOptions}}
+                                                        <optgroup label="{{this.label}}">
+                                                            {{#each this.groupOptions}}
+                                                                <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                                                            {{/each}}
+                                                        </optgroup>
+                                                    {{else}}
+                                                        <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                                                    {{/if}}
+                                                {{/each}}
+                                            </select>
+                                            {{#if this.labAlchemistUuid}}
+                                                <button type="button" data-action="previewItem" data-uuid="{{this.labAlchemistUuid}}" style="width: auto; padding: 0 4px; font-size: 0.8em; height: 18px;" title="View Supply Details"><i class="fa-solid fa-eye"></i></button>
+                                            {{/if}}
+                                        </div>
+                                    {{/if}}
+                                    {{#if (and this.craftChoice (not this.isInherited) (not (eq this.safeOrder "Continue Project")))}}
+                                        <div style="display: flex; align-items: center; gap: 4px; margin-top: 4px;">
+                                            <input type="number" class="queue-qty" value="1" min="1" style="width: 40px; height: 20px; font-size: 0.8em; text-align: center;" title="Quantity to add">
+                                            <button type="button" data-action="addToQueue" data-item-id="{{this.id}}" style="height: 20px; font-size: 0.75em; flex: 1;">
+                                                <i class="fa-solid fa-plus"></i> Add to Craft Queue
+                                            </button>
+                                        </div>
+                                    {{/if}}
                                 {{/if}}
 
                     {{#if (and (eq this.itemName "Workshop") (not this.isBuilding))}}
@@ -695,11 +1281,20 @@
                                     <span class="spellcaster-tag" style="background: rgba(0,100,200,0.2); padding: 2px 8px; border-radius: 10px; border: 1px solid #0078d4; color: #82cfff;">
                                         <b>{{#if this.spellcasterName}}{{this.spellcasterName}}{{else}}Friendly Wizard{{/if}}</b>
                                     </span>
-                                    <span style="color: #bbb; font-style: italic;">({{this.spellcasterDaysRemaining}} days left, Max Level: {{this.maxSpellLevel}})</span>
+                                    <span style="color: #bbb; font-style: italic;">({{this.spellcasterDisplayTime}} {{this.spellcasterTimeUnit}} left, Max Level: {{this.maxSpellLevel}})</span>
                                 </div>
                             {{else}}
                                 <span style="font-style: italic; opacity: 0.6;">None present</span>
                             {{/if}}
+                        </div>
+                    {{/if}}
+
+                    {{#if this.isDamaged}}
+                        <div class="bastion-damage-bar" title="Repair progress: {{this.repairProgress}} / {{this.repairTurns}}" style="margin-top: 4px; height: 14px; background: rgba(255,0,0,0.1); border: 1px solid #a32a22; border-radius: 3px; position: relative; overflow: hidden; width: 100%;">
+                            <div class="fill" style="width: {{this.repairProgressPct}}%; height: 100%; background: #a32a22; border-right: 1px solid #7a7971; transition: width 0.5s;"></div>
+                            <span style="position: absolute; top: 0; left: 0; width: 100%; text-align: center; font-size: 0.8em; line-height: 14px; color: white; font-weight: bold; text-shadow: 0 0 3px black;">
+                                Damaged: Repairing...
+                            </span>
                         </div>
                     {{/if}}
 
@@ -714,7 +1309,7 @@
                 </div>
                 </div>
                 
-                <div style="display: flex; gap: 2px; align-items: center; flex-shrink: 0;">
+                <div style="display: flex; flex-direction: column; gap: 4px; align-items: center; flex-shrink: 0; padding-left: 10px;">
                     {{#if this.isEnlargeable}}
                         <button type="button" data-action="upgradeFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 6px; color: darkgoldenrod;" title="Enlarge Facility">
                             <i class="fa-solid fa-arrow-up-right-dots"></i>
@@ -727,6 +1322,10 @@
                             title="Toggle Name Prompting ({{#if this.promptNames}}On{{else}}Off{{/if}})">
                             <i class="fa-solid fa-id-card"></i>
                         </button>
+                        <span data-tooltip="Defenders: {{this.barrackDefenderCount}} / {{this.barrackMaxDefenders}} (cap based on facility size)"
+                              style="font-size: 0.7em; font-weight: bold; color: {{#if (ge this.barrackDefenderCount this.barrackMaxDefenders)}}#ef9a9a{{else}}#e8e4d9{{/if}}; white-space: nowrap; cursor: help; padding: 1px 4px; background: rgba(0,0,0,0.3); border-radius: 4px; border: 1px solid rgba(255,255,255,0.12);">
+                            <i class="fa-solid fa-shield" style="color:#ef9a9a;"></i> {{this.barrackDefenderCount}}/{{this.barrackMaxDefenders}}
+                        </span>
                     {{/if}}
 
                     {{#if (eq this.itemName "Storehouse")}}
@@ -767,13 +1366,13 @@
                             <b style="font-size: 0.9em;">{{this.name}}</b>
                             <span style="font-size: 0.65em; background: #ddd; color: #333; padding: 1px 4px; border-radius: 2px;">{{this.size}}</span>
                         </div>
-                        <div style="display: flex; gap: 2px;">
+                        <div style="display: flex; gap: 4px; align-items: center; flex-shrink: 0;">
                             {{#if this.isEnlargeable}}
-                                <button type="button" data-action="upgradeFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="padding: 2px 4px; font-size: 0.7em; color: darkgoldenrod;" title="Enlarge"><i class="fa-solid fa-arrow-up-right-dots"></i></button>
+                                <button type="button" data-action="upgradeFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 6px; color: darkgoldenrod;" title="Enlarge"><i class="fa-solid fa-arrow-up-right-dots"></i></button>
                             {{/if}}
-                            <button type="button" data-action="selectFacilityLayout" data-item-id="{{this.id}}" style="padding: 2px 4px; font-size: 0.7em; {{#if this.isLayoutActive}}background: #444; color: white;{{/if}}" title="Layout"><i class="fa-solid fa-pen-ruler"></i></button>
+                            <button type="button" data-action="selectFacilityLayout" data-item-id="{{this.id}}" style="width: auto; padding: 2px 6px; {{#if this.isLayoutActive}}background: #444; color: white;{{else}}color: #444;{{/if}}" title="Layout"><i class="fa-solid fa-pen-ruler"></i></button>
                             {{#unless this.isInherited}}
-                                <button type="button" data-action="deleteFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="padding: 2px 4px; font-size: 0.7em; color: darkred;" title="Demolish"><i class="fa-solid fa-trash"></i></button>
+                                <button type="button" data-action="deleteFacility" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 6px; color: darkred;" title="Demolish"><i class="fa-solid fa-trash"></i></button>
                             {{/unless}}
                         </div>
                     </div>

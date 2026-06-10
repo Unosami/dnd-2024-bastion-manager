@@ -1,0 +1,78 @@
+Bastion Module notes:
+OUTLINE to COMPLETION:
+- Finish Facility Flesh-outs (DMG)
+- Flesh out additional source facilities (Optional)
+- Get the UI how I like (Including bastion map)
+    - Perhaps remove bastion map and make it into its own module? Or just don't do more work on it unless its in a seperate project.
+- Re-organize the module settings to make more sense and be less sprawling/esotaric
+- Bug fixes and polish
+- Add a README button in the module settings to walk through the module and address any systems that may be confusing for a user.
+
+
+GENERAL
+- Give DM ability to advance construction by a certain number of turns, in case the party has done something to speed it up.
+- Move hireling and defender name pools to seperate editable files.
+- Tie day-based time to native calendar?
+- Consolidate multiple turn events into a single prompt. For example, if you recruit for 3 turns there should be a single prompt asking for all names instead of 3 recruit name prompts.
+- Enlarging special facilities should show what the mechanical benefits of expanding that facility are in the staging prompt.
+- Tie long-rest charms into the long-rest of the charater sheet?
+
+
+EVENTS:
+- Combined Bastions should all share a single bastion event, rather than generating one-per bastion per Maintenance turn.
+- Allow for custom events?
+
+
+Next I want to start fleshing out the other facility outputs:
+STABLE
+- Standardize sizes and slots between the stable and the menagerie. If possible
+- When a mount is withdrawn by a character import the associated actor and give the player ownership of it and rename it to the creature's nickname. Then if the mount is deposited again remove the actor. I'd like any changes to the specific creature to be remembered between withdrawels if possible.
+
+ARMORY
+- Stocking the armory does nothing if there are no bastion defenders. The facility should throw a warning to that effect if being built without an attached facility that provides defenders.
+
+TELEPORTATION CIRCLE 
+- A cool way to display the glyphs of the specific bastion's teleportation circle? (So Extra)
+    
+THEATER
+- Nice to have: Writers type in name of the production. That production script is saved as an item (in the compendium?) so they can look back on it.
+
+
+GRID CHANGES
+- Change the grid layout of combined bastions to have each player be a color and their facilities be different shades of that color. (Or some way to distinguish who owns what without text) (Might be done already?)
+- Combine both walls buttons into a single wall dropdown, like with doors.
+(Might be done already:)
+- Closets (might not need to be included)
+- Corridors, Ramps, Staircases
+- Defensive walls (each 5-foot segement has a time and gold cost)
+- Doors and Windows
+
+GRID STANDALONE MODULE
+- Change the grid layout to populate the squares with relevent furnishings.
+- The option of Structure shapes/outlines? Tower, shrine, fortified keep, lodge vs village(current freeform) Prefabs.
+
+Calendar compatibility
+    - Make the module track days using Simple Calendar rather than internally? (Only works if Simple Calendar gets an update to be compatible with current versions of Foundry)
+
+- Homebrew (not hardcoded, I want them to be like submodules?):
+    - Veteran Hirelings: After a certain length of service/special event/the hireling is attained in a special way the hireling should give bonuses to the facility they work.
+    - Specialized defenders: Mages, warriors, rogues. Each has a different benefit to the bastion.
+
+
+---
+Known Bugs:
+- At the end need to go back and do a blanket "Make sure The Horizon reflects all facilities"
+- 
+
+---
+Long Rest:
+- Arcane Study 
+- Sanctuary 
+- Observatory * 
+- Reliquary 
+- Demiplane ** ~
+- Sanctum 
+
+Short Rest:
+- Workshop * 
+- Sacristy 

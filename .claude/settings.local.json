@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls /mnt/Hadunkachud/FoundryVTTUserData/Data/modules/tidy5e-sheet/ 2>/dev/null | head -5 *)",
+      "Read(//mnt/Hadunkachud/FoundryVTTUserData/Data/modules/tidy5e-sheet/**)",
+      "Read(//mnt/Hadunkachud/FoundryVTTUserData/Data/modules/**)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('title:', d.get\\('title'\\)\\); print\\('version:', d.get\\('version'\\)\\); print\\('scripts:', d.get\\('esmodules', d.get\\('scripts', []\\)\\)[:3]\\)\")",
+      "Bash(grep -n \"root\\\\$1g\\\\b\\\\|from_html.*bastion\\\\|from_html.*facility\" /mnt/Hadunkachud/FoundryVTTUserData/Data/modules/tidy5e-sheet/tidy5e-sheet.js)",
+      "Bash(grep -v \"from_html\\\\|each\\\\$1\\\\|get\\(context\\)\")",
+      "Bash(grep -v \"from_html\\\\|each\\\\$1\\\\|context\\\\.\")"
+    ]
+  }
+}
