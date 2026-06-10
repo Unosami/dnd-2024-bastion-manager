@@ -7,7 +7,12 @@
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('title:', d.get\\('title'\\)\\); print\\('version:', d.get\\('version'\\)\\); print\\('scripts:', d.get\\('esmodules', d.get\\('scripts', []\\)\\)[:3]\\)\")",
       "Bash(grep -n \"root\\\\$1g\\\\b\\\\|from_html.*bastion\\\\|from_html.*facility\" /mnt/Hadunkachud/FoundryVTTUserData/Data/modules/tidy5e-sheet/tidy5e-sheet.js)",
       "Bash(grep -v \"from_html\\\\|each\\\\$1\\\\|get\\(context\\)\")",
-      "Bash(grep -v \"from_html\\\\|each\\\\$1\\\\|context\\\\.\")"
+      "Bash(grep -v \"from_html\\\\|each\\\\$1\\\\|context\\\\.\")",
+      "Bash(python3)",
+      "Bash(grep -n \"\\\\.contents\\\\|grid-template\\\\|grid-area\\\\|facilities.*basic\\\\|facilities.*special\\\\|section\\\\.roster\" /mnt/Hadunkachud/FoundryVTTUserData/Data/systems/dnd5e/css/sheets/actor.css 2>/dev/null | grep -A2 -B2 \"bastion\\\\|contents\\\\|grid\" | head -60)",
+      "Read(//mnt/Hadunkachud/FoundryVTTUserData/Data/systems/dnd5e/css/sheets/**)",
+      "Bash(find /mnt/Hadunkachud/FoundryVTTUserData/Data/systems/dnd5e/css -name \"*.css\" | xargs grep -l \"bastion\\\\|facility\\\\|facilit\" 2>/dev/null)",
+      "Read(//mnt/Hadunkachud/FoundryVTTUserData/Data/systems/dnd5e/**)"
     ]
   }
 }
