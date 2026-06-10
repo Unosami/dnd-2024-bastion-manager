@@ -1,5 +1,5 @@
 import { BastionManager } from "./bastion-app.js";
-const MODULE_ID = "dnd-2024-bastion-manager";
+import { MODULE_ID, ORDER_SVG_MAP, ORDER_ICON_MAP, PASSIVE_INFO } from "./bastion-data.js";
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
 /**
@@ -159,28 +159,14 @@ Hooks.on("renderSceneControls", (app, html, data) => {
 });
 
 /**
- * INTEGRATION ENGINE: Mutation-Based Injection
- * Since v13 sheets don't always trigger hooks on tab swap, we watch the DOM.
+ * Inject bastion tab CSS overrides into document.head once (idempotent).
+ * Extracted so the style block lives outside the per-tab augmentation function.
  */
-const integrateBastionDashboard = (bastionTab) => {
-    // 2. Identify the Actor (Foundry v13 / ApplicationV2 support)
-    // We check both the modern instances list and the legacy windows list
-    const app = Array.from(foundry.applications.instances.values()).find(a => a.element?.contains(bastionTab))
-             || Object.values(ui.windows).find(w => (w.element?.[0] || w.element)?.contains(bastionTab));
-
-    // v13 Stability: Use game.actors.get to ensure we have the most current DB state,
-    // as app references can be stale during asynchronous render cycles.
-    const actor = game.actors.get((app?.document || app?.actor)?.id);
-    if (!actor || actor.documentName !== "Actor") return;
-    if (!["character", "npc", "group"].includes(actor.type)) return;
-    // Group overview sections are rendered by renderGroupBastionContent — skip native augmentation
-    if (bastionTab.dataset.bastionGroupOverview === "true") return;
-
-    // Inject bastion tab CSS overrides once into document.head (idempotent)
-    if (!document.getElementById('bastion-manager-tab-styles')) {
-        const style = document.createElement('style');
-        style.id = 'bastion-manager-tab-styles';
-        style.textContent = `
+function injectBastionStyles() {
+    if (document.getElementById('bastion-manager-tab-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'bastion-manager-tab-styles';
+    style.textContent = `
             /* Facility title: white text + dark text-shadow for readability over any image overlay */
             .dnd5e2 .tab[data-tab="bastion"] li.facility:not(.empty) .facility-header .name-stacked .title {
                 color: white !important;
@@ -211,19 +197,19 @@ const integrateBastionDashboard = (bastionTab) => {
             [data-tab-contents-for="bastion"] li.facility .bastion-augmented-info b {
                 color: #e8e4d9 !important;
             }
-            /* Progress bar track — needs light bg to be visible on dark block */
             .tab[data-tab="bastion"] li.facility .bastion-augmented-info div[style*="height:6px"],
             [data-tab-contents-for="bastion"] li.facility .bastion-augmented-info div[style*="height:6px"] {
-                background: rgba(255, 255, 255, 0.18) !important;
+                background: none !important;
             }
-            /* Turn counter beside bastion name */
             .tab[data-tab="bastion"] section.name .bastion-turn-counter,
             [data-tab-contents-for="bastion"] section.name .bastion-turn-counter {
-                color: var(--dnd5e-color-gold, var(--t5e-primary-accent, #c9a227)) !important;
+                font-size: 0.8em;
+                opacity: 0.8;
+                margin-top: 4px;
             }
-            /* Reflow layout: special top, basic middle, defenders/roster at bottom */
+            /* Native sheet: reflow — Special top, Basic middle, Roster bottom */
             .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .contents {
-                grid-template: "c c" 1fr "b b" auto "a a" auto / minmax(0, 1fr) minmax(0, 1fr) !important;
+                grid-template: "c c" auto "b b" auto "a a" auto / minmax(0, 1fr) minmax(0, 1fr) !important;
             }
             .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .contents .facilities.special {
                 grid-area: c !important;
@@ -231,14 +217,17 @@ const integrateBastionDashboard = (bastionTab) => {
             .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .contents .facilities.basic {
                 grid-area: b !important;
             }
-            .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .contents section.roster {
+            .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .contents .roster {
                 grid-area: a !important;
             }
-            /* Special facilities: 2-column layout so up to 6 facilities fit without scrolling */
-            .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .facilities.special ul.unlist {
+            /* Native sheet: 2-column layout for facility lists */
+            .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .facilities.special ul.unlist,
+            .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .facilities.basic ul.unlist {
+                display: flex !important;
                 flex-direction: row !important;
                 flex-wrap: wrap !important;
                 align-items: stretch !important;
+                gap: 8px !important;
             }
             .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .facilities.special li.facility:not(.empty) {
                 flex: 0 0 calc(50% - 4px) !important;
@@ -250,11 +239,6 @@ const integrateBastionDashboard = (bastionTab) => {
                 flex: 0 0 100% !important;
                 width: 100% !important;
             }
-            /* Basic facilities list: compact horizontal wrap at the bottom */
-            .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .facilities.basic ul.unlist {
-                flex-direction: row !important;
-                flex-wrap: wrap !important;
-            }
             .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .facilities.basic li.facility:not(.empty) {
                 flex: 0 0 calc(50% - 4px) !important;
                 max-width: calc(50% - 4px) !important;
@@ -264,9 +248,13 @@ const integrateBastionDashboard = (bastionTab) => {
                 flex: 0 0 100% !important;
                 width: 100% !important;
             }
-            /* Group actor sheet — bastion overview tab scrollable container */
-            .dnd5e2.sheet.actor.group section.bastion-group-tab {
-                overflow-y: auto !important;
+            /* Bastion order-block select: full width, dark theme */
+            .tab[data-tab="bastion"] li.facility .bastion-order-block select,
+            [data-tab-contents-for="bastion"] li.facility .bastion-order-block select {
+                width: 100% !important;
+                background: rgba(30,25,18,0.9) !important;
+                color: #e8e4d9 !important;
+                border: 1px solid rgba(200,190,170,0.3) !important;
                 flex: 1 1 auto !important;
             }
             /* Tidy 5e Sheets: facility title readability */
@@ -285,8 +273,29 @@ const integrateBastionDashboard = (bastionTab) => {
                 width: 100% !important;
             }
         `;
-        document.head.appendChild(style);
-    }
+    document.head.appendChild(style);
+}
+
+/**
+ * INTEGRATION ENGINE: Mutation-Based Injection
+ * Since v13 sheets don't always trigger hooks on tab swap, we watch the DOM.
+ */
+const integrateBastionDashboard = (bastionTab) => {
+    // 2. Identify the Actor (Foundry v13 / ApplicationV2 support)
+    // We check both the modern instances list and the legacy windows list
+    const app = Array.from(foundry.applications.instances.values()).find(a => a.element?.contains(bastionTab))
+             || Object.values(ui.windows).find(w => (w.element?.[0] || w.element)?.contains(bastionTab));
+
+    // v13 Stability: Use game.actors.get to ensure we have the most current DB state,
+    // as app references can be stale during asynchronous render cycles.
+    const actor = game.actors.get((app?.document || app?.actor)?.id);
+    if (!actor || actor.documentName !== "Actor") return;
+    if (!["character", "npc", "group"].includes(actor.type)) return;
+    // Group overview sections are rendered by renderGroupBastionContent — skip native augmentation
+    if (bastionTab.dataset.bastionGroupOverview === "true") return;
+
+    injectBastionStyles();
+
 
     const combinedId = actor.getFlag(MODULE_ID, "combinedGroupId");
     const unify = game.settings.get(MODULE_ID, "unifyCombinedTurns");
@@ -632,33 +641,6 @@ const integrateBastionDashboard = (bastionTab) => {
         const { availableOrders, safeOrder, fFlags: stateFlags } = BastionManager.buildFacilityOrderState(actor, item);
 
         // --- A2. Update the native order-slot to reflect the current order ---
-        // The native template uses <div class="slot order-slot"> with a <dnd5e-icon src="..."> inside.
-        // We use the same system SVG paths so the icon matches the native look exactly.
-        const ORDER_SVG_MAP = {
-            "maintain":         "systems/dnd5e/icons/svg/facilities/maintain.svg",
-            "craft":            "systems/dnd5e/icons/svg/facilities/craft.svg",
-            "trade":            "systems/dnd5e/icons/svg/facilities/trade.svg",
-            "recruit":          "systems/dnd5e/icons/svg/facilities/recruit.svg",
-            "research":         "systems/dnd5e/icons/svg/facilities/research.svg",
-            "harvest":          "systems/dnd5e/icons/svg/facilities/harvest.svg",
-            "empower":          "systems/dnd5e/icons/svg/facilities/empower.svg",
-            "change type":      "systems/dnd5e/icons/svg/facilities/change.svg",
-            "continue project": "systems/dnd5e/icons/svg/facilities/build.svg",
-            "progress queue":   "systems/dnd5e/icons/svg/facilities/craft.svg",
-        };
-        // Also keep a FA fallback map for the change-handler (used on order dropdown change)
-        const ORDER_ICON_MAP = {
-            "maintain":         "fa-solid fa-broom",
-            "craft":            "fa-solid fa-hammer",
-            "trade":            "fa-solid fa-coins",
-            "recruit":          "fa-solid fa-person-circle-plus",
-            "research":         "fa-solid fa-book-open",
-            "harvest":          "fa-solid fa-seedling",
-            "empower":          "fa-solid fa-star",
-            "change type":      "fa-solid fa-arrows-rotate",
-            "continue project": "fa-solid fa-forward",
-            "progress queue":   "fa-solid fa-list-ol",
-        };
         const _setOrderSlot = (orderSlot, svgSrc, tooltipLabel) => {
             if (!orderSlot) return;
             orderSlot.classList.remove('empty');
@@ -1270,10 +1252,6 @@ const integrateBastionDashboard = (bastionTab) => {
         }
 
         // D9. Facility passive abilities — Sanctuary and Sacristy static rows
-        const PASSIVE_INFO = {
-            "Sanctuary":    { icon: "fa-solid fa-heart-pulse",   color: "#ef9a9a", name: "Healing Word Charm",  restIcon: "fa-solid fa-moon",          rest: "Long Rest",  tip: "After each Long Rest in your Bastion, you may cast Healing Word as a Charm (no spell slot required)." },
-            "Sacristy":     { icon: "fa-solid fa-wand-sparkles", color: "#ef9a9a", name: "Sacred Spellcasting", restIcon: "fa-solid fa-hourglass-half", rest: "Short Rest", tip: "After a Short Rest in your Bastion, you regain one expended spell slot of level 5 or lower." },
-        };
         for (const [keyword, info] of Object.entries(PASSIVE_INFO)) {
             if (facName.includes(keyword) && !isUpgrading) {
                 rows.push(`<div data-tooltip="${info.tip}" style="cursor: help; display: flex; align-items: center; justify-content: space-between; gap: 4px;"><span><i class="${info.icon}" style="color:${info.color}; width:12px;"></i> <b>${info.name}</b></span><span style="opacity: 0.7; font-size: 0.88em; white-space: nowrap;"><i class="${info.restIcon}" style="width:10px;"></i> ${info.rest} · Bastion</span></div>`);
@@ -1967,7 +1945,10 @@ Hooks.once("init", () => {
 
 Hooks.once("ready", async () => {
     console.log("Bastion Manager | Foundry is ready.");
-    game.modules.get("dnd-2024-bastion-manager").api = { BastionManager };
+    game.modules.get("dnd-2024-bastion-manager").api = {
+        BastionManager,
+        registerFacilityType: (config) => BastionManager.registerFacilityType(config),
+    };
     await BastionManager.loadProfessions();
 
     // Inject global styles for the "WORKING" pulse animation

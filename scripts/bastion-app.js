@@ -1,85 +1,25 @@
+import {
+    MODULE_ID,
+    SPECIAL_ROOT_ID, BASIC_ROOT_ID,
+    GARDEN_ROOT_ID, ARCANE_STUDY_ROOT_ID, ARCANE_FOCUSES_FOLDER_ID, DRUID_FOCUS_FOLDER_ID,
+    HOLY_SYMBOL_FOLDER_ID, SMITHY_ROOT_ID, WORKSHOP_ROOT_ID, LAB_ALCH_FOLDER_ID,
+    LAB_POISON_FOLDER_ID, ARCHIVE_BOOKS_FOLDER_ID, MEDITATION_FOLDER_ID,
+    OBSERVATORY_ROOT_FOLDER_ID, ARCHIVE_ROOT_FOLDER_ID, ARTISANS_TOOLS_FOLDER_ID,
+    GREENHOUSE_ROOT_ID, GUILDHALL_ROOT_ID, LABORATORY_ROOT_ID, SACRISTY_ROOT_ID,
+    SANCTUARY_ROOT_ID, SCRIPTORIUM_ROOT_ID, STABLE_ROOT_ID, MENAGERIE_ROOT_ID,
+    TELEPORTATION_CIRCLE_ROOT_ID, TRAINING_AREA_ROOT_ID, PUB_ROOT_ID,
+    BASE_ITEMS_FOLDER_ID, RELIQUARY_ROOT_ID, SANCTUM_ROOT_ID,
+    BASTION_ORDERS, BASTION_EVENTS_LIST, UTILITY_DESCRIPTIONS, FACILITY_CONFIG
+} from "./bastion-data.js";
+
+import {
+    getAllSubfolderIds, extractSize, getScrollRequirements, getMagicItemRequirements,
+    getMountSlotCost, getMenagerieSlotCost, getMenagerieCost, getMenagerieDie,
+    getEffectiveDays, getSpecialFacilityCap, getNestedCompendiumOptions,
+    generateRandomName, generateSpellcasterName, getHirelingProfession
+} from "./bastion-calculations.js";
+
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
-const MODULE_ID = "dnd-2024-bastion-manager";
-const SPECIAL_ROOT_ID = "jvwwGTr0bMORqJD4";
-const BASIC_ROOT_ID = "oocJkCsQvkXOWJbL";
-const BASTION_ORDERS = ["Maintain", "Craft", "Harvest", "Recruit", "Research", "Trade", "Empower"];
-// Output-items compendium folder IDs
-const GARDEN_ROOT_ID          = "HYjssa08njsoKbTO";
-const ARCANE_STUDY_ROOT_ID    = "8yYUu27NcOQJc3qx";
-const ARCANE_FOCUSES_FOLDER_ID = "ByVgJZyPE5H3M5tV";
-const DRUID_FOCUS_FOLDER_ID   = "RTYj3BJ6ZRvuKxPq";
-const HOLY_SYMBOL_FOLDER_ID   = "BiV5sM1bdzI3ZWS6";
-const SMITHY_ROOT_ID          = "wti6MOvq9leZqgp9";
-const WORKSHOP_ROOT_ID        = "XkNDvStirzNpw8G2";
-const LAB_ALCH_FOLDER_ID      = "mqk8IahDyEIKpvcj";
-const LAB_POISON_FOLDER_ID    = "fwyUIxfHsEGOLHYc";
-const ARCHIVE_BOOKS_FOLDER_ID = "1gNhp4TlPZmeUuND";
-const MEDITATION_FOLDER_ID    = "MHEBG1MAdvgjzJk1";
-const OBSERVATORY_ROOT_FOLDER_ID    = "e88xHkwROqUs8TGK";
-const ARCHIVE_ROOT_FOLDER_ID = "abF82Om5im6lVTmF";
-const ARTISANS_TOOLS_FOLDER_ID = "6BSYdjswSgM0HRib";
-const GREENHOUSE_ROOT_ID      = "L5IXLxn3kjBeN7Vx";
-const GUILDHALL_ROOT_ID       = "ni06boefwcrUwFQa";
-const LABORATORY_ROOT_ID      = "ZGn3LuZo6zyzHOoK";
-const SACRISTY_ROOT_ID        = "hU4DDWFnK13sSUSP";
-const SANCTUARY_ROOT_ID       = "B6m3PJWbZ81SSYeW";
-const SCRIPTORIUM_ROOT_ID     = "RbGD7EB1jyD26fq6";
-const STABLE_ROOT_ID          = "7fgBYawFLeER4MtQ";
-const MENAGERIE_ROOT_ID       = "2NJBOp0l0PxvBN6B";
-const TELEPORTATION_CIRCLE_ROOT_ID = "7Iiukg7IXSfJxnXS";
-const TRAINING_AREA_ROOT_ID   = "cxAgMJ71ADZ2APKu";
-const PUB_ROOT_ID             = "soSkXpUmtteM4mgD";
-const BASE_ITEMS_FOLDER_ID    = "AQ0XdVgHpL5IaNjC"; // Weapons & Armor used as base items for magic item crafting
-const RELIQUARY_ROOT_ID       = "zOMONoelQli72ZI7"; // Reliquary output folder
-const SANCTUM_ROOT_ID         = "eqeKF3pxcKuI6EX0"; // Sanctum output folder
-
-const BASTION_EVENTS_LIST = [
-    { label: "All Is Well (01-50)", roll: 1 },
-    { label: "Attack (51-55)", roll: 51 },
-    { label: "Criminal Hireling (56-58)", roll: 56 },
-    { label: "Extraordinary Opportunity (59-63)", roll: 59 },
-    { label: "Friendly Visitors (64-72)", roll: 64 },
-    { label: "Guest (73-76)", roll: 73 },
-    { label: "Lost Hirelings (77-79)", roll: 77 },
-    { label: "Magical Discovery (80-83)", roll: 80 },
-    { label: "Refugees (84-91)", roll: 84 },
-    { label: "Request for Aid (92-98)", roll: 92 },
-    { label: "Treasure (99-00)", roll: 99 }
-];
-
-// Hardcoded Utility & Tool Utilize Effects for Logistics Panel
-const UTILITY_DESCRIPTIONS = {
-    "Alchemist's Supplies": "Identify a substance (DC 15), or start a fire (DC 15)",
-    "Brewer's Supplies": "Detect poisoned drink (DC 15), or identify alcohol (DC 10)",
-    "Calligrapher's Supplies": "Write text with impressive flourishes that guard against forgery (DC 15)",
-    "Carpenter's Tools": "Seal or pry open a door or container (DC 20)",
-    "Cartographer's Tools": "Draft a map of a small area (DC 15)",
-    "Cobbler's Tools": "Modify footwear to give Advantage on the wearer's next Dexterity (Acrobatics) check (DC 10)",
-    "Cook's Utensils": "Improve food's flavor (DC 10), or detect spoiled or poisoned food (DC 15)",
-    "Glassblower's Tools": "Discern what a glass object held in the past 24 hours (DC 15)",
-    "Jeweler's Tools": "Discern a gem's value (DC 15)",
-    "Leatherworker's Tools": "Add a design to a leather item (DC 10)",
-    "Mason's Tools": "Chisel a symbol or hole in stone (DC 10)",
-    "Painter's Tools": "Paint a recognizable image of something you've seen (DC 10)",
-    "Potter's Tools": "Discern what a ceramic object held in the past 24 hours (DC 15)",
-    "Smith's Tools": "Pry open a door or container (DC 20)",
-    "Tinker's Tools": "Assemble a Tiny item composed of scrap, which falls apart in 1 minute (DC 20)",
-    "Weaver's Tools": "Mend a tear in clothing (DC 10), or sew a Tiny design (DC 10)",
-    "Woodcarver's Tools": "Carve a pattern in wood (DC 10)",
-    "Thieves' Tools": "Pick a lock (DC 15), or disarm a trap (DC 15)",
-    "Arcane Spellcasting": "Cast 'Identify' (Charm) after Long Rest. Level 9+ hireling assists with magic item crafting.",
-    "Sacred Spellcasting": "Cast 'Healing Word' (Charm) or 'Greater Restoration' (Reliquary). Access to spell slot refreshment.",
-    "Expert Recruiter": "Recruit friendly NPC spellcasters who can cast Wizard spells (up to level 8)."
-};
-const FACILITY_CONFIG = {
-    "Workshop": {
-        type: "tools",
-        options: [
-            "Carpenter's Tools", "Cobbler's Tools", "Glassblower's Tools", "Jeweler's Tools", "Leatherworker's Tools", 
-            "Mason's Tools", "Painter's Tools", "Potter's Tools", "Tinker's Tools", "Weaver's Tools", "Woodcarver's Tools"
-        ]
-    }
-};
 
 class SpellSelectionApp extends ApplicationV2 {
     static DEFAULT_OPTIONS = {
@@ -261,6 +201,44 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
     static _professionsMap = null;
 
+    /** Registry of custom facility types added by external modules via registerFacilityType(). */
+    static _customFacilityTypes = [];
+
+    /**
+     * Register a custom facility type so it appears in the Build Facility dialog.
+     *
+     * @param {object} config
+     * @param {string} config.id        Unique dot-namespaced ID, e.g. "my-module.war-room"
+     * @param {string} config.name      Display name shown in the dropdown
+     * @param {"special"|"basic"} config.type  Which section to list it under
+     * @param {string} config.itemUuid  UUID of the compendium Item to add to the actor
+     * @param {number} [config.level]   Minimum character level (shown as hint next to name)
+     *
+     * @example
+     * // Called from another module's ready hook:
+     * game.modules.get("dnd-2024-bastion-manager").api.registerFacilityType({
+     *   id: "my-module.war-room",
+     *   name: "War Room",
+     *   type: "special",
+     *   level: 17,
+     *   itemUuid: "Compendium.my-module.facilities.AbCdEfGh"
+     * });
+     */
+    static registerFacilityType(config) {
+        const required = ["id", "name", "type", "itemUuid"];
+        for (const field of required) {
+            if (!config[field]) return console.error(`Bastion Manager | registerFacilityType: missing required field "${field}".`, config);
+        }
+        if (!["special", "basic"].includes(config.type)) {
+            return console.error(`Bastion Manager | registerFacilityType: "type" must be "special" or "basic".`);
+        }
+        if (BastionManager._customFacilityTypes.find(f => f.id === config.id)) {
+            return console.warn(`Bastion Manager | registerFacilityType: type "${config.id}" is already registered.`);
+        }
+        BastionManager._customFacilityTypes.push(config);
+        console.log(`Bastion Manager | Registered custom facility type: "${config.name}" (${config.type})`);
+    }
+
     /**
      * Loads the professions reference file and parses it into a searchable map.
      */
@@ -344,20 +322,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     };
     static PARTS = { main: { template: "modules/dnd-2024-bastion-manager/templates/bastion-main.hbs" } };
 
-    /**
-     * Recursively collects all folder IDs under a given parent folder.
-     * @param {CompendiumCollection} pack The compendium collection.
-     * @param {string} parentFolderId The ID of the parent folder.
-     * @returns {string[]} An array of all folder IDs, including the parent.
-     */
-    static _getAllSubfolderIds(pack, parentFolderId) {
-        if (!pack?.folders) return [parentFolderId];
-        const subfolders = pack.folders.filter(f => {
-            const pid = f.parentId || f.folder?.id || f.folder;
-            return pid === parentFolderId;
-        });
-        return [parentFolderId, ...subfolders.flatMap(f => BastionManager._getAllSubfolderIds(pack, f.id))];
-    }
+    // Calculation helpers — logic lives in bastion-calculations.js; these aliases
+    // keep the BastionManager.* call-sites unchanged for backward compatibility.
+    static _getAllSubfolderIds = getAllSubfolderIds;
 
     /**
      * Computes the available order labels and the effective "safe" selected order for a single
@@ -589,315 +556,19 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         } else {
             await fac.update(updates);
         }
+        Hooks.callAll("dnd-bastion.orderChanged", targetActor, itemId, newOrder, isFlag);
     }
 
-    /**
-     * Extracts a size key from a document (Actor or Item).
-     * Looks for system.size, then checks system.properties for size tags.
-     * @param {object} doc The document or index entry.
-     * @returns {string} The size key (tiny, sm, med, lg, huge, grg).
-     */
-    static async _extractSize(doc) {
-        if (!doc) return "lg";
-        // 1. Direct size field (standard for Actors, some Item schemas)
-        let size = doc.system?.size || doc.system?.details?.size || doc.system?.traits?.size;
-        if (size && typeof size === "string") return size.toLowerCase();
-
-        // 2. Look in properties (Set, Array, or Object)
-        let props = doc.system?.properties;
-        let propList = (props instanceof Set) ? Array.from(props) : (Array.isArray(props) ? props : (typeof props === "object" && props !== null ? Object.keys(props).filter(k => props[k]) : []));
-        const sizeKeys = ["tiny", "sm", "med", "lg", "huge", "grg"];
-        const found = propList.find(p => sizeKeys.includes(String(p).toLowerCase()));
-        if (found) return found.toLowerCase();
-
-        // 3. Parse Description for Link (Actor UUID)
-        const desc = doc.system?.description?.value;
-        if (desc) {
-            const match = desc.match(/@(?:UUID|Actor)\[([^\]]+)\]/);
-            if (match) {
-                try {
-                    const linkedDoc = await fromUuid(match[1]);
-                    if (linkedDoc && linkedDoc.documentName === "Actor") {
-                        // Traits.size is the standard dnd5e path for Actor size
-                        let linkedSize = linkedDoc.system?.traits?.size || linkedDoc.system?.size;
-                        if (linkedSize) return linkedSize.toLowerCase();
-                    }
-                } catch (e) {
-                    console.error("Bastion Manager | Error resolving linked actor for size:", e);
-                }
-            }
-        }
-
-        return "lg";
-    }
-
-    static _getScrollRequirements(name) {
-        const n = name.toLowerCase();
-        let level = 1;
-        const lvlMatch = n.match(/\b(\d)(?:st|nd|rd|th)\b/);
-        if (lvlMatch) level = parseInt(lvlMatch[1]);
-        else if (n.includes("cantrip")) level = 0;
-        else {
-            const lvlMatch2 = n.match(/level\s+(\d)/);
-            if (lvlMatch2) level = parseInt(lvlMatch2[1]);
-        }
-        const table = {
-            0: { days: 1, gp: 15 }, 1: { days: 1, gp: 25 },
-            2: { days: 3, gp: 100 }, 3: { days: 5, gp: 150 },
-            4: { days: 10, gp: 1000 }, 5: { days: 25, gp: 1500 },
-            6: { days: 40, gp: 10000 }, 7: { days: 50, gp: 12500 },
-            8: { days: 60, gp: 15000 }, 9: { days: 120, gp: 50000 }
-        };
-        return table[level] || table[1];
-    }
-
-    /**
-     * Returns standard crafting time and gold costs based on item rarity.
-     */
-    static _getMagicItemRequirements(rarity) {
-        const r = String(rarity || "common").toLowerCase();
-        const table = {
-            "common": { days: 5, gp: 50 },
-            "uncommon": { days: 10, gp: 200 },
-            "rare": { days: 50, gp: 2000 },
-            "veryrare": { days: 125, gp: 20000 },
-            "very rare": { days: 125, gp: 20000 },
-            "legendary": { days: 250, gp: 100000 },
-            "artifact": { days: 500, gp: 500000 }
-        };
-        return table[r] || table.common;
-    }
-
-    /**
-     * Returns the slot cost based on actor size key.
-     * Future-proofed for homebrew sizes.
-     */
-    static _getMountSlotCost(sizeKey) {
-        const s = String(sizeKey || "lg").toLowerCase();
-        // Tiny, Small, Medium all count as 0.5
-        if ( ["tiny", "sm", "med", "small", "medium"].includes(s) ) return 0.5;
-        // Large counts as 1.0
-        if ( s === "lg" || s === "large" ) return 1.0;
-        // Huge counts as 3.0
-        if ( s === "huge" || s === "hg" ) return 3.0;
-        // Anything larger (Gargantuan+) or unknown defaults to a "cannot house" value
-        return 999;
-    }
-
-    /** Slot cost for Menagerie: Large = 1, Small/Medium/Tiny = 0.25 (4 per Large slot). */
-    static _getMenagerieSlotCost(sizeKey) {
-        const s = String(sizeKey || "med").toLowerCase();
-        return ["lg", "large", "huge", "grg", "gargantuan"].includes(s) ? 1 : 0.25;
-    }
-
-    /** GP cost for a Menagerie creature — table lookup with CR-based fallback. */
-    static _getMenagerieCost(name, cr) {
-        const TABLE = {
-            "Ape": 500, "Black Bear": 500, "Brown Bear": 1000,
-            "Constrictor Snake": 250, "Crocodile": 500, "Dire Wolf": 1000,
-            "Giant Vulture": 1000, "Hyena": 50, "Jackal": 50,
-            "Lion": 1000, "Owlbear": 3500, "Panther": 250, "Tiger": 1000
-        };
-        if (TABLE[name] !== undefined) return TABLE[name];
-        // CR-based fallback
-        let crNum = 0;
-        if (typeof cr === "string") {
-            if (cr === "1/8") crNum = 0.125;
-            else if (cr === "1/4") crNum = 0.25;
-            else if (cr === "1/2") crNum = 0.5;
-            else crNum = parseFloat(cr) || 0;
-        } else crNum = cr || 0;
-        if (crNum <= 0.125) return 50;
-        if (crNum <= 0.25) return 250;
-        if (crNum <= 0.5) return 500;
-        if (crNum <= 1) return 1000;
-        if (crNum <= 2) return 2000;
-        if (crNum <= 3) return 3500;
-        // CR > 3: cost = 5 × XP by CR (DMG 2024), rounded to nearest 5 GP
-        // Index: 0=CR0, 1=CR1/8, 2=CR1/4, 3=CR1/2, 4=CR1, 5=CR2, 6=CR3, 7=CR4, 8=CR5, …
-        const XP_BY_CR = [10,25,50,100,200,450,700,1100,1800,2300,2900,3900,5000,5900,7200,8400,10000,11500,13000,15000,18000,20000,22000,25000,33000,41000,50000,62000,75000,90000,105000,120000,135000,155000];
-        const crIdx = Math.min(Math.floor(crNum) + 3, XP_BY_CR.length - 1);
-        return Math.round(XP_BY_CR[crIdx] * 5 / 5) * 5;
-    }
-
-    /** Returns the die type string for a Menagerie defender based on its CR and the dice mode setting. */
-    static _getMenagerieDie(crNum) {
-        const mode = game.settings.get(MODULE_ID, "menagerieDiceMode");
-        if (mode === "raw") return "d6";
-        if (mode === "digital") {
-            // CR tiers: 0→d2, 1/8→d3, 1/4→d4, 1/2→d5, 1→d6, 2→d7, 3→d8, 4→d9, …
-            const CR_TIERS = [0,0.125,0.25,0.5,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30];
-            let idx = 0;
-            for (let i = 0; i < CR_TIERS.length; i++) { if (crNum >= CR_TIERS[i]) idx = i; }
-            return `d${idx + 2}`;
-        }
-        if (mode === "physical") {
-            if (crNum >= 6) return "d20";
-            if (crNum >= 3) return "d12";
-            if (crNum >= 2) return "d10";
-            if (crNum >= 1) return "d8";
-            if (crNum >= 0.125) return "d6"; // CR 1/8 through 1/2
-            return "d4"; // CR 0
-        }
-        // "custom" mode — JSON threshold table
-        let table;
-        try { table = JSON.parse(game.settings.get(MODULE_ID, "menagerieCrDiceTable")); } catch { return "d6"; }
-        const thresholds = Object.keys(table).map(Number).sort((a, b) => b - a);
-        for (const t of thresholds) {
-            if (crNum >= t) return String(table[String(t)] || "d6").toLowerCase();
-        }
-        return "d6";
-    }
-
-    /**
-     * Returns the effective number of days for a project, scaling multiples of 7
-     * if the 'scaleWeekToTurnLength' setting is enabled.
-     * @param {number} baseDays The original day count from the rulebook.
-     * @returns {number}
-     */
-    static _getEffectiveDays(baseDays) {
-        const scale = game.settings.get(MODULE_ID, "scaleWeekToTurnLength");
-        if (!scale || baseDays % 7 !== 0) return baseDays;
-        const daysPerTurn = game.settings.get(MODULE_ID, "daysPerTurn") || 7;
-        return (baseDays / 7) * daysPerTurn;
-    }
-
-    /**
-     * Returns the special facility cap for the given actor level, per DMG 2024 rules.
-     * @param {number} actorLevel
-     * @param {boolean} [ignoreFacilityPrereqs=false] If true, applies a minimum cap of 2.
-     * @returns {number}
-     */
-    static _getSpecialFacilityCap(actorLevel, ignoreFacilityPrereqs = false) {
-        if (actorLevel >= 17) return 6;
-        if (actorLevel >= 13) return 5;
-        if (actorLevel >= 9) return 4;
-        if (actorLevel >= 5) return 2;
-        return ignoreFacilityPrereqs ? 2 : 0;
-    }
-
-    /**
-     * Recursively builds a nested option structure for select menus matching folder hierarchy.
-     */
-    static async _getNestedCompendiumOptions(pack, rootFolderId, selectedValue, calculationMode, daysPerTurn, progressLabel, isMagicItem = true, folderNamesFilter = null, folderNamesExclude = null, showDetails = true) {
-        const index = await pack.getIndex({ fields: ["folder", "system.rarity", "system.price", "system.quantity", "system.requirements.level", "system.size", "system.properties", "system.description.value"] });
-        const allRelevantFolderIds = BastionManager._getAllSubfolderIds(pack, rootFolderId);
-        
-        let rootItems = [];
-        let subGroups = [];
-
-        const rarityOrder = { "common": 1, "uncommon": 2, "rare": 3, "veryrare": 4, "very rare": 4, "legendary": 5, "artifact": 6 };
-        const sizeMap = { "tiny": "Tiny", "sm": "Small", "med": "Medium", "lg": "Large", "huge": "Huge", "grg": "Gargantuan" };
-
-        for (const fId of allRelevantFolderIds) {
-            const folder = pack.folders.get(fId);
-            if (!folder) continue;
-
-            // Filter folders by tools if a filter is provided (used for Workshop mundane gear)
-            if (folderNamesFilter && String(fId) !== String(rootFolderId) && !folderNamesFilter.includes(folder.name)) continue;
-            
-            // Exclude folders (used to keep Magic Items out of mundane lists). Checks full hierarchy.
-            if (folderNamesExclude) {
-                const exclusions = folderNamesExclude.toLowerCase().split("|");
-                let check = folder;
-                let excluded = false;
-                while (check && !excluded) { 
-                    const folderName = check.name.toLowerCase();
-                    if (exclusions.some(ex => folderName.includes(ex))) excluded = true;
-                    check = check.parentId ? pack.folders.get(check.parentId) : null; 
-                }
-                if (excluded) continue;
-            }
-
-            // Support both string IDs and folder objects found in different index schemas
-            const items = index.filter(i => {
-                let itemFolderId = i.folder?.id || i.folder;
-                if ( !itemFolderId ) return false;
-                if ( typeof itemFolderId !== "string" ) itemFolderId = String(itemFolderId);
-                return itemFolderId === String(fId) || itemFolderId.endsWith(`.${fId}`);
-            });
-            if (items.length === 0) continue;
-
-            const processedItems = await Promise.all(items.map(async i => {
-                const rarity = i.system.rarity || "common";
-                let price = i.system.price?.value ?? i.system.price ?? 0;
-                if (typeof price === "string") price = parseFloat(price.replace(/[^0-9.]/g, "")) || 0;
-                const size = await BastionManager._extractSize(i);
-                const slots = BastionManager._getMountSlotCost(size);
-                const qty = i.system.quantity || 1;
-
-                let days, gp;
-                const isScroll = i.name.toLowerCase().includes("spell scroll");
-                if (isScroll) { // Scrolls handled first
-                    const reqs = BastionManager._getScrollRequirements(i.name);
-                    days = reqs.days;
-                    gp = reqs.gp;
-                } else if (isMagicItem) {
-                    const reqs = BastionManager._getMagicItemRequirements(rarity);
-                    days = reqs.days;
-                    gp = reqs.gp;
-                } else {
-                    // Override for Stables: All mounts take 7 days / 1 turn
-                    const isMount = folder?.name.toLowerCase().includes("mount") || folder?.name.toLowerCase().includes("stable");
-                    const isPoison = folder?.name.toLowerCase().includes("poison");
-
-                    if (isMount) {
-                        days = BastionManager._getEffectiveDays(7);
-                        gp = Number(price);
-                        let label = i.name;
-                        if (showDetails) label = `${i.name} (${gp} GP, ${sizeMap[size] || "Unknown"} - ${slots} slots)`;
-                        return { 
-                            value: i.name, 
-                            label: label, 
-                            selected: i.name === selectedValue, 
-                            slots,
-                            rarity, time: 1, price: gp, 
-                            uuid: i.uuid || `Compendium.dnd-2024-bastion-manager.bastion-output-items.Item.${i._id || i.id}` 
-                        };                    }
-
-                    if (isPoison) {
-                        days = BastionManager._getEffectiveDays(7);
-                    } else {
-                        days = Math.max(1, Math.ceil(Number(price) / 10));
-                    }
-                    gp = Math.floor(Number(price) / 2);
-                }
-
-                const tCount = calculationMode === "days" ? days : Math.ceil(days / daysPerTurn);
-                let label = i.name;
-                if (showDetails) {
-                    label = `${i.name} (${rarity.charAt(0).toUpperCase() + rarity.slice(1)}: ${gp} GP, ${tCount} ${progressLabel})${qty > 1 ? ` [x${qty}]` : ''}`;
-                }
-                return {
-                    value: i.name,
-                    label: label,
-                    selected: i.name === selectedValue,
-                    rarity,
-                    time: tCount,
-                    price: gp,
-                    uuid: i.uuid || `Compendium.dnd-2024-bastion-manager.bastion-output-items.Item.${i._id || i.id}`
-                };
-            }));
-
-            const sortedItems = processedItems.sort((a,b) => {
-                if (isMagicItem) {
-                    const aOrder = rarityOrder[a.rarity] || 0;
-                    const bOrder = rarityOrder[b.rarity] || 0;
-                    if (aOrder !== bOrder) return aOrder - bOrder;
-                }
-                return a.label.localeCompare(b.label);
-            });
-
-            if (String(fId) === String(rootFolderId)) {
-                rootItems = sortedItems;
-            } else {
-                subGroups.push({ label: folder.name, groupOptions: sortedItems });
-            }
-        }
-        
-        subGroups.sort((a,b) => a.label.localeCompare(b.label));
-        return [...rootItems, ...subGroups];
-    }
+    static _extractSize             = extractSize;
+    static _getScrollRequirements   = getScrollRequirements;
+    static _getMagicItemRequirements = getMagicItemRequirements;
+    static _getMountSlotCost        = getMountSlotCost;
+    static _getMenagerieSlotCost    = getMenagerieSlotCost;
+    static _getMenagerieCost        = getMenagerieCost;
+    static _getMenagerieDie         = getMenagerieDie;
+    static _getEffectiveDays        = getEffectiveDays;
+    static _getSpecialFacilityCap   = getSpecialFacilityCap;
+    static _getNestedCompendiumOptions = getNestedCompendiumOptions;
 
     _getUnifiedFacilities() {
         const combinedGroupId = this.actor.getFlag(MODULE_ID, "combinedGroupId");
@@ -5466,14 +5137,24 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             ${ctx.basicFacilities.map(f => `<option value="${f._id}">${f.name}</option>`).join("")}
         </optgroup>` : "";
 
+        // Custom facility types registered by external modules
+        const customSpecList = showSpecial ? BastionManager._customFacilityTypes.filter(f => f.type === "special") : [];
+        const customBasicList = showBasic ? BastionManager._customFacilityTypes.filter(f => f.type === "basic") : [];
+        const customSpecGroup = customSpecList.length
+            ? `<optgroup label="Custom: Special Facilities">${customSpecList.map(f => `<option value="custom:${f.id}">${f.name}${f.level ? ` (Lvl ${f.level}+)` : ""}</option>`).join("")}</optgroup>`
+            : "";
+        const customBasicGroup = customBasicList.length
+            ? `<optgroup label="Custom: Basic Facilities">${customBasicList.map(f => `<option value="custom:${f.id}">${f.name}</option>`).join("")}</optgroup>`
+            : "";
+
         const content = `
             <div class="bastion-app">
                 <p>Select a ${typeLabel} to establish in your Bastion:</p>
                 <div class="form-group">
                     <select name="selectedFacility" style="width: 100%;">
                         <option value="">-- Choose ${typeLabel} --</option>
-                        ${specOptions}
-                        ${basicOptions}
+                        ${specOptions}${customSpecGroup}
+                        ${basicOptions}${customBasicGroup}
                     </select>
                 </div>
             </div>`;
@@ -5495,8 +5176,23 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const facilityId = target?.value || this.element?.querySelector('select[name="compendium-facility"]')?.value;
         if (!facilityId) return ui.notifications.warn("Select a facility first!");
 
-        const pack = game.packs.get("dnd-2024-bastion-manager.bastion-facilities");
-        const itemDoc = await pack.getDocument(facilityId);
+        // Resolve the item: custom-registered types use a UUID; built-in types use the module pack.
+        let itemDoc;
+        if (facilityId.startsWith("custom:")) {
+            const customId = facilityId.slice(7);
+            const customConfig = BastionManager._customFacilityTypes.find(f => f.id === customId);
+            if (!customConfig) return ui.notifications.error(`Bastion Manager | Custom facility type "${customId}" is not registered.`);
+            itemDoc = await fromUuid(customConfig.itemUuid);
+            if (!itemDoc) return ui.notifications.error(`Bastion Manager | Could not load item for "${customConfig.name}". Check the itemUuid passed to registerFacilityType.`);
+        } else {
+            const pack = game.packs.get("dnd-2024-bastion-manager.bastion-facilities");
+            itemDoc = await pack.getDocument(facilityId);
+        }
+        if (!itemDoc) return ui.notifications.warn("Could not load facility data.");
+
+        // Allow external modules to cancel the build (return false from the hook listener to cancel).
+        if (Hooks.call("dnd-bastion.preBuildFacility", this.actor, itemDoc) === false) return;
+
         let newFacData = itemDoc.toObject();
 
         // Identify Basic vs Special
@@ -5748,7 +5444,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             // No prompt needed, instant build (happens if all options disabled and build times off)
             await Item.create(newFacData, { parent: this.actor });
         }
-        this.render(); 
+        Hooks.callAll("dnd-bastion.facilityBuilt", this.actor, newFacData);
+        this.render();
     }
 
     static async onViewBastionMap(event, target) {
@@ -5870,14 +5567,17 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         });
 
         if (confirm) {
+            // Allow external modules to cancel the advance (return false to cancel).
+            if (Hooks.call("dnd-bastion.preAdvanceTurn", bastionActors, turnsToAdvance) === false) return;
+
             const currentGlobalTurns = game.settings.get(MODULE_ID, "globalTurnCount") || 0;
             await game.settings.set(MODULE_ID, "globalTurnCount", currentGlobalTurns + turnsToAdvance);
- 
+
             let reports = [];
             const processedGroups = new Set();
             const rolledEvents = new Map(); // Shared map for group deduplication
             const unify = game.settings.get(MODULE_ID, "unifyCombinedTurns");
- 
+
             for (let actor of bastionActors) {
                 const combinedId = actor.getFlag(MODULE_ID, "combinedGroupId");
                 if (unify && combinedId && !processedGroups.has(combinedId)) {
@@ -5896,6 +5596,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (reports.length > 0) {
                 await BastionManager._dispatchReports(reports, turnsToAdvance);
             }
+            Hooks.callAll("dnd-bastion.turnAdvanced", bastionActors, turnsToAdvance, reports);
             ui.notifications.info(`Bastion Manager | Global turns advanced by ${turnsToAdvance}.`);
             game.socket.emit("module.dnd-2024-bastion-manager", { action: "globalAdvance" });
             // Refresh any open manager windows
@@ -8816,41 +8517,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (toUpdate.length > 0) await actor.updateEmbeddedDocuments("Item", toUpdate);
     }
 
-    static _generateSpellcasterName() {
-        const titles = ["the Magnificent", "the Conjurer", "the Wise", "the Eternal", "the Architect", "the Weaver", "the Gazer", "the Archmage", "the Adept", "the Radiant", "the Shadow", "the Timeless", "the Resplendent", "the Unfettered"];
-        const title = titles[Math.floor(Math.random() * titles.length)];
-        return `${this._generateRandomName()} ${title}`;
-    }
-
-    static _generateRandomName() {
-        const names = ["Adrik", "Alberich", "Baern", "Barendd", "Brottor", "Bruenor", "Dain", "Darrak", "Delg", "Eberk", "Einkil", "Fargrim", "Flint", "Gardain", "Harbek", "Kildrak", "Oskar", "Rangrim", "Rurik", "Thoradin", "Thorin", "Tordek", "Traubon", "Travok", "Ulfgar", "Veit", "Vondal", "Amber", "Artin", "Audhild", "Bardryn", "Dagnal", "Diesa", "Eldeth", "Falkrunn", "Finellen", "Gunnloda", "Gurdis", "Helja", "Hlin", "Kathra", "Kristryd", "Ilde", "Liftrasa", "Mardred", "Riswynn", "Sannl", "Torbera", "Torgga", "Vistra", "Aseir", "Bardeid", "Haseid", "Khemed", "Mehmen", "Sudeiman", "Zasheir", "Atala", "Ceidil", "Hama", "Jasmal", "Meilil", "Seipora", "Yasheira", "Zasheida", "Bor", "Fodel", "Glar", "Grigor", "Igan", "Ivor", "Kosef", "Mival", "Orel", "Pavel", "Sergor", "Alethra", "Kara", "Katernin", "Mara", "Natali", "Olma", "Tana", "Zora", "Ander", "Blath", "Bran", "Frath", "Geth", "Lander", "Luth", "Lucan", "Murn", "Muth", "Stedd", "Amafrey", "Betha", "Catelyn", "Ethani", "Ilda", "Lisvet", "Lura", "Madel", "Miri", "Nala", "Quara", "Selise", "Viana", "Anton", "Diero", "Falcone", "Federico", "Geno", "Luigi", "Marcello", "Nico", "Piero", "Tommaso", "Arveene", "Esvele", "Jhessail", "Kerri", "Lureene", "Miri", "Rowan", "Shandri", "Tessele", "Aoth", "Barakas", "Damakos", "Iados", "Kairon", "Leucis", "Melech", "Mordai", "Morthos", "Pelaios", "Skamos", "Therai", "Akta", "Anakis", "Bryseis", "Criella", "Damaia", "Ea", "Kallista", "Lerissa", "Makaria", "Nemeia", "Orianna", "Phelia", "Rieta"];
-        return names[Math.floor(Math.random() * names.length)];
-    }
+    static _generateRandomName      = generateRandomName;
+    static _generateSpellcasterName = generateSpellcasterName;
 
     static _getHirelingProfession(facName, subType) {
-        if (!this._professionsMap) return "(Hireling)";
-        const name = facName.trim();
-        const sub = subType?.trim();
-
-        // 1. Check for specialization match first: "Garden (Herb)"
-        if (sub) {
-            const specKey = `${name} (${sub})`;
-            if (this._professionsMap[specKey]) return `the ${this._professionsMap[specKey]}`;
-        }
-
-        // 2. Check for exact name match: "Library"
-        if (this._professionsMap[name]) return `the ${this._professionsMap[name]}`;
-
-        // 3. Robust partial match fallback
-        const lowerName = name.toLowerCase();
-        const entry = Object.entries(this._professionsMap).find(([k]) => {
-            const lowerK = k.toLowerCase();
-            return lowerName.includes(lowerK) || lowerK.includes(lowerName);
-        });
-
-        if (entry) return `the ${entry[1]}`;
-
-        return "(Hireling)";
+        return getHirelingProfession(BastionManager._professionsMap, facName, subType);
     }
 
     // --- HELPER: CHAT ---
