@@ -559,6 +559,61 @@
                                         {{/if}}
                                     </div>
                                 {{/if}}
+
+                                {{#if this.isGuildhall}}
+                                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px; width: 100%;">
+                                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                                            <div style="font-size:0.9em;"><i class="fa-solid fa-users" style="color:#4caf50;"></i> <b>Guild:</b> <span style="color:#81c784;">{{this.guildhallGuildType}}</span></div>
+                                            <button type="button" data-action="showGuildhallAssignment" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                                style="height:20px; padding:0 6px; font-size:0.78em; background:#1a3a1a; color:#81c784; border:1px solid #4caf50; border-radius:3px; cursor:pointer;"
+                                                data-tooltip="View this guild's assignment description">
+                                                <i class="fa-solid fa-scroll"></i> Assignment
+                                            </button>
+                                        </div>
+                                        {{#if this.isAdventurersGuild}}
+                                        <div style="display:flex; align-items:center; gap:6px;">
+                                            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap;">Mission outcome:</label>
+                                            <select class="guildhall-outcome-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                                style="flex:1; font-size:0.85em; height:22px;">
+                                                <option value="slay" {{#if (eq this.guildhallAdventurersOutcome "slay")}}selected{{/if}}>Slay the beast</option>
+                                                <option value="capture" {{#if (eq this.guildhallAdventurersOutcome "capture")}}selected{{/if}}>Capture the beast</option>
+                                            </select>
+                                        </div>
+                                        {{/if}}
+                                        {{#if this.guildhallLastAssignment}}
+                                        <div style="font-size:0.85em; opacity:0.8;">
+                                            <i class="fa-solid fa-scroll" style="width:12px;"></i> <em>Last: {{this.guildhallLastAssignment}}</em>
+                                        </div>
+                                        {{else}}
+                                        <div style="font-size:0.85em; opacity:0.55;">
+                                            <i class="fa-solid fa-scroll" style="width:12px;"></i> <em>No assignment issued yet.</em>
+                                        </div>
+                                        {{/if}}
+                                    </div>
+                                {{/if}}
+
+                                {{#if this.isSanctum}}
+                                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px; width: 100%;">
+                                        <label style="font-size: 0.88em; opacity: 0.75; white-space: nowrap;">Rites beneficiary:</label>
+                                        <select class="sanctum-beneficiary-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                                style="flex: 1; font-size: 0.85em; height: 22px; padding: 0 4px;">
+                                            {{#each this.sanctumBeneficiaryOptions}}
+                                                <option value="{{this.id}}" {{#if (eq this.id ../sanctumBeneficiaryId)}}selected{{/if}}>{{this.name}}</option>
+                                            {{/each}}
+                                        </select>
+                                    </div>
+                                {{/if}}
+
+                                {{#if this.isWarRoom}}
+                                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px; width: 100%;">
+                                        <label style="font-size: 0.88em; opacity: 0.75; white-space: nowrap;">Recruit:</label>
+                                        <select class="war-room-recruit-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                                style="flex: 1; font-size: 0.85em; height: 22px; padding: 0 4px;">
+                                            <option value="lieutenant" {{#if (eq this.warRoomRecruitOption "lieutenant")}}selected{{/if}}>Lieutenant ({{this.warRoomLieutenantCount}}/10)</option>
+                                            <option value="soldiers" {{#if (eq this.warRoomRecruitOption "soldiers")}}selected{{/if}}>Soldiers (muster army)</option>
+                                        </select>
+                                    </div>
+                                {{/if}}
                 </div>
 
                 {{#if this.isTheater}}
@@ -806,7 +861,7 @@
                             {{/if}}
                         </div>
                         {{#if this.sanctumBeneficiaryName}}
-                            <div style="font-size: 0.85em; opacity: 0.75; text-align: right; margin-bottom: 2px;">Beneficiary: <b>{{this.sanctumBeneficiaryName}}</b></div>
+                        <div style="font-size: 0.85em; opacity: 0.75; margin-bottom: 4px;">Beneficiary: <b>{{this.sanctumBeneficiaryName}}</b></div>
                         {{/if}}
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
                             <span style="font-size: 0.88em; opacity: 0.75;">After beneficiary's Long Rest</span>
@@ -832,6 +887,41 @@
                                     data-tooltip="Apply the benefit of a Heal spell to one creature that arrived via Word of Recall"
                                     style="flex: 1; padding: 2px 6px; font-size: 0.82em; height: 24px;">
                                 <i class="fa-solid fa-heart-pulse"></i> Apply Heal
+                            </button>
+                        </div>
+                    </div>
+                {{/if}}
+
+                {{#if this.isWarRoom}}
+                    <div style="font-size: 0.9em; color: #eee; border: 2px solid #b71c1c; border-radius: 5px; padding: 8px; background: rgba(255,255,255,0.02); margin-top: 4px; width: 100%; box-sizing: border-box;">
+                        {{!-- Lieutenant count / defense bonus --}}
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <span data-tooltip="Each lieutenant housed in your Bastion reduces by 1 the number of dice rolled to determine Bastion Defender losses during an Attack event." style="cursor: help;"><i class="fa-solid fa-chess-rook" style="color: #ef5350;"></i> <b>Lieutenants:</b></span>
+                            <span style="color: #ef9a9a; font-weight: bold;">{{this.warRoomLieutenantCount}} / 10</span>
+                        </div>
+                        {{#if this.warRoomLieutenantCount}}
+                        <div style="font-size: 0.85em; opacity: 0.75; margin-bottom: 5px;">Attack dice reduced by <b>{{this.warRoomLieutenantCount}}</b> (6 → {{subtract 6 this.warRoomLieutenantCount}} dice pool)</div>
+                        {{/if}}
+                        {{#if this.warRoomLieutenantCount}}
+                        <div style="font-size: 0.82em; opacity: 0.7; margin-bottom: 5px; font-style: italic;">
+                            {{#each this.warRoomLieutenants}}{{#unless @first}}, {{/unless}}{{this.name}}{{/each}}
+                        </div>
+                        {{/if}}
+                        {{#if this.warRoomArmyActive}}
+                        <hr style="opacity: 0.15; margin: 5px 0;">
+                        <div style="margin-bottom: 3px;"><i class="fa-solid fa-shield-halved" style="color: #ef5350;"></i> <b>Army:</b> <span style="color: #ef9a9a;">ACTIVE</span></div>
+                        <div style="font-size: 0.85em; opacity: 0.8; margin-bottom: 2px;">{{this.warRoomArmyGuards}} Guards{{#if this.warRoomArmyMounted}} (mounted){{/if}}</div>
+                        <div style="font-size: 0.85em; opacity: 0.8; margin-bottom: 5px;">Commander: <b>{{this.warRoomArmyLeaderName}}</b></div>
+                        <button type="button" data-action="disbandWarRoomArmy" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                style="width: auto; padding: 2px 8px; font-size: 0.82em; height: 24px; background: rgba(100,0,0,0.4); color: #ef9a9a; border-color: #b71c1c;">
+                            <i class="fa-solid fa-flag-checkered"></i> Disband Army
+                        </button>
+                        {{/if}}
+                        <hr style="opacity: 0.1; margin: 5px 0;">
+                        <div style="display: flex; gap: 4px;">
+                            <button type="button" data-action="showWarRoomRoster" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                    style="flex: 1; padding: 2px 6px; font-size: 0.82em; height: 24px;">
+                                <i class="fa-solid fa-chess-rook"></i> Lieutenant Roster
                             </button>
                         </div>
                     </div>

@@ -193,7 +193,9 @@ const integrateBastionDashboard = (bastionTab) => {
                 display: none !important;
             }
             .tab[data-tab="bastion"] li.facility .bastion-order-block,
-            .tab[data-tab="bastion"] li.facility .bastion-augmented-info {
+            .tab[data-tab="bastion"] li.facility .bastion-augmented-info,
+            [data-tab-contents-for="bastion"] li.facility .bastion-order-block,
+            [data-tab-contents-for="bastion"] li.facility .bastion-augmented-info {
                 background: rgba(15, 12, 8, 0.82) !important;
                 color: #e8e4d9 !important;
                 position: relative !important;
@@ -202,16 +204,22 @@ const integrateBastionDashboard = (bastionTab) => {
             .tab[data-tab="bastion"] li.facility .bastion-order-block label,
             .tab[data-tab="bastion"] li.facility .bastion-order-block div,
             .tab[data-tab="bastion"] li.facility .bastion-augmented-info div,
-            .tab[data-tab="bastion"] li.facility .bastion-augmented-info b {
+            .tab[data-tab="bastion"] li.facility .bastion-augmented-info b,
+            [data-tab-contents-for="bastion"] li.facility .bastion-order-block label,
+            [data-tab-contents-for="bastion"] li.facility .bastion-order-block div,
+            [data-tab-contents-for="bastion"] li.facility .bastion-augmented-info div,
+            [data-tab-contents-for="bastion"] li.facility .bastion-augmented-info b {
                 color: #e8e4d9 !important;
             }
             /* Progress bar track — needs light bg to be visible on dark block */
-            .tab[data-tab="bastion"] li.facility .bastion-augmented-info div[style*="height:6px"] {
+            .tab[data-tab="bastion"] li.facility .bastion-augmented-info div[style*="height:6px"],
+            [data-tab-contents-for="bastion"] li.facility .bastion-augmented-info div[style*="height:6px"] {
                 background: rgba(255, 255, 255, 0.18) !important;
             }
             /* Turn counter beside bastion name */
-            .tab[data-tab="bastion"] section.name .bastion-turn-counter {
-                color: var(--dnd5e-color-gold, #c9a227) !important;
+            .tab[data-tab="bastion"] section.name .bastion-turn-counter,
+            [data-tab-contents-for="bastion"] section.name .bastion-turn-counter {
+                color: var(--dnd5e-color-gold, var(--t5e-primary-accent, #c9a227)) !important;
             }
             /* Reflow layout: special top, basic middle, defenders/roster at bottom */
             .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .contents {
@@ -232,10 +240,15 @@ const integrateBastionDashboard = (bastionTab) => {
                 flex-wrap: wrap !important;
                 align-items: stretch !important;
             }
-            .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .facilities.special li.facility {
-                flex: 1 1 calc(50% - 4px) !important;
+            .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .facilities.special li.facility:not(.empty) {
+                flex: 0 0 calc(50% - 4px) !important;
+                max-width: calc(50% - 4px) !important;
                 min-width: 200px !important;
                 box-sizing: border-box !important;
+            }
+            .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .facilities.special li.facility.empty {
+                flex: 0 0 100% !important;
+                width: 100% !important;
             }
             /* Basic facilities list: compact horizontal wrap at the bottom */
             .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .facilities.basic ul.unlist {
@@ -243,13 +256,33 @@ const integrateBastionDashboard = (bastionTab) => {
                 flex-wrap: wrap !important;
             }
             .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .facilities.basic li.facility:not(.empty) {
-                flex: 1 1 calc(50% - 4px) !important;
+                flex: 0 0 calc(50% - 4px) !important;
+                max-width: calc(50% - 4px) !important;
                 min-width: 160px !important;
+            }
+            .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .facilities.basic li.facility.empty {
+                flex: 0 0 100% !important;
+                width: 100% !important;
             }
             /* Group actor sheet — bastion overview tab scrollable container */
             .dnd5e2.sheet.actor.group section.bastion-group-tab {
                 overflow-y: auto !important;
                 flex: 1 1 auto !important;
+            }
+            /* Tidy 5e Sheets: facility title readability */
+            [data-tab-contents-for="bastion"] li.facility:not(.empty) .title-and-subtitle .title {
+                color: white !important;
+                text-shadow: 0 1px 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.6) !important;
+            }
+            [data-tab-contents-for="bastion"] li.facility:not(.empty) .title-and-subtitle .subtitle {
+                display: none !important;
+            }
+            /* Tidy 5e Sheets: special and basic are already side-by-side columns via
+               Tidy's own grid-template-columns:1fr 1fr on .facility-panels, so items
+               stack vertically by default. Just ensure empty slots are full-width. */
+            [data-tab-contents-for="bastion"] .facilities.special .facility.empty,
+            [data-tab-contents-for="bastion"] .facilities.basic .facility.empty {
+                width: 100% !important;
             }
         `;
         document.head.appendChild(style);
@@ -419,11 +452,24 @@ const integrateBastionDashboard = (bastionTab) => {
 
         btn.insertAdjacentElement('beforebegin', newBtn);
 
+        const facType = isSpecialSlot ? "special" : "basic";
         newBtn.addEventListener("click", (ev) => {
             ev.preventDefault();
             ev.stopPropagation();
-            new BastionManager(actor)._promptBuildFacility();
+            new BastionManager(actor)._promptBuildFacility(facType);
         });
+    });
+
+    // 6b. Tidy 5e Sheets: intercept empty facility slot clicks to redirect to module build flow
+    bastionTab.querySelectorAll('.facility.empty a').forEach(a => {
+        if (a.dataset.bastionReplaced) return;
+        a.dataset.bastionReplaced = "true";
+        const facType = a.closest('.facilities.special') ? "special" : a.closest('.facilities.basic') ? "basic" : null;
+        a.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            ev.stopImmediatePropagation();
+            new BastionManager(actor)._promptBuildFacility(facType);
+        }, { capture: true });
     });
 
     // 7. Inject Special Facilities currently under construction
@@ -1503,8 +1549,22 @@ const integrateBastionDashboard = (bastionTab) => {
             const charmNames = actor.getFlag(MODULE_ID, "activeSanctumCharmNames") || [];
             const charmActive = charmIds.length > 0 || charmNames.length > 0;
             const ritesActive = actor.getFlag(MODULE_ID, "sanctumFortifyingRitesActive") || false;
+            const benefId = actor.getFlag(MODULE_ID, "sanctumBeneficiaryId") || actor.id;
             const benefName = actor.getFlag(MODULE_ID, "sanctumBeneficiaryName") || "";
             const ownerLevel = actor.system?.details?.level || 1;
+
+            const sanctumActors = game.actors.filter(a =>
+                (a.type === "character" || a.type === "npc") && (a.hasPlayerOwner || a.id === actor.id)
+            );
+            const benefOpts = sanctumActors.map(a =>
+                `<option value="${a.id}"${a.id === benefId ? " selected" : ""}>${a.name}</option>`
+            ).join("");
+
+            // Beneficiary select goes into orderBlock (mirrors order sub-selector pattern)
+            const benefRow = document.createElement("div");
+            benefRow.style.cssText = "display:flex; align-items:center; gap:4px; width:100%;";
+            benefRow.innerHTML = `<span style="font-size:0.82em; opacity:0.75; white-space:nowrap;">Rites beneficiary:</span><select class="sanctum-beneficiary-select-cs" style="flex:1; font-size:0.78em; height:20px; padding:0 2px;">${benefOpts}</select>`;
+            orderBlock.appendChild(benefRow);
 
             if (charmActive) {
                 rows.push(`<div data-tooltip="Sanctum Charm active. Cast Heal once without a spell slot (expires at next Bastion Turn or when used)." style="cursor:help;"><i class="fa-solid fa-heart-pulse" style="color:#c9a227; width:12px;"></i> <b>Sanctum Charm: <span style="color:#c9a227;">ACTIVE</span></b></div>`);
@@ -1557,6 +1617,166 @@ const integrateBastionDashboard = (bastionTab) => {
                     BastionManager.onApplySanctumRecallHeal.call({ actor, render: () => {} }, ev, recallBtn);
                 });
                 infoBlock.appendChild(recallBtn);
+
+                orderBlock.querySelectorAll(".sanctum-beneficiary-select-cs").forEach(sel => {
+                    sel.addEventListener("mousedown", ev => ev.stopPropagation());
+                    sel.addEventListener("change", async (ev) => {
+                        ev.stopPropagation();
+                        const newBenef = game.actors.get(ev.target.value);
+                        if (!newBenef) return;
+                        await actor.setFlag(MODULE_ID, "sanctumBeneficiaryId", newBenef.id);
+                        await actor.setFlag(MODULE_ID, "sanctumBeneficiaryName", newBenef.name);
+                    });
+                });
+            });
+        }
+
+        // D16. Guildhall — guild type, assignment button, Adventurers' outcome sub-selector (all in orderBlock)
+        if (facName.includes("Guildhall") && !isUpgrading) {
+            const guildType = fFlags.subType || "";
+            const lastAssignment = fFlags.guildhallLastAssignment || "";
+            const isAdventurers = guildType.toLowerCase().includes("adventurer");
+            const adventurersOutcome = fFlags.guildhallAdventurersOutcome || "slay";
+            const facId = item.id;
+            const isFlagStr = "false";
+
+            const guildDiv = document.createElement("div");
+            guildDiv.style.cssText = "display:flex; flex-direction:column; gap:3px; width:100%;";
+
+            const guildHeader = document.createElement("div");
+            guildHeader.style.cssText = "display:flex; justify-content:space-between; align-items:center;";
+            guildHeader.innerHTML = `<span style="font-size:0.85em;"><i class="fa-solid fa-users" style="color:#81c784; width:12px;"></i> <b>Guild:</b> <span style="color:#81c784;">${guildType || "Unknown"}</span></span>
+                <button class="guildhall-assignment-btn" data-item-id="${facId}" data-is-flag="${isFlagStr}"
+                    style="height:20px; padding:0 5px; font-size:0.76em; background:#1a3a1a; color:#81c784; border:1px solid #4caf50; border-radius:3px; cursor:pointer;"
+                    data-tooltip="View this guild's assignment description">
+                    <i class="fa-solid fa-scroll"></i> Assignment
+                </button>`;
+            guildDiv.appendChild(guildHeader);
+
+            if (isAdventurers) {
+                const outcomeRow = document.createElement("div");
+                outcomeRow.style.cssText = "display:flex; align-items:center; gap:5px;";
+                outcomeRow.innerHTML = `<label style="font-size:0.82em; opacity:0.75; white-space:nowrap;">Mission outcome:</label>
+                    <select class="guildhall-outcome-select-cs" data-item-id="${facId}" data-is-flag="${isFlagStr}"
+                        style="flex:1; font-size:0.82em; height:22px;">
+                        <option value="slay" ${adventurersOutcome === "slay" ? "selected" : ""}>Slay the beast</option>
+                        <option value="capture" ${adventurersOutcome === "capture" ? "selected" : ""}>Capture the beast</option>
+                    </select>`;
+                guildDiv.appendChild(outcomeRow);
+            }
+
+            const lastDiv = document.createElement("div");
+            lastDiv.style.cssText = "font-size:0.82em;";
+            if (lastAssignment) {
+                lastDiv.innerHTML = `<i class="fa-solid fa-scroll" style="opacity:0.7; width:12px;"></i> <em style="opacity:0.8;">Last: ${lastAssignment}</em>`;
+            } else {
+                lastDiv.innerHTML = `<i class="fa-solid fa-scroll" style="opacity:0.55; width:12px;"></i> <em style="opacity:0.55;">No assignment issued yet.</em>`;
+            }
+            guildDiv.appendChild(lastDiv);
+
+            orderBlock.appendChild(guildDiv);
+
+            postInjectFns.push(() => {
+                orderBlock.querySelectorAll('.guildhall-assignment-btn').forEach(btn => {
+                    btn.addEventListener('mousedown', ev => ev.stopPropagation());
+                    btn.addEventListener('click', ev => {
+                        ev.stopPropagation();
+                        BastionManager.onShowGuildhallAssignment.call({ actor }, ev, btn);
+                    });
+                });
+                orderBlock.querySelectorAll('.guildhall-outcome-select-cs').forEach(sel => {
+                    sel.addEventListener('mousedown', ev => ev.stopPropagation());
+                    sel.addEventListener('change', async (ev) => {
+                        ev.stopPropagation();
+                        const ds = ev.target.dataset;
+                        if (ds.isFlag === "true") {
+                            const gf = actor.getFlag(MODULE_ID, "groupFacilities") || [];
+                            const f = gf.find(f => f._id === ds.itemId);
+                            if (f) foundry.utils.setProperty(f, `flags.${MODULE_ID}.guildhallAdventurersOutcome`, ev.target.value);
+                            await actor.setFlag(MODULE_ID, "groupFacilities", gf);
+                        } else {
+                            await actor.items.get(ds.itemId)?.setFlag(MODULE_ID, "guildhallAdventurersOutcome", ev.target.value);
+                        }
+                    });
+                });
+            });
+        }
+
+        // D17. War Room — recruit sub-selector (orderBlock) + lieutenant/army status (infoBlock)
+        if (facName.includes("War Room") && !isUpgrading) {
+            const recruitOption = fFlags.warRoomRecruitOption || "lieutenant";
+            const lieutenants = actor.getFlag(MODULE_ID, "warRoomLieutenants") || [];
+            const ltCount = lieutenants.length;
+            const armyActive = actor.getFlag(MODULE_ID, "warRoomArmyActive") || false;
+            const armyGuards = actor.getFlag(MODULE_ID, "warRoomArmyGuards") || 0;
+            const armyMounted = actor.getFlag(MODULE_ID, "warRoomArmyMounted") || false;
+            const armyLeader = actor.getFlag(MODULE_ID, "warRoomArmyLeaderName") || "";
+            const facId = item.id;
+            const isFlagStr = "false";
+            const attackPool = Math.max(0, 6 - ltCount);
+
+            // Sub-selector goes into orderBlock
+            const recruitRow = document.createElement("div");
+            recruitRow.style.cssText = "display:flex; align-items:center; gap:4px; width:100%;";
+            recruitRow.innerHTML = `<span style="font-size:0.82em; opacity:0.75; white-space:nowrap;">Recruit:</span>
+                <select class="war-room-recruit-select-cs" data-item-id="${facId}" data-is-flag="${isFlagStr}"
+                    style="flex:1; font-size:0.78em; height:20px; padding:0 2px;">
+                    <option value="lieutenant"${recruitOption === "lieutenant" ? " selected" : ""}>Lieutenant (${ltCount}/10)</option>
+                    <option value="soldiers"${recruitOption === "soldiers" ? " selected" : ""}>Soldiers (muster army)</option>
+                </select>`;
+            orderBlock.appendChild(recruitRow);
+
+            // Lieutenant status row
+            rows.push(`<div data-tooltip="Each lieutenant housed in your Bastion reduces the Bastion Attack dice pool by 1 (currently ${ltCount} → ${attackPool} dice)." style="cursor:help;"><i class="fa-solid fa-chess-rook" style="color:#ef5350; width:12px;"></i> <b>Lieutenants:</b> <span style="color:#ef9a9a;">${ltCount}/10</span>${ltCount > 0 ? ` <span style="opacity:0.65;">(−${ltCount} attack dice)</span>` : ""}</div>`);
+
+            // Army status row
+            if (armyActive) {
+                const mountedText = armyMounted ? " mounted" : "";
+                rows.push(`<div data-tooltip="An army is currently assembled and must be led by you or a lieutenant." style="cursor:help;"><i class="fa-solid fa-shield-halved" style="color:#ef5350; width:12px;"></i> <b>Army: <span style="color:#ef5350;">ACTIVE</span></b> — ${armyGuards} Guards${mountedText}, led by <span style="color:#ef9a9a;">${armyLeader}</span></div>`);
+            }
+
+            postInjectFns.push(() => {
+                orderBlock.querySelectorAll('.war-room-recruit-select-cs').forEach(sel => {
+                    sel.addEventListener('mousedown', ev => ev.stopPropagation());
+                    sel.addEventListener('change', async (ev) => {
+                        ev.stopPropagation();
+                        const ds = ev.target.dataset;
+                        if (ds.isFlag === "true") {
+                            const gf = actor.getFlag(MODULE_ID, "groupFacilities") || [];
+                            const f = gf.find(f => f._id === ds.itemId);
+                            if (f) foundry.utils.setProperty(f, `flags.${MODULE_ID}.warRoomRecruitOption`, ev.target.value);
+                            await actor.setFlag(MODULE_ID, "groupFacilities", gf);
+                        } else {
+                            await actor.items.get(ds.itemId)?.setFlag(MODULE_ID, "warRoomRecruitOption", ev.target.value);
+                        }
+                    });
+                });
+
+                // "Lieutenant Roster" button
+                const rosterBtn = document.createElement("button");
+                rosterBtn.type = "button";
+                rosterBtn.innerHTML = `<i class="fa-solid fa-chess-rook"></i> Lieutenant Roster`;
+                rosterBtn.style.cssText = "width:100%; height:20px; font-size:0.75em; margin-top:2px;";
+                rosterBtn.addEventListener("mousedown", ev => ev.stopPropagation());
+                rosterBtn.addEventListener("click", (ev) => {
+                    ev.stopPropagation();
+                    BastionManager.onShowWarRoomRoster.call({ actor, render: () => {} }, ev, rosterBtn);
+                });
+                infoBlock.appendChild(rosterBtn);
+
+                // "Disband Army" button (only if army active)
+                if (armyActive) {
+                    const disbandBtn = document.createElement("button");
+                    disbandBtn.type = "button";
+                    disbandBtn.innerHTML = `<i class="fa-solid fa-flag-checkered"></i> Disband Army`;
+                    disbandBtn.style.cssText = "width:100%; height:20px; font-size:0.75em; margin-top:2px; background:rgba(100,0,0,0.4); color:#ef9a9a; border-color:#b71c1c;";
+                    disbandBtn.addEventListener("mousedown", ev => ev.stopPropagation());
+                    disbandBtn.addEventListener("click", (ev) => {
+                        ev.stopPropagation();
+                        BastionManager.onDisbandWarRoomArmy.call({ actor, render: () => {} }, ev, disbandBtn);
+                    });
+                    infoBlock.appendChild(disbandBtn);
+                }
             });
         }
 
@@ -1685,8 +1905,8 @@ const integrateBastionDashboard = (bastionTab) => {
  * This runs in the background and watches for the Bastion tab being shown.
  */
 const observer = new MutationObserver(() => {
-    // Check all elements matching the bastion tab selector
-    const tabs = document.querySelectorAll('section[data-tab="bastion"], div[data-tab="bastion"]');
+    // Check all elements matching the bastion tab selector (native dnd5e + Tidy 5e Sheets)
+    const tabs = document.querySelectorAll('section[data-tab="bastion"], div[data-tab="bastion"], [data-tab-contents-for="bastion"]');
     tabs.forEach(bastionTab => {
         if ( bastionTab.classList.contains('item') || bastionTab.classList.contains('anchor') ) return;
         const style = window.getComputedStyle(bastionTab);
@@ -1699,7 +1919,7 @@ observer.observe(document.body, { childList: true, subtree: true });
  * INITIALIZATION
  */
 Hooks.once("init", () => {
-    Handlebars.registerHelper({ ge: (a, b) => a >= b, div: (a, b) => a / b, mult: (a, b) => a * b });
+    Handlebars.registerHelper({ ge: (a, b) => a >= b, div: (a, b) => a / b, mult: (a, b) => a * b, subtract: (a, b) => a - b });
 
     // v13: Define and register dummy layer inside init to ensure namespaces are ready
     CONFIG.Canvas.layers.bastion = { 
@@ -1842,7 +2062,7 @@ Hooks.on("updateActor", (actor, changes) => {
         }
 
         // Force integration refresh on character sheets by clearing the augmentation guard
-        document.querySelectorAll('section[data-tab="bastion"], div[data-tab="bastion"]').forEach(tab => {
+        document.querySelectorAll('section[data-tab="bastion"], div[data-tab="bastion"], [data-tab-contents-for="bastion"]').forEach(tab => {
             const app = Array.from(foundry.applications.instances.values()).find(a => a.element?.contains(tab))
                      || Object.values(ui.windows).find(w => (w.element?.[0] || w.element)?.contains(tab));
             if ((app?.document || app?.actor)?.id === actor.id) {
@@ -1852,27 +2072,40 @@ Hooks.on("updateActor", (actor, changes) => {
     }
 });
 
-// Long Rest cleanup and Sanctum Fortifying Rites THP grant
+// Rest cleanup, Sanctum Fortifying Rites THP, and Bastion facility rest-effect prompts
 Hooks.on("dnd5e.restCompleted", async (actor, result) => {
-    if (!result?.longRest) return;
+    if (!result || typeof result.longRest !== "boolean") return;
 
-    // Reset Demiplane Fabrication
-    if (actor.getFlag(MODULE_ID, "demiplanesFabricationUsed")) {
-        actor.setFlag(MODULE_ID, "demiplanesFabricationUsed", false);
+    // Only run on the client that owns the resting actor (avoids duplicate dialogs/updates)
+    if (!actor.isOwner) return;
+
+    // Long Rest: reset per-rest flags
+    if (result.longRest) {
+        if (actor.getFlag(MODULE_ID, "demiplanesFabricationUsed"))
+            await actor.setFlag(MODULE_ID, "demiplanesFabricationUsed", false);
+        if (actor.getFlag(MODULE_ID, "workshopInspirationUsed"))
+            await actor.setFlag(MODULE_ID, "workshopInspirationUsed", false);
     }
 
-    // Sanctum Fortifying Rites: auto-grant THP on the GM client only (avoids cross-actor permission issues)
-    // Players can also use the manual "Grant Rites THP" button on the Sanctum owner's sheet.
-    if (!game.user.isGM) return;
-    for (const sanctumOwner of game.actors) {
-        if (!sanctumOwner.getFlag(MODULE_ID, "sanctumFortifyingRitesActive")) continue;
-        const benefId = sanctumOwner.getFlag(MODULE_ID, "sanctumBeneficiaryId");
-        if (benefId !== actor.id) continue;
-        const ownerLevel = sanctumOwner.system?.details?.level || 1;
-        const currentTemp = actor.system?.attributes?.hp?.temp || 0;
-        await actor.update({ "system.attributes.hp.temp": Math.max(currentTemp, ownerLevel) });
-        ui.notifications.info(`${actor.name} gains ${ownerLevel} Temporary Hit Point${ownerLevel !== 1 ? "s" : ""} from ${sanctumOwner.name}'s Sanctum Fortifying Rites.`);
+    // Long Rest: Sanctum Fortifying Rites — apply THP if this actor is a designated beneficiary.
+    // Reads another actor's flags; requires Observer (or higher) permission on that actor, which is
+    // typical in Foundry. The "Grant Rites THP" button on the Sanctum owner's sheet is always available
+    // as a fallback if cross-actor flag reads fail.
+    if (result.longRest) {
+        for (const sanctumOwner of game.actors) {
+            if (!sanctumOwner.getFlag(MODULE_ID, "sanctumFortifyingRitesActive")) continue;
+            const benefId = sanctumOwner.getFlag(MODULE_ID, "sanctumBeneficiaryId");
+            if (benefId !== actor.id) continue;
+            const ownerLevel = sanctumOwner.system?.details?.level || 1;
+            const currentTemp = actor.system?.attributes?.hp?.temp || 0;
+            await actor.update({ "system.attributes.hp.temp": Math.max(currentTemp, ownerLevel) });
+            ui.notifications.info(`${actor.name} gains ${ownerLevel} Temporary Hit Point${ownerLevel !== 1 ? "s" : ""} from ${sanctumOwner.name}'s Sanctum Fortifying Rites.`);
+        }
     }
+
+    // Prompt for Bastion facility rest effects (charm grants, spell-slot recovery, etc.)
+    if (result.longRest)  await BastionManager.handleLongRestFacilityEffects(actor);
+    if (!result.longRest) await BastionManager.handleShortRestFacilityEffects(actor);
 });
 
 // Clear stale bastion augmentation when a facility item's module flags change
@@ -2226,3 +2459,9 @@ Hooks.on("getActorSheetHeaderButtons", (app, buttons) => {
         onclick: () => new BastionManager(app.actor).render({ force: true })
     });
 });
+
+/**
+ * TIDY 5E SHEETS INTEGRATION
+ * The existing MutationObserver already catches Tidy's bastion tab via the
+ * [data-tab-contents-for="bastion"] selector. No separate tab registration needed.
+ */
