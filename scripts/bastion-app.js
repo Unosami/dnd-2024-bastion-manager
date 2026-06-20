@@ -9,7 +9,7 @@ import {
     SANCTUARY_ROOT_ID, SCRIPTORIUM_ROOT_ID, STABLE_ROOT_ID, MENAGERIE_ROOT_ID,
     TELEPORTATION_CIRCLE_ROOT_ID, TRAINING_AREA_ROOT_ID, PUB_ROOT_ID,
     BASE_ITEMS_FOLDER_ID, RELIQUARY_ROOT_ID, SANCTUM_ROOT_ID,
-    BASTION_ORDERS, BASTION_EVENTS_LIST, UTILITY_DESCRIPTIONS, FACILITY_CONFIG
+    BASTION_ORDERS, BASTION_EVENTS_LIST, FACILITY_CONFIG
 } from "./bastion-data.js";
 
 import {
@@ -194,7 +194,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     constructor(actor, options = {}) { 
         super(options); 
         this.actor = actor; 
-        this._activeTab = "map";
+        this._activeTab = localStorage.getItem("dnd-2024-bastion-manager.lastTab") || "map";
         this._queueStates = {};
         this._changingOrders = new Set();
         this._advanceMode = "global";
@@ -325,6 +325,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             toggleFreeMode:           BastionManager.onToggleFreeMode,
             renameHireling:           BastionManager.onRenameHireling,
             renameDefender:           BastionManager.onRenameDefender,
+            issueOrders:              BastionManager.onIssueOrders,
+            cancelOrders:             BastionManager.onCancelOrders,
         }
     };
     static PARTS = { main: { template: "modules/dnd-2024-bastion-manager/templates/bastion-main.hbs" } };
@@ -1784,7 +1786,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             };
             
             // Explicitly defined utilities (Workshop tools or generic 'utilities' flag)
-            if (fac.workshopTools?.length > 0) fac.workshopTools.forEach(t => addUtil(t));
+            const facWorkshopTools = fac.isFlag ? (fac.sourceDoc.flags?.[MODULE_ID]?.workshopTools || []) : (fac.sourceDoc.getFlag?.(MODULE_ID, "workshopTools") || []);
+            if (facWorkshopTools.length > 0) facWorkshopTools.forEach(t => addUtil(t));
             
             const extraUtils = fac.isFlag ? (fac.sourceDoc.flags?.[MODULE_ID]?.utilities) : (fac.sourceDoc.getFlag(MODULE_ID, "utilities"));
             if (Array.isArray(extraUtils)) extraUtils.forEach(u => addUtil(u));
@@ -1795,16 +1798,22 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (name.includes("Scriptorium")) addUtil("Calligrapher's Supplies");
             if (name.includes("Guildhall") && subType.toLowerCase().includes("thieves")) addUtil("Thieves' Tools");
             
-            if (name.includes("Arcane Study")) addUtil("Arcane Spellcasting");
-            if (name.includes("Sanctuary") || name.includes("Sacristy") || name.includes("Sanctum") || name.includes("Reliquary")) addUtil("Sacred Spellcasting");
-            if (name.includes("Teleportation Circle")) addUtil("Expert Recruiter");
         });
 
+        const toolDescMap = {};
+        for (const entry of outIndex) {
+            if ((entry.folder?.id ?? entry.folder) === ARTISANS_TOOLS_FOLDER_ID && entry.name && entry.system?.description?.value) {
+                const plain = entry.system.description.value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+                const m = plain.match(/Utilize\s*:\s*(.*?)(?=\s+[A-Z][a-z]+\s*:|$)/i);
+                toolDescMap[entry.name] = m ? m[1].trim() : plain;
+            }
+        }
+
         utilitySources.forEach((facs, util) => {
-            if (UTILITY_DESCRIPTIONS[util]) {
+            if (toolDescMap[util]) {
                 allUtilities.push({
                     name: util,
-                    description: UTILITY_DESCRIPTIONS[util],
+                    description: toolDescMap[util],
                     sources: Array.from(facs).join(", ")
                 });
             }
@@ -2278,6 +2287,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             innerPeaceActive, fortifiedSaves,
             isGM: game.user.isGM,
             freeMode: game.user.isGM ? game.settings.get(MODULE_ID, "freeMode") : false,
+            calendarDrivenTurns: game.settings.get(MODULE_ID, "calendarDrivenTurns"),
+            ordersIssued: (game.settings.get(MODULE_ID, "ordersIssuedAt") || 0) > 0,
+            ordersCountdown: (() => {
+                const issuedAt = game.settings.get(MODULE_ID, "ordersIssuedAt") || 0;
+                if (!issuedAt) return null;
+                const remaining = Math.max(0, (issuedAt + effectiveDaysPerTurn() * 86400) - game.time.worldTime);
+                return Math.ceil(remaining / 86400);
+            })(),
         };
         return this.context;
     }
@@ -4278,6 +4295,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
     static onSwitchTab(event, target) {
         this._activeTab = target.dataset.tab;
+        localStorage.setItem("dnd-2024-bastion-manager.lastTab", this._activeTab);
         this.render();
     }
 
@@ -5806,7 +5824,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             `;
          } else if (itemDoc.name.includes("Workshop")) {
             const tools = ["Carpenter's Tools", "Cobbler's Tools", "Glassblower's Tools", "Jeweler's Tools", "Leatherworker's Tools", 
-                    "Mason's Tools", "Painter's Tools", "Potter's Tools", "Tinker's Tools", "Weaver's Tools", "Woodcarver's Tools"];
+                    "Mason's Tools", "Painter's Supplies", "Potter's Tools", "Tinker's Tools", "Weaver's Tools", "Woodcarver's Tools"];
             const checkboxes = tools.map(t => `
                 <label style="display: block; margin-bottom: 4px;">
                     <input type="checkbox" name="workshopTools" value="${t}"> ${t}
@@ -6045,6 +6063,100 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             await this.actor.setFlag(MODULE_ID, "pendingWallDays", currentPending + (squares * wallTime));
             this.render();
         }
+    }
+
+    // --- CALENDAR-DRIVEN TURN ADVANCEMENT ---
+
+    static async onIssueOrders(event, target) {
+        const actor = this.actor;
+        if (!actor) return console.error("Bastion Manager | Issue Orders triggered without Actor context.");
+
+        const activeNonGMs = game.users.filter(u => u.active && !u.isGM);
+        const bastionActors = game.actors.filter(a => {
+            const isAllowed = a.type === "character" || a.type === "npc";
+            const hasFac = a.items.some(i => i.type === "facility") || a.getFlag(MODULE_ID, "groupFacilities")?.length > 0;
+            return isAllowed && hasFac && activeNonGMs.some(u => a.testUserPermission(u, "OWNER"));
+        });
+        if (!bastionActors.some(a => a.id === actor.id)) {
+            const hasFac = actor.items.some(i => i.type === "facility") || actor.getFlag(MODULE_ID, "groupFacilities")?.length > 0;
+            if (hasFac) bastionActors.push(actor);
+        }
+
+        let allMissing = [];
+        for (let a of bastionActors) allMissing.push(...await BastionManager._validateFacilities(a));
+        if (allMissing.length > 0) {
+            const list = allMissing.map(m => `<li>${m}</li>`).join("");
+            const proceed = await DialogV2.confirm({
+                window: { title: "Incomplete Selections" },
+                content: `<p>The following facilities have active orders but are missing required selections:</p><ul>${list}</ul><p>Facilities with missing selections will be issued the Maintain order. Proceed anyway?</p>`,
+                rejectClose: false, modal: true
+            });
+            if (!proceed) return;
+        }
+
+        const daysPerTurn = effectiveDaysPerTurn();
+        const confirm = (allMissing.length > 0) || await DialogV2.confirm({
+            window: { title: "Issue Bastion Orders" },
+            content: `<p>Issue orders to all active Bastions?</p><p>The turn will resolve automatically once <b>${daysPerTurn} days</b> of in-game time pass.</p>`,
+            rejectClose: false, modal: true
+        });
+        if (!confirm) return;
+
+        if (Hooks.call("dnd-bastion.preAdvanceTurn", bastionActors, 1) === false) return;
+
+        await game.settings.set(MODULE_ID, "ordersIssuedAt", game.time.worldTime);
+        ui.notifications.info(`Bastion Manager | Orders issued. Turn resolves in ${daysPerTurn} days.`);
+        for (const app of foundry.applications.instances.values()) if (app instanceof BastionManager) app.render();
+    }
+
+    static async onCancelOrders(event, target) {
+        const confirm = await DialogV2.confirm({
+            window: { title: "Cancel Pending Orders" },
+            content: `<p>Cancel the pending Bastion orders? The turn will not resolve automatically.</p>`,
+            rejectClose: false, modal: true
+        });
+        if (!confirm) return;
+        await game.settings.set(MODULE_ID, "ordersIssuedAt", 0);
+        for (const app of foundry.applications.instances.values()) if (app instanceof BastionManager) app.render();
+    }
+
+    static async resolveCalendarDrivenTurn() {
+        if (!game.user.isGM) return;
+
+        // Do not filter by active non-GM ownership — players may be offline when the calendar
+        // triggers auto-resolution. Process all actors that have facilities.
+        const bastionActors = game.actors.filter(a =>
+            (a.type === "character" || a.type === "npc") &&
+            (a.items.some(i => i.type === "facility") || a.getFlag(MODULE_ID, "groupFacilities")?.length > 0)
+        );
+
+        // Clear immediately to prevent double-firing if worldTime advances again before we finish
+        await game.settings.set(MODULE_ID, "ordersIssuedAt", 0);
+
+        const currentGlobalTurns = game.settings.get(MODULE_ID, "globalTurnCount") || 0;
+        await game.settings.set(MODULE_ID, "globalTurnCount", currentGlobalTurns + 1);
+
+        let reports = [];
+        const processedGroups = new Set();
+        const rolledEvents = new Map();
+        const unify = game.settings.get(MODULE_ID, "unifyCombinedTurns");
+
+        for (let actor of bastionActors) {
+            const combinedId = actor.getFlag(MODULE_ID, "combinedGroupId");
+            if (unify && combinedId && !processedGroups.has(combinedId)) {
+                const group = game.actors.get(combinedId);
+                if (group) await group.setFlag(MODULE_ID, "turnCount", (group.getFlag(MODULE_ID, "turnCount") || 0) + 1);
+                processedGroups.add(combinedId);
+            }
+            const r = await BastionManager.executeBastionTurn(actor, 1, rolledEvents);
+            if (r) reports.push(r);
+        }
+
+        if (reports.length > 0) await BastionManager._dispatchReports(reports, 1);
+        Hooks.callAll("dnd-bastion.turnAdvanced", bastionActors, 1, reports);
+        ui.notifications.info("Bastion Manager | Calendar turn resolved.");
+        game.socket.emit("module.dnd-2024-bastion-manager", { action: "globalAdvance" });
+        for (const app of foundry.applications.instances.values()) if (app instanceof BastionManager) app.render();
     }
 
     // --- UI ACTION ---

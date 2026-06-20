@@ -27,7 +27,8 @@
       "Bash(node -e ' *)",
       "Bash(find /mnt/Hadunkachud/FoundryVTTUserData/ -name \"foundry.js\" -o -name \"prosemirror.mjs\" 2>/dev/null | head -5 *)",
       "Read(//opt/**)",
-      "Read(//home/unosami/**)"
+      "Read(//home/unosami/**)",
+      "Bash(xargs ls)"
     ]
   }
 }

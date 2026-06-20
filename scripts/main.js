@@ -17,8 +17,12 @@ class BastionTurnControl extends HandlebarsApplicationMixin(ApplicationV2) {
         actions: {
             advance: function(event, target) {
                 const actor = game.user.character || game.actors.find(a => a.items.some(i => i.type === "facility") && a.isOwner) || game.actors.find(a => a.items.some(i => i.type === "facility"));
-                if (actor) BastionManager.onAdvanceGlobalTurn.call({ actor, element: this.element }, event, target);
-                else ui.notifications.warn("No owned actor with a Bastion found.");
+                if (!actor) return ui.notifications.warn("No owned actor with a Bastion found.");
+                if (game.settings.get(MODULE_ID, "calendarDrivenTurns")) {
+                    BastionManager.onIssueOrders.call({ actor, element: this.element }, event, target);
+                } else {
+                    BastionManager.onAdvanceGlobalTurn.call({ actor, element: this.element }, event, target);
+                }
             }
         }
     };
@@ -35,9 +39,13 @@ class BastionTurnControl extends HandlebarsApplicationMixin(ApplicationV2) {
             const ownedByActivePlayer = activeNonGMs.some(u => a.testUserPermission(u, "OWNER"));
             return isAllowedType && hasFacilities && ownedByActivePlayer;
         });
+        const calendarDrivenTurns = game.settings.get(MODULE_ID, "calendarDrivenTurns");
+        const issuedAt = game.settings.get(MODULE_ID, "ordersIssuedAt") || 0;
         return {
             readyCount: bastionActors.filter(a => a.getFlag(MODULE_ID, "isReady")).length,
-            totalBastions: bastionActors.length
+            totalBastions: bastionActors.length,
+            calendarDrivenTurns,
+            ordersIssued: issuedAt > 0,
         };
     }
 
@@ -2070,6 +2078,8 @@ Hooks.once("init", () => {
     game.settings.register(MODULE_ID, "daysPerTurn", { name: "Days per Bastion Turn", scope: "world", config: true, type: Number, default: 7 });
     game.settings.register(MODULE_ID, "advanceWorldTime", { name: "Advance World Time with Bastion Turn", hint: "When a Bastion Turn is advanced, also advance FoundryVTT's world time by the equivalent number of days. Compatible with Simple Calendar and Simple Calendar Reborn.", scope: "world", config: true, type: Boolean, default: false });
     game.settings.register(MODULE_ID, "syncDaysPerTurn", { name: "Sync Turn Length from Active Calendar", hint: "Use the active calendar's week length as the Bastion Turn duration everywhere — crafting times, construction display, and world time advancement.", scope: "world", config: true, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "calendarDrivenTurns", { name: "Calendar-Driven Turn Advancement", hint: "When enabled, the Advance Turn buttons become Issue Orders buttons. The bastion turn resolves automatically once the world calendar advances by one turn's worth of days.", scope: "world", config: true, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "ordersIssuedAt", { scope: "world", config: false, type: Number, default: 0 });
     game.settings.register(MODULE_ID, "scaleWeekToTurnLength", { name: "Scale Weekly Durations", scope: "world", config: true, type: Boolean, default: false });
     game.settings.register(MODULE_ID, "autoNameHirelings", { name: "Auto-Generate Hireling Names", scope: "world", config: true, type: Boolean, default: true });
     game.settings.register(MODULE_ID, "autoNameDefenders", { name: "Auto-Generate Defender Names", scope: "client", config: true, type: Boolean, default: false });
@@ -2094,6 +2104,31 @@ Hooks.once("ready", async () => {
         registerFacilityType: (config) => BastionManager.registerFacilityType(config),
     };
     await BastionManager.loadProfessions();
+
+    // Migrate workshopTools flag: correct historical wrong tool names
+    if (game.user.isGM) {
+        const TOOL_NAME_CORRECTIONS = { "Painter's Tools": "Painter's Supplies" };
+        const needsFix = (tools) => Array.isArray(tools) && tools.some(t => TOOL_NAME_CORRECTIONS[t]);
+        const applyFix = (tools) => tools.map(t => TOOL_NAME_CORRECTIONS[t] ?? t);
+        for (const actor of game.actors) {
+            // Fix actor items (Workshop facility items)
+            for (const item of actor.items) {
+                if (!item.name.includes("Workshop")) continue;
+                const tools = item.getFlag("dnd-2024-bastion-manager", "workshopTools");
+                if (needsFix(tools)) await item.setFlag("dnd-2024-bastion-manager", "workshopTools", applyFix(tools));
+            }
+            // Fix groupFacilities flag (group/party bastions)
+            const groupFacs = actor.getFlag("dnd-2024-bastion-manager", "groupFacilities");
+            if (Array.isArray(groupFacs)) {
+                let changed = false;
+                for (const fac of groupFacs) {
+                    const tools = fac.flags?.["dnd-2024-bastion-manager"]?.workshopTools;
+                    if (needsFix(tools)) { fac.flags["dnd-2024-bastion-manager"].workshopTools = applyFix(tools); changed = true; }
+                }
+                if (changed) await actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacs);
+            }
+        }
+    }
 
     // Inject global styles for the "WORKING" pulse animation
     const style = document.createElement("style");
@@ -2154,7 +2189,11 @@ Hooks.once("ready", async () => {
 
         if ( actor ) {
             console.log(`Bastion Manager | Hijacking native advancement for ${actor.name}.`);
-            BastionManager.onAdvanceGlobalTurn.call({ actor, element: btn.parentElement }, event, btn);
+            if (game.settings.get(MODULE_ID, "calendarDrivenTurns")) {
+                BastionManager.onIssueOrders.call({ actor, element: btn.parentElement }, event, btn);
+            } else {
+                BastionManager.onAdvanceGlobalTurn.call({ actor, element: btn.parentElement }, event, btn);
+            }
         }
     }, { capture: true });
 
@@ -2616,18 +2655,62 @@ Hooks.on("getActorSheetHeaderButtons", (app, buttons) => {
 });
 
 /**
+ * When calendar-driven mode is active, watch world time and auto-resolve
+ * the pending bastion turn once enough time has elapsed since orders were issued.
+ */
+Hooks.on("updateWorldTime", async (worldTime) => {
+    if (!game.user.isGM) return;
+    if (!game.settings.get(MODULE_ID, "calendarDrivenTurns")) return;
+    const issuedAt = game.settings.get(MODULE_ID, "ordersIssuedAt") || 0;
+    if (!issuedAt) return;
+    if (worldTime < issuedAt + effectiveDaysPerTurn() * 86400) return;
+    await BastionManager.resolveCalendarDrivenTurn();
+});
+
+/**
  * Inject live calendar info into the syncDaysPerTurn setting hint whenever
  * the settings dialog opens.
  */
 Hooks.on("renderSettingsConfig", (app, html) => {
     const root = html instanceof HTMLElement ? html : html[0];
-    const input = root?.querySelector?.(`[name="${MODULE_ID}.syncDaysPerTurn"]`);
-    if (!input) return;
-    const hint = input.closest(".form-group")?.querySelector(".hint, .notes");
-    if (!hint) return;
-    const calName = getActiveCalendarName();
-    const weekLen = getCalendarWeekLength();
-    hint.textContent = `Use the active calendar's week length as the Bastion Turn duration everywhere — crafting times, construction display, and world time advancement. Active calendar: ${calName} (${weekLen}-day week).`;
+    if (!root) return;
+
+    // --- Live calendar name in syncDaysPerTurn hint ---
+    const syncInput = root.querySelector(`[name="${MODULE_ID}.syncDaysPerTurn"]`);
+    if (syncInput) {
+        const hint = syncInput.closest(".form-group")?.querySelector(".hint, .notes");
+        if (hint) {
+            const calName = getActiveCalendarName();
+            const weekLen = getCalendarWeekLength();
+            hint.textContent = `Use the active calendar's week length as the Bastion Turn duration everywhere — crafting times, construction display, and world time advancement. Active calendar: ${calName} (${weekLen}-day week).`;
+        }
+    }
+
+    // --- Dependent setting dimming ---
+    const setGroupDisabled = (inputEl, disabled) => {
+        if (!inputEl) return;
+        const group = inputEl.closest(".form-group");
+        if (!group) return;
+        inputEl.disabled = disabled;
+        group.style.opacity = disabled ? "0.45" : "";
+        group.style.pointerEvents = disabled ? "none" : "";
+    };
+
+    // daysPerTurn is dimmed when syncDaysPerTurn is on
+    const daysInput = root.querySelector(`[name="${MODULE_ID}.daysPerTurn"]`);
+    const syncCheckbox = root.querySelector(`[name="${MODULE_ID}.syncDaysPerTurn"]`);
+    if (daysInput && syncCheckbox) {
+        setGroupDisabled(daysInput, syncCheckbox.checked);
+        syncCheckbox.addEventListener("change", () => setGroupDisabled(daysInput, syncCheckbox.checked));
+    }
+
+    // advanceWorldTime is dimmed when calendarDrivenTurns is on
+    const advanceInput = root.querySelector(`[name="${MODULE_ID}.advanceWorldTime"]`);
+    const calDrivenCheckbox = root.querySelector(`[name="${MODULE_ID}.calendarDrivenTurns"]`);
+    if (advanceInput && calDrivenCheckbox) {
+        setGroupDisabled(advanceInput, calDrivenCheckbox.checked);
+        calDrivenCheckbox.addEventListener("change", () => setGroupDisabled(advanceInput, calDrivenCheckbox.checked));
+    }
 });
 
 /**

@@ -1,6 +1,6 @@
 <div class="bastion-manager-container" style="display: flex; gap: 15px; height: 100%; overflow: hidden;">
     
-    <div class="bastion-sidebar" style="flex: 0 0 400px; overflow-y: auto; padding-right: 10px; border-right: 1px solid #ccc; display: flex; flex-direction: column;">
+    <div class="bastion-sidebar" style="flex: 0 0 370px; overflow-y: auto; padding-right: 10px; border-right: 1px solid #ccc; display: flex; flex-direction: column;">
     <div class="sidebar-content-column">
     <div class="bastion-header" style="text-align: center; margin-bottom: 5px;">
         <h2 style="margin-bottom: 5px; line-height: 1.2; display: flex; align-items: center; justify-content: center; gap: 6px;">
@@ -41,24 +41,40 @@
             
                 {{#if canAdvanceTurn}}
                     <span style="border-left: 1px solid #ccc; height: 20px; margin: 0 5px;"></span>
-                    <div style="display: flex; gap: 0; align-items: center; border: 1px solid #777; border-radius: 4px; overflow: hidden; background: white;">
-                        <button type="button" data-action="toggleAdvanceMode" style="width: auto; padding: 2px 6px; border: none; border-right: 1px solid #777; background: {{#if (eq advanceMode "global")}}#2e7d32{{else}}none{{/if}}; color: {{#if (eq advanceMode "global")}}white{{else}}#666{{/if}}; border-radius: 0;" title="Global Mode: Advance all active Bastions">
-                            <i class="fa-solid fa-earth-americas"></i>
-                        </button>
-                        <button type="button" data-action="toggleAdvanceMode" style="width: auto; padding: 2px 6px; border: none; background: {{#if (eq advanceMode "individual")}}#a32a22{{else}}none{{/if}}; color: {{#if (eq advanceMode "individual")}}white{{else}}#666{{/if}}; border-radius: 0;" title="Individual Mode: Advance ONLY this character (Catch-up)">
-                            <i class="fa-solid fa-person-running"></i>
-                        </button>
-                    </div>
-                    <input type="number" name="turns" value="1" min="1" style="width: 30px; text-align: center; height: 20px; font-size: 0.8em; border: 1px solid #777;" title="Turns to advance">
-                    
-                    {{#if (eq advanceMode "global")}}
-                        <button type="button" data-action="advanceGlobalTurn" style="width: auto; height: auto !important; padding: 3px 8px; font-size: 0.75em; color: #2e7d32;" title="Process all Bastions owned by logged-in players">
-                            <i class="fa-solid fa-play"></i> Run Turn ({{readyCount}}/{{totalBastions}})
-                        </button>
+                    {{#if calendarDrivenTurns}}
+                        {{#if ordersIssued}}
+                            <span style="font-size: 0.8em; color: #555; font-style: italic; display: flex; align-items: center; gap: 4px;">
+                                <i class="fa-solid fa-hourglass-half"></i> Orders Pending{{#if ordersCountdown}} ({{ordersCountdown}}d){{/if}}
+                            </span>
+                            {{#if isGM}}
+                                <button type="button" data-action="cancelOrders" style="width: auto; padding: 2px 8px; font-size: 0.75em; color: #a32a22;" title="Cancel pending orders — the turn will not resolve automatically">
+                                    <i class="fa-solid fa-xmark"></i> Cancel
+                                </button>
+                            {{/if}}
+                        {{else}}
+                            <button type="button" data-action="issueOrders" style="width: auto; height: auto !important; padding: 3px 8px; font-size: 0.75em; color: #2e7d32;" title="Lock in current orders. The turn resolves automatically once enough in-game time passes.">
+                                <i class="fa-solid fa-scroll"></i> Issue Orders ({{readyCount}}/{{totalBastions}})
+                            </button>
+                        {{/if}}
                     {{else}}
-                        <button type="button" data-action="advanceIndividualTurn" style="width: auto; padding: 2px 8px; font-size: 0.75em; color: #a32a22;" title="Process only this character's Bastion">
-                            <i class="fa-solid fa-person-running"></i> Run Catch-up
-                        </button>
+                        <div style="display: flex; gap: 0; align-items: center; border: 1px solid #777; border-radius: 4px; overflow: hidden; background: white;">
+                            <button type="button" data-action="toggleAdvanceMode" style="width: auto; padding: 2px 6px; border: none; border-right: 1px solid #777; background: {{#if (eq advanceMode "global")}}#2e7d32{{else}}none{{/if}}; color: {{#if (eq advanceMode "global")}}white{{else}}#666{{/if}}; border-radius: 0;" title="Global Mode: Advance all active Bastions">
+                                <i class="fa-solid fa-earth-americas"></i>
+                            </button>
+                            <button type="button" data-action="toggleAdvanceMode" style="width: auto; padding: 2px 6px; border: none; background: {{#if (eq advanceMode "individual")}}#a32a22{{else}}none{{/if}}; color: {{#if (eq advanceMode "individual")}}white{{else}}#666{{/if}}; border-radius: 0;" title="Individual Mode: Advance ONLY this character (Catch-up)">
+                                <i class="fa-solid fa-person-running"></i>
+                            </button>
+                        </div>
+                        <input type="number" name="turns" value="1" min="1" style="width: 30px; text-align: center; height: 20px; font-size: 0.8em; border: 1px solid #777;" title="Turns to advance">
+                        {{#if (eq advanceMode "global")}}
+                            <button type="button" data-action="advanceGlobalTurn" style="width: auto; height: auto !important; padding: 3px 8px; font-size: 0.75em; color: #2e7d32;" title="Process all Bastions owned by logged-in players">
+                                <i class="fa-solid fa-play"></i> Run Turn ({{readyCount}}/{{totalBastions}})
+                            </button>
+                        {{else}}
+                            <button type="button" data-action="advanceIndividualTurn" style="width: auto; padding: 2px 8px; font-size: 0.75em; color: #a32a22;" title="Process only this character's Bastion">
+                                <i class="fa-solid fa-person-running"></i> Run Catch-up
+                            </button>
+                        {{/if}}
                     {{/if}}
                 {{else}}
                     {{#if (ne actor.type "group")}}

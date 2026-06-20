@@ -9,10 +9,22 @@
     </div>
 
     {{!-- Controls section --}}
-    <div style="display: flex; gap: 8px; align-items: center;">
-        <input type="number" name="turns" value="1" min="1" style="width: 45px; text-align: center; height: 30px; border: 1px solid var(--dnd5e-color-gold); border-radius: 4px; font-weight: bold; background: rgba(0,0,0,0.3); color: white;" title="Turns to advance">
-        <button type="button" data-action="advance" style="flex: 1; height: 30px; padding: 0 12px; font-weight: bold; background: var(--dnd5e-color-iron); color: white; border: 1px solid var(--dnd5e-color-gold); border-radius: 4px; cursor: pointer; font-size: 0.8em; text-transform: uppercase; display: flex; align-items: center; justify-content: center; gap: 6px;">
-            <i class="fa-solid fa-play"></i> Run Global Turn
-        </button>
-    </div>
+    {{#if calendarDrivenTurns}}
+        {{#if ordersIssued}}
+            <div style="display: flex; align-items: center; gap: 8px; color: #bbb; font-style: italic; font-size: 0.85em;">
+                <i class="fa-solid fa-hourglass-half" style="color: var(--dnd5e-color-gold);"></i> Orders Pending
+            </div>
+        {{else}}
+            <button type="button" data-action="advance" style="width: 100%; height: 30px; padding: 0 12px; font-weight: bold; background: var(--dnd5e-color-iron); color: white; border: 1px solid var(--dnd5e-color-gold); border-radius: 4px; cursor: pointer; font-size: 0.8em; text-transform: uppercase; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                <i class="fa-solid fa-scroll"></i> Issue Orders
+            </button>
+        {{/if}}
+    {{else}}
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <input type="number" name="turns" value="1" min="1" style="width: 45px; text-align: center; height: 30px; border: 1px solid var(--dnd5e-color-gold); border-radius: 4px; font-weight: bold; background: rgba(0,0,0,0.3); color: white;" title="Turns to advance">
+            <button type="button" data-action="advance" style="flex: 1; height: 30px; padding: 0 12px; font-weight: bold; background: var(--dnd5e-color-iron); color: white; border: 1px solid var(--dnd5e-color-gold); border-radius: 4px; cursor: pointer; font-size: 0.8em; text-transform: uppercase; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                <i class="fa-solid fa-play"></i> Run Global Turn
+            </button>
+        </div>
+    {{/if}}
 </div>

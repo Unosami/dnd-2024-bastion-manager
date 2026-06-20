@@ -56,38 +56,13 @@ export const BASTION_EVENTS_LIST = [
     { label: "Treasure (99-00)", roll: 99 }
 ];
 
-// ─── Tool / Utility Descriptions (Logistics Panel) ───────────────────────────
-export const UTILITY_DESCRIPTIONS = {
-    "Alchemist's Supplies": "Identify a substance (DC 15), or start a fire (DC 15)",
-    "Brewer's Supplies": "Detect poisoned drink (DC 15), or identify alcohol (DC 10)",
-    "Calligrapher's Supplies": "Write text with impressive flourishes that guard against forgery (DC 15)",
-    "Carpenter's Tools": "Seal or pry open a door or container (DC 20)",
-    "Cartographer's Tools": "Draft a map of a small area (DC 15)",
-    "Cobbler's Tools": "Modify footwear to give Advantage on the wearer's next Dexterity (Acrobatics) check (DC 10)",
-    "Cook's Utensils": "Improve food's flavor (DC 10), or detect spoiled or poisoned food (DC 15)",
-    "Glassblower's Tools": "Discern what a glass object held in the past 24 hours (DC 15)",
-    "Jeweler's Tools": "Discern a gem's value (DC 15)",
-    "Leatherworker's Tools": "Add a design to a leather item (DC 10)",
-    "Mason's Tools": "Chisel a symbol or hole in stone (DC 10)",
-    "Painter's Tools": "Paint a recognizable image of something you've seen (DC 10)",
-    "Potter's Tools": "Discern what a ceramic object held in the past 24 hours (DC 15)",
-    "Smith's Tools": "Pry open a door or container (DC 20)",
-    "Tinker's Tools": "Assemble a Tiny item composed of scrap, which falls apart in 1 minute (DC 20)",
-    "Weaver's Tools": "Mend a tear in clothing (DC 10), or sew a Tiny design (DC 10)",
-    "Woodcarver's Tools": "Carve a pattern in wood (DC 10)",
-    "Thieves' Tools": "Pick a lock (DC 15), or disarm a trap (DC 15)",
-    "Arcane Spellcasting": "Cast 'Identify' (Charm) after Long Rest. Level 9+ hireling assists with magic item crafting.",
-    "Sacred Spellcasting": "Cast 'Healing Word' (Charm) or 'Greater Restoration' (Reliquary). Access to spell slot refreshment.",
-    "Expert Recruiter": "Recruit friendly NPC spellcasters who can cast Wizard spells (up to level 8)."
-};
-
 // ─── Facility Build Config ────────────────────────────────────────────────────
 export const FACILITY_CONFIG = {
     "Workshop": {
         type: "tools",
         options: [
             "Carpenter's Tools", "Cobbler's Tools", "Glassblower's Tools", "Jeweler's Tools",
-            "Leatherworker's Tools", "Mason's Tools", "Painter's Tools", "Potter's Tools",
+            "Leatherworker's Tools", "Mason's Tools", "Painter's Supplies", "Potter's Tools",
             "Tinker's Tools", "Weaver's Tools", "Woodcarver's Tools"
         ]
     }
