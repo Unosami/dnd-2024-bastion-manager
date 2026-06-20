@@ -24,7 +24,10 @@
       "Bash(node --input-type=module)",
       "Bash(find /mnt/Hadunkachud -maxdepth 3 -name \"*.css\" 2>/dev/null | head -20)",
       "Read(//mnt/Hadunkachud/**)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(find /mnt/Hadunkachud/FoundryVTTUserData/ -name \"foundry.js\" -o -name \"prosemirror.mjs\" 2>/dev/null | head -5 *)",
+      "Read(//opt/**)",
+      "Read(//home/unosami/**)"
     ]
   }
 }

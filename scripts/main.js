@@ -1,5 +1,6 @@
 import { BastionManager } from "./bastion-app.js";
 import { MODULE_ID, ORDER_SVG_MAP, ORDER_ICON_MAP, PASSIVE_INFO, GARDEN_ROOT_ID, STABLE_ROOT_ID } from "./bastion-data.js";
+import { getActiveCalendarName, getCalendarWeekLength, effectiveDaysPerTurn } from "./bastion-calculations.js";
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
 /**
@@ -814,7 +815,7 @@ const integrateBastionDashboard = (bastionTab) => {
             const _getOutPack = () => game.packs.get(`${MODULE_ID}.bastion-output-items`);
             const _craftSettings = () => ({
                 calculationMode: game.settings.get(MODULE_ID, "calculationMode"),
-                daysPerTurn: game.settings.get(MODULE_ID, "daysPerTurn") || 7,
+                daysPerTurn: effectiveDaysPerTurn(),
             });
 
             // Arcane Study craft sub-selectors
@@ -2067,6 +2068,8 @@ Hooks.once("init", () => {
     game.settings.register(MODULE_ID, "specialFacilitiesBuildTime", { name: "Special Facilities Have Build Times", scope: "world", config: true, type: Boolean, default: true });
     game.settings.register(MODULE_ID, "calculationMode", { name: "Crafting Calculation Mode", scope: "world", config: true, type: String, default: "turns", choices: { "turns": "Bastion Turns", "days": "Days" } });
     game.settings.register(MODULE_ID, "daysPerTurn", { name: "Days per Bastion Turn", scope: "world", config: true, type: Number, default: 7 });
+    game.settings.register(MODULE_ID, "advanceWorldTime", { name: "Advance World Time with Bastion Turn", hint: "When a Bastion Turn is advanced, also advance FoundryVTT's world time by the equivalent number of days. Compatible with Simple Calendar and Simple Calendar Reborn.", scope: "world", config: true, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "syncDaysPerTurn", { name: "Sync Turn Length from Active Calendar", hint: "Use the active calendar's week length as the Bastion Turn duration everywhere — crafting times, construction display, and world time advancement.", scope: "world", config: true, type: Boolean, default: false });
     game.settings.register(MODULE_ID, "scaleWeekToTurnLength", { name: "Scale Weekly Durations", scope: "world", config: true, type: Boolean, default: false });
     game.settings.register(MODULE_ID, "autoNameHirelings", { name: "Auto-Generate Hireling Names", scope: "world", config: true, type: Boolean, default: true });
     game.settings.register(MODULE_ID, "autoNameDefenders", { name: "Auto-Generate Defender Names", scope: "client", config: true, type: Boolean, default: false });
@@ -2610,6 +2613,21 @@ Hooks.on("getActorSheetHeaderButtons", (app, buttons) => {
         label: "Bastion", class: "bastion-header-btn", icon: "fa-solid fa-chess-rook",
         onclick: () => new BastionManager(app.actor).render({ force: true })
     });
+});
+
+/**
+ * Inject live calendar info into the syncDaysPerTurn setting hint whenever
+ * the settings dialog opens.
+ */
+Hooks.on("renderSettingsConfig", (app, html) => {
+    const root = html instanceof HTMLElement ? html : html[0];
+    const input = root?.querySelector?.(`[name="${MODULE_ID}.syncDaysPerTurn"]`);
+    if (!input) return;
+    const hint = input.closest(".form-group")?.querySelector(".hint, .notes");
+    if (!hint) return;
+    const calName = getActiveCalendarName();
+    const weekLen = getCalendarWeekLength();
+    hint.textContent = `Use the active calendar's week length as the Bastion Turn duration everywhere — crafting times, construction display, and world time advancement. Active calendar: ${calName} (${weekLen}-day week).`;
 });
 
 /**

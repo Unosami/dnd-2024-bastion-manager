@@ -378,3 +378,44 @@ export function getHirelingProfession(professionsMap, facName, subType) {
     if (entry) return `the ${entry[1]}`;
     return "(Hireling)";
 }
+
+/**
+ * Returns the effective number of days per Bastion Turn.
+ * When "Sync Turn Length from Active Calendar" is on, reads from the active
+ * calendar instead of the manual setting, so all time displays stay consistent.
+ * @returns {number}
+ */
+export function effectiveDaysPerTurn() {
+    if (game.settings.get(MODULE_ID, "syncDaysPerTurn")) return getCalendarWeekLength();
+    return game.settings.get(MODULE_ID, "daysPerTurn") || 7;
+}
+
+/**
+ * Returns the display name of the currently active calendar.
+ * Prefers Simple Calendar Reborn > Simple Calendar > native FoundryVTT calendar.
+ * @returns {string}
+ */
+export function getActiveCalendarName() {
+    if (game.modules.get("foundryvtt-simple-calendar-reborn")?.active && typeof SimpleCalendar !== "undefined") {
+        return "Simple Calendar Reborn";
+    }
+    if (game.modules.get("foundryvtt-simple-calendar")?.active && typeof SimpleCalendar !== "undefined") {
+        return "Simple Calendar";
+    }
+    return game.time?.calendar?.name || "Native Calendar";
+}
+
+/**
+ * Returns the number of days in a week according to the active calendar.
+ * Prefers Simple Calendar Reborn > Simple Calendar > native FoundryVTT calendar.
+ * Falls back to 7 if no calendar is available.
+ * @returns {number}
+ */
+export function getCalendarWeekLength() {
+    if ((game.modules.get("foundryvtt-simple-calendar-reborn")?.active ||
+         game.modules.get("foundryvtt-simple-calendar")?.active) &&
+        typeof SimpleCalendar !== "undefined") {
+        return SimpleCalendar.api.getAllWeekdays()?.length || 7;
+    }
+    return game.time?.calendar?.days?.values?.length || 7;
+}

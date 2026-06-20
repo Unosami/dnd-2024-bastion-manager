@@ -16,7 +16,8 @@ import {
     getAllSubfolderIds, extractSize, getScrollRequirements, getMagicItemRequirements,
     getMountSlotCost, getMenagerieSlotCost, getMenagerieCost, getMenagerieDie,
     getEffectiveDays, getSpecialFacilityCap, getNestedCompendiumOptions,
-    generateRandomName, generateSpellcasterName, getHirelingProfession
+    generateRandomName, generateSpellcasterName, getHirelingProfession,
+    effectiveDaysPerTurn
 } from "./bastion-calculations.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
@@ -664,7 +665,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const atSpecCap = !disableSpecialCap && currentSpecials >= specCap;
 
         const calculationMode = game.settings.get(MODULE_ID, "calculationMode");
-        const daysPerTurn = game.settings.get(MODULE_ID, "daysPerTurn") || 7;
+        const daysPerTurn = effectiveDaysPerTurn();
         const progressLabel = calculationMode === "days" ? "d" : "t";
 
         // Dynamic Garden Configuration from Compendium
@@ -4696,7 +4697,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const index = await outPack.getIndex({fields: ["system.price", "system.rarity"]});
             const entry = index.find(i => i.name === choice);
             const calculationMode = game.settings.get(MODULE_ID, "calculationMode");
-            const daysPerTurn = game.settings.get(MODULE_ID, "daysPerTurn") || 7;
+            const daysPerTurn = effectiveDaysPerTurn();
 
             if (entry) {
                 const rarity = entry.system.rarity || "Common";
@@ -6123,6 +6124,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 await BastionManager._dispatchReports(reports, turnsToAdvance);
             }
             Hooks.callAll("dnd-bastion.turnAdvanced", bastionActors, turnsToAdvance, reports);
+            if (game.settings.get(MODULE_ID, "advanceWorldTime")) {
+                await game.time.advance(turnsToAdvance * effectiveDaysPerTurn() * 86400);
+            }
             ui.notifications.info(`Bastion Manager | Global turns advanced by ${turnsToAdvance}.`);
             game.socket.emit("module.dnd-2024-bastion-manager", { action: "globalAdvance" });
             // Refresh any open manager windows
@@ -6178,6 +6182,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             if (reports.length > 0) {
                 await BastionManager._dispatchReports(reports, turnsToAdvance);
+            }
+            if (game.settings.get(MODULE_ID, "advanceWorldTime")) {
+                await game.time.advance(turnsToAdvance * effectiveDaysPerTurn() * 86400);
             }
             ui.notifications.info(`Bastion Manager | ${actor.name}'s Bastion advanced by ${turnsToAdvance}.`);
             // Refresh any open manager windows for this actor
@@ -6799,7 +6806,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         let items = [];
         let itemUpdates = [];
         const calculationMode = game.settings.get(MODULE_ID, "calculationMode");
-        const daysPerTurn = game.settings.get(MODULE_ID, "daysPerTurn") || 7;
+        const daysPerTurn = effectiveDaysPerTurn();
         const progIncrement = calculationMode === "days" ? daysPerTurn : 1;
         const freeMode = game.settings.get(MODULE_ID, "freeMode");
 
@@ -8120,7 +8127,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     // --- HELPER: EMPOWER ---
     static async _handleEmpower(baseName, fac, actor, theaterPhase = "Idle", theaterProgress = 0, hString = "The hireling", psString = "The hirelings", preflightData = null) {
         const getFacFlag = (key) => fac.isFlag ? (fac.doc.flags?.[MODULE_ID]?.[key]) : (fac.doc.getFlag(MODULE_ID, key));
-        const daysPerTurn = game.settings.get(MODULE_ID, "daysPerTurn") || 7;
+        const daysPerTurn = effectiveDaysPerTurn();
 
         if (baseName.includes("Theater")) {
             let phase = theaterPhase;
@@ -9755,7 +9762,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             if (specialFacs.length > 0) {
                 const target = specialFacs[Math.floor(Math.random() * specialFacs.length)];
-                const progIncrement = (game.settings.get(MODULE_ID, "calculationMode") === "days") ? (game.settings.get(MODULE_ID, "daysPerTurn") || 7) : 1;
+                const progIncrement = (game.settings.get(MODULE_ID, "calculationMode") === "days") ? effectiveDaysPerTurn() : 1;
                 const updates = { [`flags.${MODULE_ID}.isDamaged`]: true, [`flags.${MODULE_ID}.repairProgress`]: 0, [`flags.${MODULE_ID}.repairTurns`]: progIncrement };
                 
                 if (target.isFlag) {
