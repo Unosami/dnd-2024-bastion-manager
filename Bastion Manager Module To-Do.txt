@@ -31,31 +31,10 @@ ARMORY
 
 TELEPORTATION CIRCLE 
 - A cool way to display the glyphs of the specific bastion's teleportation circle? (So Extra)
-    
-THEATER
-- Nice to have: Writers type in name of the production. That production script is saved as an item (in the compendium?) so they can look back on it.
 
 
 GRID CHANGES
 - Change the grid layout of combined bastions to have each player be a color and their facilities be different shades of that color. (Or some way to distinguish who owns what without text) (Might be done already?)
-- Combine both walls buttons into a single wall dropdown, like with doors.
-(Might be done already:)
-- Closets (might not need to be included)
-- Corridors, Ramps, Staircases
-- Defensive walls (each 5-foot segement has a time and gold cost)
-- Doors and Windows
-
-GRID STANDALONE MODULE
-- Change the grid layout to populate the squares with relevent furnishings.
-- The option of Structure shapes/outlines? Tower, shrine, fortified keep, lodge vs village(current freeform) Prefabs.
-
-Calendar compatibility
-    - Make the module track days using Simple Calendar rather than internally? (Only works if Simple Calendar gets an update to be compatible with current versions of Foundry)
-
-- Homebrew (not hardcoded, I want them to be like submodules?):
-    - Veteran Hirelings: After a certain length of service/special event/the hireling is attained in a special way the hireling should give bonuses to the facility they work.
-    - Specialized defenders: Mages, warriors, rogues. Each has a different benefit to the bastion.
-
 
 ---
 Known Bugs:
@@ -65,12 +44,8 @@ Known Bugs:
 - When a facility is being built and facility caps are active then the "Build Facility" buttons should account for the under construction facilities.
 - Garden Change Type submenu not appearing on character sheet ui.
 - If the Garden is made from the founding dialog it doesn't prompt for the type of Garden like it should.
-- New facilities being set to Maintain also need to include ones made through the Bastion Founding dailog.
-- Fix the Storehouse trade loop
-
+- New facilities being set to Maintain also need to include ones made through the Bastion Founding dialog.
 - Cap storehouse procurement gold to amount of gold on character sheet.
-
-- The Tidysheet ui opens the native bastion option prompts when clicked. In the same vein, the hover-over pointer for that still exists on the standard character sheet.
 
 ---
 Long Rest:
@@ -102,3 +77,14 @@ Order block (Dashboard)
 
 Info block (Dashboard)
     The dark infoBlock div injected per facility in the Native Tab
+
+----------
+SUBMODULE IDEAS
+
+GRID STANDALONE MODULE
+- Change the grid layout to populate the squares with relevent furnishings.
+- The option of Structure shapes/outlines? Tower, shrine, fortified keep, lodge vs village(current freeform) Prefabs.
+
+HOMEBREW (not hardcoded, I want them to be like submodules?):
+    - Veteran Hirelings: After a certain length of service/special event/the hireling is attained in a special way the hireling should give bonuses to the facility they work.
+    - Specialized defenders: Mages, warriors, rogues. Each has a different benefit to the bastion.

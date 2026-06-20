@@ -21,7 +21,10 @@
       "Bash(awk -F: '$1 > 6940 && $1 < 7100')",
       "Bash(awk -F: '$1 > 7390 && $1 < 7505')",
       "Bash(awk 'NR>=100 && NR<=200')",
-      "Bash(node --input-type=module)"
+      "Bash(node --input-type=module)",
+      "Bash(find /mnt/Hadunkachud -maxdepth 3 -name \"*.css\" 2>/dev/null | head -20)",
+      "Read(//mnt/Hadunkachud/**)",
+      "Bash(node -e ' *)"
     ]
   }
 }

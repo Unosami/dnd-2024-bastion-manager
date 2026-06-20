@@ -869,7 +869,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             const theaterPhase = isTheater ? (getFacFlag("theaterPhase") || "Idle") : "Idle";
             const theaterProgress = isTheater ? Number(getFacFlag("theaterProgress") || 0) : 0;
-            const theaterProgressPct = isTheater ? Math.round((Math.min(theaterProgress, 14) / 14) * 100) : 0;
+            const theaterPhaseDays = BastionManager._getEffectiveDays(14);
+            const theaterProgressPct = isTheater ? Math.round((Math.min(theaterProgress, theaterPhaseDays) / theaterPhaseDays) * 100) : 0;
             const theaterContributors = isTheater ? (getFacFlag("theaterContributors") || []) : [];
             const theaterAuthor = isTheater ? (getFacFlag("theaterAuthor") || "") : "";
             const theaterRoster = isTheater ? {
@@ -914,6 +915,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const bookTitle = getFacFlag("bookTitle") || "";
             const paperworkTitle = getFacFlag("paperworkTitle") || "";
             const paperworkQty = getFacFlag("paperworkQty") || 50;
+            const theaterScriptTitle = isTheater ? (getFacFlag("theaterScriptTitle") || "") : "";
             
             // Declare effective choices at a higher scope to ensure accessibility
             let effectiveFocusChoice = "";
@@ -1690,6 +1692,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 theaterPhase,
                 theaterProgress,
                 theaterProgressPct,
+                theaterPhaseDays,
                 theaterContributors,
                 theaterAuthor,
                 theaterRoster,
@@ -1698,6 +1701,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 isWritingPhase,
                 isActingPhase,
                 theaterDieSize,
+                theaterScriptTitle,
                 visitingSpellcaster,
                 spellcasterDaysRemaining,
                 spellcasterDisplayTime,
@@ -2496,6 +2500,21 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
                 } else {
                     await this.actor.items.get(ds.itemId)?.setFlag(MODULE_ID, "paperworkQty", val);
+                }
+            });
+        });
+
+        // Theater Script Title Listener
+        this.element.querySelectorAll('.theater-script-title').forEach(input => {
+            input.addEventListener('change', async (ev) => {
+                const ds = ev.target.dataset;
+                if (ds.isFlag === "true") {
+                    const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+                    const fac = gf.find(f => f._id === ds.itemId);
+                    if (fac) foundry.utils.setProperty(fac, `flags.${MODULE_ID}.theaterScriptTitle`, ev.target.value);
+                    await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+                } else {
+                    await this.actor.items.get(ds.itemId)?.setFlag(MODULE_ID, "theaterScriptTitle", ev.target.value);
                 }
             });
         });
@@ -8121,19 +8140,32 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             if (phase === "Writing" && progress >= BastionManager._getEffectiveDays(14)) {
                 const contributors = getFacFlag("theaterContributors") || [];
-                const writers = contributors.filter(c => c.role === "Composer/Writer").map(c => c.name);
-                const authorName = writers.length > 0 ? writers.join(", ") : "Theater Hirelings";
-                
+                const writers = contributors.filter(c => c.role === "Composer/Writer");
+                const authorName = writers.length > 0 ? writers.map(c => c.name).join(", ") : "Theater Hirelings";
+
                 phase = "Rehearsing";
                 progress = 0;
 
                 // Persist the Author and clear the contributors roster for the acting phase
-                const updates = { 
+                const updates = {
                     [`flags.${MODULE_ID}.theaterAuthor`]: authorName,
                     [`flags.${MODULE_ID}.theaterContributors`]: []
                 };
                 if (fac.isFlag) Object.assign(fac.doc.flags[MODULE_ID], updates);
                 else await fac.doc.update(updates);
+
+                // Grant a Script item to each writer's character
+                const scriptTitle = getFacFlag("theaterScriptTitle") || "";
+                const scriptItemData = {
+                    name: scriptTitle ? `${scriptTitle} (Script)` : `${authorName}'s Script`,
+                    type: "loot",
+                    img: "icons/sundries/books/book-red-exclamation.webp",
+                    system: { description: { value: `A script written by ${authorName} for a theatrical production.` }, quantity: 1 }
+                };
+                for (const writer of writers) {
+                    const writerActor = (writer.actorId ? game.actors.get(writer.actorId) : null) || actor;
+                    await writerActor.createEmbeddedDocuments("Item", [scriptItemData]);
+                }
 
                 resultText += "Writing is complete; rehearsals have now begun.";
             } else if (phase === "Rehearsing" && progress >= BastionManager._getEffectiveDays(14)) {
@@ -8402,7 +8434,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 if (!confirm) return;
             }
 
-            const updates = { [`flags.${MODULE_ID}.theaterPhase`]: "Idle", [`flags.${MODULE_ID}.theaterProgress`]: 0, [`flags.${MODULE_ID}.theaterAuthor`]: "", [`flags.${MODULE_ID}.theaterContributors`]: [] };
+            const updates = { [`flags.${MODULE_ID}.theaterPhase`]: "Idle", [`flags.${MODULE_ID}.theaterProgress`]: 0, [`flags.${MODULE_ID}.theaterAuthor`]: "", [`flags.${MODULE_ID}.theaterContributors`]: [], [`flags.${MODULE_ID}.theaterScriptTitle`]: "" };
             if (ds.isFlag === "true") {
                 for (let [k, v] of Object.entries(updates)) foundry.utils.setProperty(fac, k, v);
                 await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);

@@ -35,7 +35,7 @@
             {{/if}}
             
             <div style="display: flex; gap: 5px; align-items: center; border: 1px solid #ccc; padding: 4px; border-radius: 4px; background: rgba(0,0,0,0.05);">
-                <button type="button" data-action="maintainAll" style="width: auto; padding: 2px 8px; font-size: 0.75em;" title="Set all facilities to Maintain">
+                <button type="button" data-action="maintainAll" style="width: auto; height: auto !important; padding: 3px 8px; font-size: 0.75em;" title="Set all facilities to Maintain">
                     <i class="fa-solid fa-broom"></i> Maintain All
                 </button>
             
@@ -52,7 +52,7 @@
                     <input type="number" name="turns" value="1" min="1" style="width: 30px; text-align: center; height: 20px; font-size: 0.8em; border: 1px solid #777;" title="Turns to advance">
                     
                     {{#if (eq advanceMode "global")}}
-                        <button type="button" data-action="advanceGlobalTurn" style="width: auto; padding: 2px 8px; font-size: 0.75em; color: #2e7d32;" title="Process all Bastions owned by logged-in players">
+                        <button type="button" data-action="advanceGlobalTurn" style="width: auto; height: auto !important; padding: 3px 8px; font-size: 0.75em; color: #2e7d32;" title="Process all Bastions owned by logged-in players">
                             <i class="fa-solid fa-play"></i> Run Turn ({{readyCount}}/{{totalBastions}})
                         </button>
                     {{else}}
@@ -71,7 +71,7 @@
                 {{#if isGM}}
                     <span style="border-left: 1px solid #ccc; height: 20px; margin: 0 5px;"></span>
                     <button type="button" data-action="toggleFreeMode"
-                        style="width: auto; padding: 2px 8px; font-size: 0.75em; {{#if freeMode}}background: #7b1fa2; color: white; font-weight: bold;{{else}}color: #888;{{/if}}"
+                        style="width: auto; height: auto !important; padding: 3px 8px; font-size: 0.75em; {{#if freeMode}}background: #7b1fa2; color: white; font-weight: bold;{{else}}color: #888;{{/if}}"
                         title="Free Mode: Orders complete instantly with no gold or items consumed">
                         <i class="fa-solid fa-wand-magic-sparkles"></i> {{#if freeMode}}Free Mode ON{{else}}Free Mode{{/if}}
                     </button>
@@ -668,7 +668,7 @@
                         </div>
 
                         {{#if (or (eq this.theaterPhase "Writing") (eq this.theaterPhase "Rehearsing"))}}
-                            <div class="bastion-progress-bar" title="Days: {{this.theaterProgress}} / 14" style="height: 10px; background: rgba(0,0,0,0.2); border: 1px solid #555; border-radius: 5px; position: relative; overflow: hidden; margin-bottom: 5px;">
+                            <div class="bastion-progress-bar" title="Days: {{this.theaterProgress}} / {{this.theaterPhaseDays}}" style="height: 10px; background: rgba(0,0,0,0.2); border: 1px solid #555; border-radius: 5px; position: relative; overflow: hidden; margin-bottom: 5px;">
                                 <div class="fill" style="width: {{this.theaterProgressPct}}%; height: 100%; background: #82cfff; transition: width 0.5s;"></div>
                             </div>
                         {{/if}}
@@ -683,6 +683,14 @@
                                         <span style="color: #777; font-style: italic;">None</span>
                                     {{/if}}
                                 </div>
+                                {{#if this.isWritingPhase}}
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span><b>Script Title:</b></span>
+                                        <input type="text" class="theater-script-title" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                            value="{{this.theaterScriptTitle}}" placeholder="Untitled Script"
+                                            style="width: 60%; font-size: 0.9em; height: 20px; padding: 0 4px; border: 1px solid #555; background: #222; color: #eee; border-radius: 3px;">
+                                    </div>
+                                {{/if}}
                             {{/if}}
                             
                             {{#if this.isActingPhase}}
@@ -1488,43 +1496,37 @@
                     </button>
                 </div>
             </div>
-            <div style="display: flex; justify-content: space-between; font-size: 0.85em;">
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    <button type="button" data-action="buildDefensiveWall" style="width: auto; padding: 2px 4px; font-size: 0.85em;" title="Buy 5ft wall squares ({{wallCost}} GP, {{wallTime}} Days)">
-                        <i class="fa-solid fa-plus"></i> Buy Walls
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85em;">
+                <div style="display: flex; gap: 2px; align-items: center; border: 1px solid #777; padding: 1px 3px; border-radius: 3px; background: rgba(0,0,0,0.05);">
+                    <button type="button" data-action="selectFacilityLayout" data-item-id="{{structIds.wall}}"
+                        style="width: auto; height: auto !important; padding: 3px 8px; font-size: 0.85em; border: none; background: {{#if (eq selectedId structIds.wall)}}#444; color: white;{{else}}transparent;{{/if}}" title="Draw walls on grid">
+                        <i class="fa-solid fa-wall-brick"></i> {{placedWallSquares}}/{{totalWallSquaresAllowed}}
                     </button>
-                    <button type="button" data-action="selectFacilityLayout" data-item-id="{{structIds.wall}}" 
-                        style="width: auto; padding: 2px 5px; font-size: 0.85em; {{#if (eq selectedId structIds.wall)}}background: #444; color: white;{{/if}}" title="Draw walls">
-                        <i class="fa-solid fa-wall-brick"></i> Walls: {{placedWallSquares}}/{{totalWallSquaresAllowed}}
+                    <button type="button" data-action="buildDefensiveWall"
+                        style="width: auto; height: auto !important; padding: 3px 8px; font-size: 0.85em; border: none; background: transparent;" title="Buy 5ft wall squares ({{wallCost}} GP, {{wallTime}} Days)">
+                        <i class="fa-solid fa-plus"></i>
                     </button>
-                    <button type="button" data-action="selectFacilityLayout" data-item-id="{{structIds.path}}" 
-                        style="width: auto; padding: 2px 5px; font-size: 0.85em; {{#if (eq selectedId structIds.path)}}background: #444; color: white;{{/if}}" title="Corridors/Ramps/Stairs (1 Turn)">
-                        <i class="fa-solid fa-stairs"></i> Paths
-                    </button>
-                    <button type="button" data-action="selectFacilityLayout" data-item-id="{{structIds.closet}}" 
-                        style="width: auto; padding: 2px 5px; font-size: 0.85em; {{#if (eq selectedId structIds.closet)}}background: #444; color: white;{{/if}}" title="Closets/Washrooms">
-                        <i class="fa-solid fa-door-closed"></i> Closets
-                    </button>
-                    <div style="display: flex; gap: 2px; align-items: center; border: 1px solid #777; padding: 1px 3px; border-radius: 3px; background: rgba(0,0,0,0.05);">
-                        <button type="button" data-action="selectFacilityLayout" data-item-id="{{selectedOpening}}" 
-                            style="width: auto; padding: 2px 5px; font-size: 0.85em; border: none; background: {{#if (eq selectedId selectedOpening)}}#444; color: white;{{else}}transparent;{{/if}}" title="Place selected opening type">
-                            <i class="fa-solid fa-door-open"></i>
-                        </button>
-                        <select name="opening-type" style="font-size: 0.75em; height: 18px; width: 80px; border: none; background: #333; color: #eee;">
-                            <option value="Door" {{#if (eq selectedOpening "Door")}}selected{{/if}}>Door</option>
-                            <option value="Window" {{#if (eq selectedOpening "Window")}}selected{{/if}}>Window</option>
-                            <option value="Locked Door" {{#if (eq selectedOpening "Locked Door")}}selected{{/if}}>Locked</option>
-                            <option value="Secret Door" {{#if (eq selectedOpening "Secret Door")}}selected{{/if}}>Secret</option>
-                            <option value="Portcullis" {{#if (eq selectedOpening "Portcullis")}}selected{{/if}}>Portcullis</option>
-                        </select>
-                    </div>
                 </div>
-                <div style="text-align: right;">
-                    {{#if selectedId}}
-                        <span style="color: #a32a22; font-weight: bold; font-size: 0.9em;">Placing: {{#if (eq selectedId structIds.wall)}}Walls{{else}}{{#if (eq selectedId structIds.path)}}Paths{{else}}{{#if (eq selectedId structIds.closet)}}Closet{{else}}{{#if (eq selectedId selectedOpening)}}{{selectedOpening}}{{else}}{{#each specialFacilitiesBuilt}}{{#if (eq this.id ../selectedId)}}{{this.name}}{{/if}}{{/each}}{{#each basicFacilitiesBuilt}}{{#if (eq this.id ../selectedId)}}{{this.name}}{{/if}}{{/each}}{{/if}}{{/if}}{{/if}}{{/if}}</span>
-                    {{else}}
-                        <span style="font-style: italic; color: #666;">Select an item to begin...</span>
-                    {{/if}}
+                <button type="button" data-action="selectFacilityLayout" data-item-id="{{structIds.path}}"
+                    style="width: auto; height: auto !important; padding: 3px 8px; font-size: 0.85em; {{#if (eq selectedId structIds.path)}}background: #444; color: white;{{/if}}" title="Corridors/Ramps/Stairs (1 Turn)">
+                    <i class="fa-solid fa-stairs"></i> Paths
+                </button>
+                <button type="button" data-action="selectFacilityLayout" data-item-id="{{structIds.closet}}"
+                    style="width: auto; height: auto !important; padding: 3px 8px; font-size: 0.85em; {{#if (eq selectedId structIds.closet)}}background: #444; color: white;{{/if}}" title="Closets/Washrooms">
+                    <i class="fa-solid fa-door-closed"></i> Closets
+                </button>
+                <div style="display: flex; gap: 2px; align-items: center; border: 1px solid #777; padding: 1px 3px; border-radius: 3px; background: rgba(0,0,0,0.05);">
+                    <button type="button" data-action="selectFacilityLayout" data-item-id="{{selectedOpening}}"
+                        style="width: auto; height: auto !important; padding: 3px 8px; font-size: 0.85em; border: none; background: {{#if (eq selectedId selectedOpening)}}#444; color: white;{{else}}transparent;{{/if}}" title="Place selected opening type">
+                        <i class="fa-solid fa-door-open"></i>
+                    </button>
+                    <select name="opening-type" style="font-size: 0.75em; height: 18px; width: 80px; border: none; background: #333; color: #eee;">
+                        <option value="Door" {{#if (eq selectedOpening "Door")}}selected{{/if}}>Door</option>
+                        <option value="Window" {{#if (eq selectedOpening "Window")}}selected{{/if}}>Window</option>
+                        <option value="Locked Door" {{#if (eq selectedOpening "Locked Door")}}selected{{/if}}>Locked</option>
+                        <option value="Secret Door" {{#if (eq selectedOpening "Secret Door")}}selected{{/if}}>Secret</option>
+                        <option value="Portcullis" {{#if (eq selectedOpening "Portcullis")}}selected{{/if}}>Portcullis</option>
+                    </select>
                 </div>
             </div>
         </div>
