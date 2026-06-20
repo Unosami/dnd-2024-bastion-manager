@@ -1,5 +1,5 @@
 import { BastionManager } from "./bastion-app.js";
-import { MODULE_ID, ORDER_SVG_MAP, ORDER_ICON_MAP, PASSIVE_INFO } from "./bastion-data.js";
+import { MODULE_ID, ORDER_SVG_MAP, ORDER_ICON_MAP, PASSIVE_INFO, GARDEN_ROOT_ID, STABLE_ROOT_ID } from "./bastion-data.js";
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
 /**
@@ -264,6 +264,17 @@ function injectBastionStyles() {
             }
             [data-tab-contents-for="bastion"] li.facility:not(.empty) .title-and-subtitle .subtitle {
                 display: none !important;
+            }
+            /* Tidy 5e: disable the native useFacility click on the facility header link —
+               module handles orders via the injected dropdown, not the native dialog */
+            [data-tab-contents-for="bastion"] li.facility:not(.empty) a.facility-header-details {
+                pointer-events: none !important;
+                cursor: default !important;
+            }
+            /* Native sheet: remove pointer cursor from [data-action="useFacility"] —
+               click is already blocked by JS, but the system CSS still shows a pointer */
+            .dnd5e2 .tab[data-tab="bastion"] li.facility [data-action="useFacility"] {
+                cursor: default !important;
             }
             /* Tidy 5e Sheets: special and basic are already side-by-side columns via
                Tidy's own grid-template-columns:1fr 1fr on .facility-panels, so items
@@ -1019,6 +1030,129 @@ const integrateBastionDashboard = (bastionTab) => {
                 })();
             }
 
+            // Garden harvest sub-selectors
+            if (facName.includes("Garden") && !facName.includes("Greenhouse") && safeOrder.startsWith("Harvest")) {
+                const facSubType  = fFlags.subType  || "";
+                const facSubType2 = fFlags.subType2 || "";
+                const isVastGarden = (fFlags.size || "Roomy") === "Vast";
+                (async () => {
+                    const outPack = _getOutPack();
+                    if (!outPack) return;
+                    const gardenRoot = outPack.folders.get(GARDEN_ROOT_ID)
+                        || outPack.folders.find(f => f.name.toLowerCase().trim() === "garden");
+                    if (!gardenRoot) return;
+                    const typeFolders = outPack.folders.filter(f =>
+                        String(f.folder?.id || f.folder || f.parentId) === String(gardenRoot.id));
+                    const index = await outPack.getIndex({ fields: ["folder", "system.quantity", "uuid"] });
+
+                    const _makeHarvestRow = (subType, flagKey, label) => {
+                        const tf = typeFolders.find(f => f.name.toLowerCase().trim() === subType.toLowerCase().trim());
+                        if (!tf) return null;
+                        const opts = index.filter(i => i.folder === tf.id).map(i => ({
+                            value: i.name, label: `${i.name} (Qty: ${i.system?.quantity || 1})`,
+                            selected: i.name === (fFlags[flagKey] || "")
+                        }));
+                        const sel = _buildSelect(opts, fFlags[flagKey] || "", flagKey, "— Choose Harvest —");
+                        if (!label) return sel;
+                        const row = document.createElement("div");
+                        row.style.cssText = "display:flex; align-items:center; gap:4px;";
+                        const lbl = document.createElement("span");
+                        lbl.style.cssText = "font-size:0.8em; color:#888; white-space:nowrap;";
+                        lbl.textContent = label;
+                        row.appendChild(lbl); row.appendChild(sel);
+                        return row;
+                    };
+
+                    if (facSubType) {
+                        const el = _makeHarvestRow(facSubType, "harvestChoice", isVastGarden ? "Plot 1:" : null);
+                        if (el) choiceContainer.appendChild(el);
+                    }
+                    if (isVastGarden && facSubType2) {
+                        const el2 = _makeHarvestRow(facSubType2, "harvestChoice2", "Plot 2:");
+                        if (el2) choiceContainer.appendChild(el2);
+                    }
+                    if (choiceContainer.children.length > 0 && !choiceContainer.parentElement) orderBlock.appendChild(choiceContainer);
+                })();
+            }
+
+            // Garden change-type sub-selector
+            if (facName.includes("Garden") && !facName.includes("Greenhouse") && safeOrder === "Change Type") {
+                (async () => {
+                    const outPack = _getOutPack();
+                    if (!outPack) return;
+                    const gardenRoot = outPack.folders.get(GARDEN_ROOT_ID)
+                        || outPack.folders.find(f => f.name.toLowerCase().trim() === "garden");
+                    if (!gardenRoot) return;
+                    const typeFolders = outPack.folders.filter(f =>
+                        String(f.folder?.id || f.folder || f.parentId) === String(gardenRoot.id));
+                    const currentPending = fFlags.pendingSubType || "";
+                    const opts = typeFolders.map(f => ({
+                        value: f.name, label: f.name, selected: f.name === currentPending
+                    }));
+                    const lbl = document.createElement("label");
+                    lbl.style.cssText = "font-size: 0.8em; opacity: 0.7; display: block; margin-bottom: 1px;";
+                    lbl.textContent = "Change garden to (takes 3 turns):";
+                    const sel = _buildSelect(opts, currentPending, "pendingSubType", "— Choose New Type —");
+                    choiceContainer.appendChild(lbl);
+                    choiceContainer.appendChild(sel);
+                    if (!choiceContainer.parentElement) orderBlock.appendChild(choiceContainer);
+                })();
+            }
+
+            // Stable trade sub-selectors
+            if (facName.includes("Stable") && safeOrder === "Trade") {
+                (async () => {
+                    const outPack = _getOutPack();
+                    if (!outPack) return;
+                    const stableFolder = outPack.folders.get(STABLE_ROOT_ID)
+                        || outPack.folders.find(f => f.name.toLowerCase().includes("stable") || f.name.toLowerCase().includes("mount"));
+                    if (!stableFolder) return;
+                    const { calculationMode, daysPerTurn } = _craftSettings();
+                    const tradeChoice = fFlags.stableTradeChoice || "buy";
+                    const currentItemChoice = fFlags.stableItemChoice || "";
+                    const stableAnimals = fFlags.stableAnimals || [];
+
+                    const allOptions = await BastionManager._getNestedCompendiumOptions(
+                        outPack, stableFolder.id, currentItemChoice, calculationMode, daysPerTurn, "t", false);
+
+                    let options = allOptions;
+                    if (tradeChoice === "sell") {
+                        options = [];
+                        for (const o of allOptions) {
+                            if (o.groupOptions) {
+                                const filtered = o.groupOptions.filter(s => stableAnimals.some(a => a.species === s.value));
+                                if (filtered.length) options.push({ ...o, groupOptions: filtered });
+                            } else if (stableAnimals.some(a => a.species === o.value)) {
+                                options.push(o);
+                            }
+                        }
+                    }
+
+                    const tradeRow = document.createElement("div");
+                    tradeRow.style.cssText = "display:flex; gap:4px; align-items:center;";
+
+                    const tradeSel = document.createElement("select");
+                    tradeSel.style.cssText = "height:22px; font-size:0.85em; flex:0 0 55px;";
+                    ["buy", "sell"].forEach(v => {
+                        const opt = document.createElement("option");
+                        opt.value = v; opt.textContent = v.charAt(0).toUpperCase() + v.slice(1);
+                        opt.selected = v === tradeChoice;
+                        tradeSel.appendChild(opt);
+                    });
+                    tradeSel.addEventListener("mousedown", ev => ev.stopPropagation());
+                    tradeSel.addEventListener("change", async (ev) => {
+                        await item.setFlag(MODULE_ID, "stableTradeChoice", ev.target.value);
+                    });
+
+                    const itemSel = _buildSelect(options, currentItemChoice, "stableItemChoice", "— Select Mount —");
+                    itemSel.style.flex = "1";
+
+                    tradeRow.appendChild(tradeSel); tradeRow.appendChild(itemSel);
+                    choiceContainer.appendChild(tradeRow);
+                    if (!choiceContainer.parentElement) orderBlock.appendChild(choiceContainer);
+                })();
+            }
+
             // Generic Queue Button for all crafting facilities
             if (safeOrder.startsWith("Craft") && craftChoice) {
                 const qRow = document.createElement("div");
@@ -1075,7 +1209,7 @@ const integrateBastionDashboard = (bastionTab) => {
             rows.push(`<div><i class="fa-solid fa-tag" style="opacity:0.6; width:12px;"></i> <b>Type:</b> ${subType}</div>`);
         }
 
-        // C3. Defenders — count only (names listed in the Defenders section above)
+        // C3. Defenders
         const defenders = fFlags.defenders || {};
         if ((defenders.count || 0) > 0) {
             rows.push(`<div><i class="fa-solid fa-shield" style="color:#ef9a9a; width:12px;"></i> <b>Defenders:</b> ${defenders.count}</div>`);
@@ -1776,13 +1910,19 @@ const integrateBastionDashboard = (bastionTab) => {
         for (const fn of postInjectFns) fn();
 
         // Add hireling name tooltips to native occupant slots (if naming is enabled)
+        // Uses .slot.hireling to cover both native dnd5e (.occupant-slot) and Tidy 5e (.member-slot).
+        // MutationObserver re-applies names when Tidy 5e's Svelte reactivity resets data-tooltip on hover.
         if (game.settings.get(MODULE_ID, "nameHirelings")) {
             const hirelingNames = fFlags.hirelings || [];
             if (hirelingNames.length > 0) {
-                li.querySelectorAll(".slot.occupant-slot.hireling").forEach((slot, i) => {
-                    if (hirelingNames[i]) {
-                        slot.setAttribute("data-tooltip", hirelingNames[i]);
-                    }
+                [...li.querySelectorAll(".slot.hireling:not(.empty)")].forEach((slot, i) => {
+                    if (!hirelingNames[i]) return;
+                    slot.setAttribute("data-tooltip", hirelingNames[i]);
+                    const obs = new MutationObserver(() => {
+                        if (slot.getAttribute("data-tooltip") !== hirelingNames[i])
+                            slot.setAttribute("data-tooltip", hirelingNames[i]);
+                    });
+                    obs.observe(slot, { attributes: true, attributeFilter: ["data-tooltip"] });
                 });
             }
         }
@@ -1941,6 +2081,7 @@ Hooks.once("init", () => {
     game.settings.register(MODULE_ID, "excludedSourcesData", { scope: "world", config: false, type: Array, default: [] });
     game.settings.register(MODULE_ID, "excludedFacilitiesData", { scope: "world", config: false, type: Array, default: [] });
     game.settings.registerMenu(MODULE_ID, "exclusionMenuBtn", { name: "Manage Facility Availability", label: "Filter Facilities", icon: "fas fa-filter", type: FacilityExclusionApp, restricted: true });
+    game.settings.register(MODULE_ID, "freeMode", { scope: "world", config: false, type: Boolean, default: false });
 });
 
 Hooks.once("ready", async () => {
@@ -2119,6 +2260,7 @@ class FacilityExclusionApp extends HandlebarsApplicationMixin(ApplicationV2) {
         let facilityList = [];
         for (const item of allDocs) {
             let source = item.system?.source?.label || item.system?.source || "Unknown";
+            if (typeof source === "string") source = source.replace(/,?\s*(?:pp?g?|page)\.?\s*\d+.*/i, "").trim() || "Unknown";
             if (!sourceMap.has(source)) sourceMap.set(source, { name: source, excluded: excludedSources.includes(source) });
             facilityList.push({ id: item.id, name: item.name, source, excluded: excludedFacilities.includes(item.id) });
         }
@@ -2393,6 +2535,35 @@ const _injectGroupBastionTab = (app) => {
 };
 
 Hooks.on("renderGroupActorSheet", (app) => _injectGroupBastionTab(app));
+
+// Wire up Pay Army buttons embedded in bastion turn summary chat messages
+Hooks.on("renderChatMessageHTML", (message, html) => {
+    html.querySelectorAll(".bastion-pay-army-btn").forEach(btn => {
+        btn.addEventListener("click", async (ev) => {
+            ev.preventDefault();
+            const actorId = btn.dataset.actorId;
+            const cost = parseInt(btn.dataset.cost || "0");
+            const period = btn.dataset.period || "daily";
+            const actor = game.actors.get(actorId);
+            if (!actor) return ui.notifications.warn("Could not find the associated actor.");
+            if (!actor.isOwner) return ui.notifications.warn("You do not own this actor.");
+            if (!cost || cost <= 0) return;
+            const currentGP = Number(actor.system.currency?.gp || 0);
+            if (currentGP < cost) return ui.notifications.warn(`Insufficient gold. Need ${cost} GP but only have ${currentGP} GP.`);
+            const label = period === "weekly" ? "weekly (7 days)" : "daily";
+            const confirmed = await foundry.applications.api.DialogV2.confirm({
+                window: { title: "War Room: Pay Army Upkeep", icon: "fa-solid fa-coins" },
+                content: `<p>Pay <b>${cost} GP</b> ${label} army upkeep? You currently have <b>${currentGP} GP</b>.</p>`,
+                yes: { label: `Pay ${cost} GP` },
+                no: { label: "Cancel" },
+                rejectClose: false
+            });
+            if (!confirmed) return;
+            await actor.update({ "system.currency.gp": currentGP - cost });
+            ui.notifications.info(`Paid ${cost} GP ${label} army upkeep. Remaining GP: ${currentGP - cost}.`);
+        });
+    });
+});
 
 // Re-render the group bastion overview when a member actor's facility flags change
 Hooks.on("updateActor", (actor, changes) => {

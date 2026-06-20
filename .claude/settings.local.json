@@ -12,7 +12,16 @@
       "Bash(grep -n \"\\\\.contents\\\\|grid-template\\\\|grid-area\\\\|facilities.*basic\\\\|facilities.*special\\\\|section\\\\.roster\" /mnt/Hadunkachud/FoundryVTTUserData/Data/systems/dnd5e/css/sheets/actor.css 2>/dev/null | grep -A2 -B2 \"bastion\\\\|contents\\\\|grid\" | head -60)",
       "Read(//mnt/Hadunkachud/FoundryVTTUserData/Data/systems/dnd5e/css/sheets/**)",
       "Bash(find /mnt/Hadunkachud/FoundryVTTUserData/Data/systems/dnd5e/css -name \"*.css\" | xargs grep -l \"bastion\\\\|facility\\\\|facilit\" 2>/dev/null)",
-      "Read(//mnt/Hadunkachud/FoundryVTTUserData/Data/systems/dnd5e/**)"
+      "Read(//mnt/Hadunkachud/FoundryVTTUserData/Data/systems/dnd5e/**)",
+      "Bash(grep -E \"fac\\\\.|[0-9]{3,4}:\")",
+      "Bash(awk 'NR>=7300 && NR<=7450 && /[Bb]arrack/' /mnt/Hadunkachud/FoundryVTTUserData/Data/modules/dnd-2024-bastion-manager/scripts/bastion-app.js)",
+      "Bash(awk -F: '$1 > 7000 && $1 < 8500')",
+      "Bash(awk -F: '$1 > 720 && $1 < 1100')",
+      "Bash(awk -F: '$1 > 720 && $1 < 1120')",
+      "Bash(awk -F: '$1 > 6940 && $1 < 7100')",
+      "Bash(awk -F: '$1 > 7390 && $1 < 7505')",
+      "Bash(awk 'NR>=100 && NR<=200')",
+      "Bash(node --input-type=module)"
     ]
   }
 }

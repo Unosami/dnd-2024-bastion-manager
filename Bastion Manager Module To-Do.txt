@@ -10,12 +10,10 @@ OUTLINE to COMPLETION:
 
 
 GENERAL
-- Give DM ability to advance construction by a certain number of turns, in case the party has done something to speed it up.
-- Move hireling and defender name pools to seperate editable files.
 - Tie day-based time to native calendar?
-- Consolidate multiple turn events into a single prompt. For example, if you recruit for 3 turns there should be a single prompt asking for all names instead of 3 recruit name prompts.
-- Enlarging special facilities should show what the mechanical benefits of expanding that facility are in the staging prompt.
-- Tie long-rest charms into the long-rest of the charater sheet?
+- Give players a "Mark Ready" button on the scene tool where the Dm gets "Run Global Turn"
+- The DM should be able to "advance progress" on facility orders in addition to the existing construction advancement. The buttons should have hover-over info explaining what they do.
+- "Unify Combined Bastion Turns" might be a defunct option.
 
 
 EVENTS:
@@ -61,8 +59,18 @@ Calendar compatibility
 
 ---
 Known Bugs:
-- At the end need to go back and do a blanket "Make sure The Horizon reflects all facilities"
-- 
+- The "Bastion Utilities" section should not contain the main use of facilities.
+- The exclude facilities setting is way too granular.
+- When a facility is first crafted it should default to the Maintain order.
+- When a facility is being built and facility caps are active then the "Build Facility" buttons should account for the under construction facilities.
+- Garden Change Type submenu not appearing on character sheet ui.
+- If the Garden is made from the founding dialog it doesn't prompt for the type of Garden like it should.
+- New facilities being set to Maintain also need to include ones made through the Bastion Founding dailog.
+- Fix the Storehouse trade loop
+
+- Cap storehouse procurement gold to amount of gold on character sheet.
+
+- The Tidysheet ui opens the native bastion option prompts when clicked. In the same vein, the hover-over pointer for that still exists on the standard character sheet.
 
 ---
 Long Rest:
@@ -76,3 +84,21 @@ Long Rest:
 Short Rest:
 - Workshop * 
 - Sacristy 
+
+
+On naming conventions — here's what I'd suggest:
+
+Bastion Dashboard or Bastion Window
+    The floating ApplicationV2 app (BastionManager) rendered from bastion-main.hbs
+
+Character Sheet Bastion Tab or Native Tab
+    The [Bastion] tab injected into the dnd5e character sheet, augmented via integrateBastionDashboard in main.js
+
+Sidebar
+    The right-side button column in the Bastion Window (flex-direction: column with the enlarge/delete/layout buttons)
+
+Order block (Dashboard)
+    The dark orderBlock div injected per facility in the Native Tab
+
+Info block (Dashboard)
+    The dark infoBlock div injected per facility in the Native Tab
