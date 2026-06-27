@@ -1,0 +1,324 @@
+<div style="display: flex; flex-direction: column; height: 100%; font-size: 0.9em;">
+
+    {{!-- Tab Navigation --}}
+    <nav style="display: flex; gap: 2px; padding: 6px 8px 0; background: rgba(0,0,0,0.25); border-bottom: 2px solid #a32a22; flex-shrink: 0;">
+        <button type="button" class="settings-tab-btn active" data-tab="rules"
+            style="padding: 5px 11px; font-size: 0.82em; font-weight: bold; border-radius: 3px 3px 0 0; border: 1px solid #666; border-bottom: none; cursor: pointer; background: rgba(255,255,255,0.1); color: #e8e4d9;">
+            <i class="fas fa-gavel"></i> Rules
+        </button>
+        <button type="button" class="settings-tab-btn" data-tab="turns"
+            style="padding: 5px 11px; font-size: 0.82em; font-weight: bold; border-radius: 3px 3px 0 0; border: 1px solid #555; border-bottom: none; cursor: pointer; background: rgba(0,0,0,0.1); color: #aaa;">
+            <i class="fas fa-rotate"></i> Turns
+        </button>
+        <button type="button" class="settings-tab-btn" data-tab="time"
+            style="padding: 5px 11px; font-size: 0.82em; font-weight: bold; border-radius: 3px 3px 0 0; border: 1px solid #555; border-bottom: none; cursor: pointer; background: rgba(0,0,0,0.1); color: #aaa;">
+            <i class="fas fa-calendar-days"></i> Time
+        </button>
+        <button type="button" class="settings-tab-btn" data-tab="orders"
+            style="padding: 5px 11px; font-size: 0.82em; font-weight: bold; border-radius: 3px 3px 0 0; border: 1px solid #555; border-bottom: none; cursor: pointer; background: rgba(0,0,0,0.1); color: #aaa;">
+            <i class="fas fa-list-check"></i> Orders
+        </button>
+        <button type="button" class="settings-tab-btn" data-tab="staff"
+            style="padding: 5px 11px; font-size: 0.82em; font-weight: bold; border-radius: 3px 3px 0 0; border: 1px solid #555; border-bottom: none; cursor: pointer; background: rgba(0,0,0,0.1); color: #aaa;">
+            <i class="fas fa-people-group"></i> Staff
+        </button>
+        <button type="button" class="settings-tab-btn" data-tab="facilities"
+            style="padding: 5px 11px; font-size: 0.82em; font-weight: bold; border-radius: 3px 3px 0 0; border: 1px solid #555; border-bottom: none; cursor: pointer; background: rgba(0,0,0,0.1); color: #aaa;">
+            <i class="fas fa-building"></i> Facilities
+        </button>
+    </nav>
+
+    {{!-- Tab Panels --}}
+    <div style="flex: 1; overflow-y: auto; padding: 10px 14px;">
+
+        {{!-- ── RULES TAB ─────────────────────────────────────────── --}}
+        <div class="settings-panel" data-tab="rules">
+
+            <div class="form-group">
+                <label>Ignore All Construction Requirements</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="ignoreConstructionCosts" {{#if ignoreConstructionCosts}}checked{{/if}}>
+                </div>
+                <p class="hint">Bypass GP costs and material requirements for all facility construction and enlargement.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Ignore Facility Prerequisites</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="ignoreFacilityPrereqs" {{#if ignoreFacilityPrereqs}}checked{{/if}}>
+                </div>
+                <p class="hint">Allow building facilities without meeting class or proficiency prerequisites.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Special Facilities Have Build Times</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="specialFacilitiesBuildTime" {{#if specialFacilitiesBuildTime}}checked{{/if}}>
+                </div>
+                <p class="hint">When disabled, Special facilities are completed instantly with no construction turns required.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Disable Bastion Neglect</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="disableNeglect" {{#if disableNeglect}}checked{{/if}}>
+                </div>
+                <p class="hint">Prevents facilities from becoming neglected when orders are not issued each turn.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Disable Special Facility Cap</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="disableSpecialCap" {{#if disableSpecialCap}}checked{{/if}}>
+                </div>
+                <p class="hint">Remove the limit on how many Special facilities a bastion can contain.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Disable One-Per-Bastion Limit</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="disableDuplicateLimit" {{#if disableDuplicateLimit}}checked{{/if}}>
+                </div>
+                <p class="hint">Allow building multiple copies of facilities normally restricted to one per bastion.</p>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 14px; border-top: 1px solid #444; padding-top: 12px;">
+                <button type="button" data-action="openConstructionConfig"
+                    style="flex: 1; padding: 6px 8px; font-size: 0.85em; cursor: pointer;">
+                    <i class="fas fa-hammer"></i> Configure Construction Costs
+                </button>
+                <button type="button" data-action="openFacilityExclusion"
+                    style="flex: 1; padding: 6px 8px; font-size: 0.85em; cursor: pointer;">
+                    <i class="fas fa-filter"></i> Manage Facility Availability
+                </button>
+            </div>
+        </div>
+
+        {{!-- ── TURNS TAB ─────────────────────────────────────────── --}}
+        <div class="settings-panel" data-tab="turns" style="display:none;">
+
+            <div class="form-group">
+                <label>Advance Turn Permission</label>
+                <div class="form-fields">
+                    <select name="advancePermission">
+                        <option value="1" {{#if (eq advancePermission 1)}}selected{{/if}}>Player</option>
+                        <option value="2" {{#if (eq advancePermission 2)}}selected{{/if}}>Trusted Player</option>
+                        <option value="3" {{#if (eq advancePermission 3)}}selected{{/if}}>Assistant GM</option>
+                        <option value="4" {{#if (eq advancePermission 4)}}selected{{/if}}>Game Master</option>
+                    </select>
+                </div>
+                <p class="hint">Minimum user role required to advance a bastion turn from the Bastion Manager.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Group Inherits Member Facilities</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="groupInheritsFacilities" {{#if groupInheritsFacilities}}checked{{/if}}>
+                </div>
+                <p class="hint">Party group actors inherit the combined facilities of all member characters for turn processing.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Unify Combined Bastion Turns</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="unifyCombinedTurns" {{#if unifyCombinedTurns}}checked{{/if}}>
+                </div>
+                <p class="hint">All bastions in a party group share one combined turn counter instead of tracking separately per character.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Global Turn Count</label>
+                <div class="form-fields">
+                    <input type="number" name="globalTurnCount" value="{{globalTurnCount}}" min="0" step="1" style="width: 70px;">
+                </div>
+                <p class="hint">Current global bastion turn counter. Use the Reset button in the root settings menu to clear all turns.</p>
+            </div>
+
+        </div>
+
+        {{!-- ── TIME TAB ──────────────────────────────────────────── --}}
+        <div class="settings-panel" data-tab="time" style="display:none;">
+
+            <div class="form-group">
+                <label>Crafting Calculation Mode</label>
+                <div class="form-fields">
+                    <select name="calculationMode">
+                        <option value="turns" {{#if (eq calculationMode "turns")}}selected{{/if}}>Bastion Turns</option>
+                        <option value="days" {{#if (eq calculationMode "days")}}selected{{/if}}>Days</option>
+                    </select>
+                </div>
+                <p class="hint">Display crafting durations in Bastion Turns or real in-game days.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Days per Bastion Turn</label>
+                <div class="form-fields">
+                    <input type="number" name="daysPerTurn" value="{{daysPerTurn}}" min="1" step="1" style="width: 70px;">
+                </div>
+                <p class="hint">Number of in-game days per Bastion Turn, used for crafting time display and world time advancement.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Sync Turn Length from Active Calendar</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="syncDaysPerTurn" {{#if syncDaysPerTurn}}checked{{/if}}>
+                </div>
+                <p class="hint">Use the active calendar's week length as the Bastion Turn duration everywhere — crafting times, construction display, and world time advancement.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Scale Weekly Durations</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="scaleWeekToTurnLength" {{#if scaleWeekToTurnLength}}checked{{/if}}>
+                </div>
+                <p class="hint">Rescale crafting and project durations that are multiples of 7 days to match your Bastion Turn length. A 14-day project becomes 2 turns regardless of how long each turn is.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Advance World Time with Bastion Turn</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="advanceWorldTime" {{#if advanceWorldTime}}checked{{/if}}>
+                </div>
+                <p class="hint">When a Bastion Turn is advanced, also advance FoundryVTT's world time by the equivalent number of days. Compatible with Simple Calendar and Simple Calendar Reborn.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Calendar-Driven Turn Advancement</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="calendarDrivenTurns" {{#if calendarDrivenTurns}}checked{{/if}}>
+                </div>
+                <p class="hint">When enabled, the Advance Turn buttons become Issue Orders buttons. The bastion turn resolves automatically once the world calendar advances by one turn's worth of days.</p>
+            </div>
+
+        </div>
+
+        {{!-- ── ORDERS TAB ────────────────────────────────────────── --}}
+        <div class="settings-panel" data-tab="orders" style="display:none;">
+
+            <div class="form-group">
+                <label>Recruit Order Mode</label>
+                <div class="form-fields">
+                    <select name="recruitMode">
+                        <option value="roll" {{#if (eq recruitMode "roll")}}selected{{/if}}>Roll Dice</option>
+                        <option value="max" {{#if (eq recruitMode "max")}}selected{{/if}}>Maximum Allowed</option>
+                        <option value="manual" {{#if (eq recruitMode "manual")}}selected{{/if}}>Manual Prompt</option>
+                    </select>
+                </div>
+                <p class="hint">How the Recruit order determines the number of new hirelings or defenders gained.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Prompt for Every Bastion Event</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="promptAllEvents" {{#if promptAllEvents}}checked{{/if}}>
+                </div>
+                <p class="hint">Show an event dialog on every turn, including uneventful 'All Is Well' results.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Manually Choose Bastion Events</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="manualEventSelection" {{#if manualEventSelection}}checked{{/if}}>
+                </div>
+                <p class="hint">Let the GM select which bastion event occurs instead of rolling randomly.</p>
+            </div>
+
+        </div>
+
+        {{!-- ── STAFF TAB ─────────────────────────────────────────── --}}
+        <div class="settings-panel" data-tab="staff" style="display:none;">
+
+            <div class="form-group">
+                <label>Prompt for Hireling/Defender Names</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="nameHirelings" {{#if nameHirelings}}checked{{/if}}>
+                </div>
+                <p class="hint">Show a prompt to enter custom names when hirelings or defenders are recruited.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Auto-Generate Hireling Names</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="autoNameHirelings" {{#if autoNameHirelings}}checked{{/if}}>
+                </div>
+                <p class="hint">Automatically generate random names for new hirelings. Works alongside the name prompt.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Auto-Generate Defender Names <span style="font-size: 0.8em; color: #888; font-weight: normal;">(per client)</span></label>
+                <div class="form-fields">
+                    <input type="checkbox" name="autoNameDefenders" {{#if autoNameDefenders}}checked{{/if}}>
+                </div>
+                <p class="hint">Automatically generate random names for defenders on your character sheet. This is a per-client setting and does not affect other players.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Create Actor Documents for Staff</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="createActorsForHirelings" {{#if createActorsForHirelings}}checked{{/if}}>
+                </div>
+                <p class="hint">Create Foundry Actor documents for hirelings and defenders when they are recruited.</p>
+            </div>
+
+        </div>
+
+        {{!-- ── FACILITIES TAB ───────────────────────────────────── --}}
+        <div class="settings-panel" data-tab="facilities" style="display:none;">
+
+            <div class="form-group">
+                <label>Menagerie: Armory Equips Defenders</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="menagerieArmoryBonus" {{#if menagerieArmoryBonus}}checked{{/if}}>
+                </div>
+                <p class="hint">If enabled, Armory stocking applies to Menagerie creature defenders the same as regular defenders.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Menagerie: Defender Dice Mode</label>
+                <div class="form-fields">
+                    <select name="menagerieDiceMode">
+                        <option value="raw" {{#if (eq menagerieDiceMode "raw")}}selected{{/if}}>d6 (Rules as Written)</option>
+                        <option value="digital" {{#if (eq menagerieDiceMode "digital")}}selected{{/if}}>Digital Dice (d2 → d3 → …)</option>
+                        <option value="physical" {{#if (eq menagerieDiceMode "physical")}}selected{{/if}}>Physical Dice (d4 → d6 → d8 → d10 → d12 → d20)</option>
+                        <option value="custom" {{#if (eq menagerieDiceMode "custom")}}selected{{/if}}>Custom (JSON Table)</option>
+                    </select>
+                </div>
+                <p class="hint">RAW: all defenders roll d6. Digital: die scales from d2 at CR 0 (+1 per CR tier). Physical: locked to real dice. Custom: use the JSON table below.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Menagerie: CR Dice Scale Table (JSON)</label>
+                <div class="form-fields">
+                    <input type="text" name="menagerieCrDiceTable" value="{{menagerieCrDiceTable}}" style="width: 100%;">
+                </div>
+                <p class="hint">Used only with Custom Dice mode. JSON mapping minimum CR to die size. Example: {"0":"d6","1":"d8","4":"d10","9":"d12"}.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Reliquary: Limit to One Talisman</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="reliquaryOneTalismanLimit" {{#if reliquaryOneTalismanLimit}}checked{{/if}}>
+                </div>
+                <p class="hint">If enabled, the Reliquary cannot craft a new Talisman while the character already has one. Disable to allow multiple Talismans.</p>
+            </div>
+
+        </div>
+
+    </div>{{!-- end scroll area --}}
+
+    {{!-- Footer --}}
+    <footer style="display: flex; justify-content: space-between; gap: 8px; padding: 8px 12px; border-top: 1px solid #444; flex-shrink: 0; background: rgba(0,0,0,0.15);">
+        <button type="button" data-action="reset-defaults" style="padding: 5px 14px; cursor: pointer; color: #888; font-size: 0.85em;">
+            <i class="fas fa-sync"></i> Reset to Defaults
+        </button>
+        <div style="display: flex; gap: 8px;">
+            <button type="button" data-action="close-settings" style="padding: 5px 14px; cursor: pointer;">
+                Cancel
+            </button>
+            <button type="submit" style="padding: 5px 18px; font-weight: bold; cursor: pointer; background: rgba(163,42,34,0.3); border-color: #a32a22;">
+                <i class="fas fa-save"></i> Save
+            </button>
+        </div>
+    </footer>
+
+</div>

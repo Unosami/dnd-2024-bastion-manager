@@ -2055,46 +2055,59 @@ Hooks.once("init", () => {
     };
 
     // --- Settings Registration ---
-    game.settings.register(MODULE_ID, "ignoreConstructionCosts", { name: "Construction: Ignore All Requirements", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "disableNeglect", { name: "Disable Bastion Neglect", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "disableSpecialCap", { name: "Disable Special Facility Cap", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "disableDuplicateLimit", { name: "Disable One-Per-Bastion Limit", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "globalCostMultiplier", { scope: "world", config: false, type: Number, default: 100 });
-    game.settings.register(MODULE_ID, "globalTimeMultiplier", { scope: "world", config: false, type: Number, default: 100 });
+    // All user-facing settings are managed via the Configure Bastion Manager menu button.
+    // config: false keeps them hidden from the flat settings list.
 
+    // ── Rules & Restrictions (hidden) ────────────────────────────────
+    game.settings.register(MODULE_ID, "ignoreConstructionCosts", { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "ignoreFacilityPrereqs",   { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "specialFacilitiesBuildTime", { scope: "world", config: false, type: Boolean, default: true });
+    game.settings.register(MODULE_ID, "disableNeglect",          { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "disableSpecialCap",       { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "disableDuplicateLimit",   { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "globalCostMultiplier",    { scope: "world", config: false, type: Number,  default: 100 });
+    game.settings.register(MODULE_ID, "globalTimeMultiplier",    { scope: "world", config: false, type: Number,  default: 100 });
     const defaultValues = { buildCrampedCost: 500, buildCrampedTime: 3, buildRoomyCost: 1000, buildRoomyTime: 7, buildVastCost: 3000, buildVastTime: 18, enlargeRoomyCost: 500, enlargeRoomyTime: 4, enlargeVastCost: 2000, enlargeVastTime: 12 };
     for (const [key, val] of Object.entries(defaultValues)) game.settings.register(MODULE_ID, key, { scope: "world", config: false, type: Number, default: val });
+    game.settings.register(MODULE_ID, "excludedSourcesData",     { scope: "world", config: false, type: Array,   default: [] });
+    game.settings.register(MODULE_ID, "excludedFacilitiesData",  { scope: "world", config: false, type: Array,   default: [] });
 
-    game.settings.registerMenu(MODULE_ID, "constructionConfigBtn", { name: "Construction Configuration", label: "Configure Construction", icon: "fas fa-hammer", type: ConstructionConfigApp, restricted: true });
-    game.settings.register(MODULE_ID, "advancePermission", { name: "Advance Turn Permission", scope: "world", config: true, type: Number, choices: { 1: "Player", 2: "Trusted Player", 3: "Assistant GM", 4: "Game Master" }, default: 4 });
-    game.settings.register(MODULE_ID, "groupInheritsFacilities", { name: "Group Inherits Member Facilities", scope: "world", config: true, type: Boolean, default: true });
-    game.settings.register(MODULE_ID, "unifyCombinedTurns", { name: "Unify Combined Bastion Turns", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "globalTurnCount", { name: "Global Turn Count", scope: "world", config: true, type: Number, default: 0 });
+    // ── Turn Management (hidden) ──────────────────────────────────────
+    game.settings.register(MODULE_ID, "advancePermission",       { scope: "world", config: false, type: Number,  default: 4 });
+    game.settings.register(MODULE_ID, "groupInheritsFacilities", { scope: "world", config: false, type: Boolean, default: true });
+    game.settings.register(MODULE_ID, "unifyCombinedTurns",      { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "globalTurnCount",         { scope: "world", config: false, type: Number,  default: 0 });
+
+    // ── Time & Calendar (hidden) ──────────────────────────────────────
+    game.settings.register(MODULE_ID, "calculationMode",         { scope: "world", config: false, type: String,  default: "turns" });
+    game.settings.register(MODULE_ID, "daysPerTurn",             { scope: "world", config: false, type: Number,  default: 7 });
+    game.settings.register(MODULE_ID, "syncDaysPerTurn",         { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "scaleWeekToTurnLength",   { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "advanceWorldTime",        { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "calendarDrivenTurns",     { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "ordersIssuedAt",          { scope: "world", config: false, type: Number,  default: 0 });
+
+    // ── Orders (hidden) ───────────────────────────────────────────────
+    game.settings.register(MODULE_ID, "recruitMode",             { scope: "world", config: false, type: String,  default: "roll" });
+    game.settings.register(MODULE_ID, "promptAllEvents",         { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "manualEventSelection",    { scope: "world", config: false, type: Boolean, default: false });
+
+    // ── Hirelings & Staff (hidden) ────────────────────────────────────
+    game.settings.register(MODULE_ID, "nameHirelings",           { scope: "world",  config: false, type: Boolean, default: true });
+    game.settings.register(MODULE_ID, "autoNameHirelings",       { scope: "world",  config: false, type: Boolean, default: true });
+    game.settings.register(MODULE_ID, "autoNameDefenders",       { scope: "client", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "createActorsForHirelings",{ scope: "world",  config: false, type: Boolean, default: false });
+
+    // ── Facility-Specific (hidden) ────────────────────────────────────
+    game.settings.register(MODULE_ID, "menagerieArmoryBonus",    { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "menagerieDiceMode",       { scope: "world", config: false, type: String,  default: "raw" });
+    game.settings.register(MODULE_ID, "menagerieCrDiceTable",    { scope: "world", config: false, type: String,  default: '{"0":"d6","1":"d8","4":"d10","9":"d12"}' });
+    game.settings.register(MODULE_ID, "reliquaryOneTalismanLimit",{ scope: "world", config: false, type: Boolean, default: true });
+    game.settings.register(MODULE_ID, "freeMode",                { scope: "world", config: false, type: Boolean, default: false });
+
+    // ── Root Menu Buttons ─────────────────────────────────────────────
+    game.settings.registerMenu(MODULE_ID, "bastionConfigBtn", { name: "Bastion Manager Configuration", label: "Configure Bastion Manager", icon: "fas fa-chess-rook", type: BastionSettingsApp, restricted: true });
     game.settings.registerMenu(MODULE_ID, "resetAllTurnsBtn", { name: "Reset All Bastion Turns", label: "Reset Global Turns", icon: "fas fa-rotate-left", type: ResetBastionsApp, restricted: true });
-    game.settings.register(MODULE_ID, "recruitMode", { name: "Recruit Order Mode", scope: "world", config: true, type: String, default: "roll", choices: { "roll": "Roll Dice", "max": "Maximum Allowed", "manual": "Manual Prompt" } });
-    game.settings.register(MODULE_ID, "nameHirelings", { name: "Prompt for Hireling/Defender Names", scope: "world", config: true, type: Boolean, default: true });
-    game.settings.register(MODULE_ID, "specialFacilitiesBuildTime", { name: "Special Facilities Have Build Times", scope: "world", config: true, type: Boolean, default: true });
-    game.settings.register(MODULE_ID, "calculationMode", { name: "Crafting Calculation Mode", scope: "world", config: true, type: String, default: "turns", choices: { "turns": "Bastion Turns", "days": "Days" } });
-    game.settings.register(MODULE_ID, "daysPerTurn", { name: "Days per Bastion Turn", scope: "world", config: true, type: Number, default: 7 });
-    game.settings.register(MODULE_ID, "advanceWorldTime", { name: "Advance World Time with Bastion Turn", hint: "When a Bastion Turn is advanced, also advance FoundryVTT's world time by the equivalent number of days. Compatible with Simple Calendar and Simple Calendar Reborn.", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "syncDaysPerTurn", { name: "Sync Turn Length from Active Calendar", hint: "Use the active calendar's week length as the Bastion Turn duration everywhere — crafting times, construction display, and world time advancement.", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "calendarDrivenTurns", { name: "Calendar-Driven Turn Advancement", hint: "When enabled, the Advance Turn buttons become Issue Orders buttons. The bastion turn resolves automatically once the world calendar advances by one turn's worth of days.", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "ordersIssuedAt", { scope: "world", config: false, type: Number, default: 0 });
-    game.settings.register(MODULE_ID, "scaleWeekToTurnLength", { name: "Scale Weekly Durations", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "autoNameHirelings", { name: "Auto-Generate Hireling Names", scope: "world", config: true, type: Boolean, default: true });
-    game.settings.register(MODULE_ID, "autoNameDefenders", { name: "Auto-Generate Defender Names", scope: "client", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "menagerieArmoryBonus", { name: "Menagerie: Armory Equips Defenders", hint: "If enabled, Armory stocking applies to Menagerie creature defenders the same as regular defenders.", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "reliquaryOneTalismanLimit", { name: "Reliquary: Limit to One Talisman", hint: "If enabled, the Reliquary cannot craft a new Talisman while the character already has one. Disable to allow multiple Talismans.", scope: "world", config: true, type: Boolean, default: true });
-    game.settings.register(MODULE_ID, "menagerieDiceMode", { name: "Menagerie: Defender Dice Mode", hint: "RAW: all defenders roll d6. Digital: die scales from d2 at CR 0 (+1 per CR tier). Physical: locked to real dice (d4/d6/d8/d10/d12/d20). Custom: use the JSON table below.", scope: "world", config: true, type: String, default: "raw", choices: { "raw": "d6 (Rules as Written)", "digital": "Digital Dice (d2 \u2192 d3 \u2192 \u2026)", "physical": "Physical Dice (d4 \u2192 d6 \u2192 d8 \u2192 d10 \u2192 d12 \u2192 d20)", "custom": "Custom (JSON Table)" } });
-    game.settings.register(MODULE_ID, "menagerieCrDiceTable", { name: "Menagerie: CR Dice Scale Table (JSON)", hint: 'Used only with Custom Dice mode. JSON mapping minimum CR to die size. Example: {"0":"d6","1":"d8","4":"d10","9":"d12"}.', scope: "world", config: true, type: String, default: '{"0":"d6","1":"d8","4":"d10","9":"d12"}' });
-    game.settings.register(MODULE_ID, "createActorsForHirelings", { name: "Create Actors for Staff", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "ignoreFacilityPrereqs", { name: "Ignore Facility Prerequisites", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "promptAllEvents", { name: "Prompt for Every Event", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "manualEventSelection", { name: "Manually Choose Events", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "excludedSourcesData", { scope: "world", config: false, type: Array, default: [] });
-    game.settings.register(MODULE_ID, "excludedFacilitiesData", { scope: "world", config: false, type: Array, default: [] });
-    game.settings.registerMenu(MODULE_ID, "exclusionMenuBtn", { name: "Manage Facility Availability", label: "Filter Facilities", icon: "fas fa-filter", type: FacilityExclusionApp, restricted: true });
-    game.settings.register(MODULE_ID, "freeMode", { scope: "world", config: false, type: Boolean, default: false });
 });
 
 Hooks.once("ready", async () => {
@@ -2284,6 +2297,123 @@ Hooks.on("updateItem", (item, changes) => {
 /**
  * CONFIGURATION CLASSES
  */
+class BastionSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
+    static DEFAULT_OPTIONS = {
+        id: "bastion-settings-app", tag: "form",
+        window: { title: "Bastion Manager Configuration", resizable: true },
+        position: { width: 560, height: 620 }, classes: ["bastion-app"],
+        form: { handler: BastionSettingsApp.processForm, closeOnSubmit: true }
+    };
+    static PARTS = { main: { template: "modules/dnd-2024-bastion-manager/templates/bastion-settings.hbs" } };
+
+    async _prepareContext() {
+        const g = (k) => game.settings.get(MODULE_ID, k);
+        return {
+            ignoreConstructionCosts: g("ignoreConstructionCosts"),
+            ignoreFacilityPrereqs:   g("ignoreFacilityPrereqs"),
+            specialFacilitiesBuildTime: g("specialFacilitiesBuildTime"),
+            disableNeglect:          g("disableNeglect"),
+            disableSpecialCap:       g("disableSpecialCap"),
+            disableDuplicateLimit:   g("disableDuplicateLimit"),
+            advancePermission:       g("advancePermission"),
+            groupInheritsFacilities: g("groupInheritsFacilities"),
+            unifyCombinedTurns:      g("unifyCombinedTurns"),
+            globalTurnCount:         g("globalTurnCount"),
+            calculationMode:         g("calculationMode"),
+            daysPerTurn:             g("daysPerTurn"),
+            syncDaysPerTurn:         g("syncDaysPerTurn"),
+            scaleWeekToTurnLength:   g("scaleWeekToTurnLength"),
+            advanceWorldTime:        g("advanceWorldTime"),
+            calendarDrivenTurns:     g("calendarDrivenTurns"),
+            recruitMode:             g("recruitMode"),
+            promptAllEvents:         g("promptAllEvents"),
+            manualEventSelection:    g("manualEventSelection"),
+            nameHirelings:           g("nameHirelings"),
+            autoNameHirelings:       g("autoNameHirelings"),
+            autoNameDefenders:       g("autoNameDefenders"),
+            createActorsForHirelings: g("createActorsForHirelings"),
+            menagerieArmoryBonus:    g("menagerieArmoryBonus"),
+            menagerieDiceMode:       g("menagerieDiceMode"),
+            menagerieCrDiceTable:    g("menagerieCrDiceTable"),
+            reliquaryOneTalismanLimit: g("reliquaryOneTalismanLimit"),
+        };
+    }
+
+    _onRender(context, options) {
+        super._onRender(context, options);
+        const el = this.element;
+
+        // Tab switching
+        const panels = el.querySelectorAll(".settings-panel");
+        el.querySelectorAll(".settings-tab-btn").forEach(btn => {
+            btn.addEventListener("click", () => {
+                el.querySelectorAll(".settings-tab-btn").forEach(b => {
+                    b.classList.remove("active");
+                    b.style.background = "rgba(0,0,0,0.1)";
+                    b.style.color = "#aaa";
+                    b.style.borderColor = "#555";
+                });
+                btn.classList.add("active");
+                btn.style.background = "rgba(255,255,255,0.1)";
+                btn.style.color = "#e8e4d9";
+                btn.style.borderColor = "#666";
+                panels.forEach(p => { p.style.display = p.dataset.tab === btn.dataset.tab ? "" : "none"; });
+            });
+        });
+
+        // Sub-app launchers
+        el.querySelector("[data-action='openConstructionConfig']")?.addEventListener("click", () => new ConstructionConfigApp().render(true));
+        el.querySelector("[data-action='openFacilityExclusion']")?.addEventListener("click", () => new FacilityExclusionApp().render(true));
+
+        // Reset to defaults
+        el.querySelector("[data-action='reset-defaults']")?.addEventListener("click", async () => {
+            const confirmed = await DialogV2.confirm({ window: { title: "Reset Settings" }, content: "<p>Reset all Bastion Manager settings to their defaults?</p>" });
+            if (!confirmed) return;
+            const keys = ["ignoreConstructionCosts","ignoreFacilityPrereqs","specialFacilitiesBuildTime","disableNeglect","disableSpecialCap","disableDuplicateLimit","advancePermission","groupInheritsFacilities","unifyCombinedTurns","globalTurnCount","calculationMode","daysPerTurn","syncDaysPerTurn","scaleWeekToTurnLength","advanceWorldTime","calendarDrivenTurns","recruitMode","promptAllEvents","manualEventSelection","nameHirelings","autoNameHirelings","autoNameDefenders","createActorsForHirelings","menagerieArmoryBonus","menagerieDiceMode","menagerieCrDiceTable","reliquaryOneTalismanLimit"];
+            await Promise.all(keys.map(k => game.settings.set(MODULE_ID, k, game.settings.settings.get(`${MODULE_ID}.${k}`)?.default)));
+            this.render();
+        });
+
+        // Cancel button
+        el.querySelector("[data-action='close-settings']")?.addEventListener("click", () => this.close());
+    }
+
+    static async processForm(event, form, formData) {
+        const d = formData.object;
+        const s = (k, v) => game.settings.set(MODULE_ID, k, v);
+        await Promise.all([
+            s("ignoreConstructionCosts",  d.ignoreConstructionCosts  ?? false),
+            s("ignoreFacilityPrereqs",    d.ignoreFacilityPrereqs    ?? false),
+            s("specialFacilitiesBuildTime", d.specialFacilitiesBuildTime ?? false),
+            s("disableNeglect",           d.disableNeglect           ?? false),
+            s("disableSpecialCap",        d.disableSpecialCap        ?? false),
+            s("disableDuplicateLimit",    d.disableDuplicateLimit    ?? false),
+            s("advancePermission",        Number(d.advancePermission)),
+            s("groupInheritsFacilities",  d.groupInheritsFacilities  ?? false),
+            s("unifyCombinedTurns",       d.unifyCombinedTurns       ?? false),
+            s("globalTurnCount",          Number(d.globalTurnCount)  || 0),
+            s("calculationMode",          d.calculationMode),
+            s("daysPerTurn",              Number(d.daysPerTurn)      || 7),
+            s("syncDaysPerTurn",          d.syncDaysPerTurn          ?? false),
+            s("scaleWeekToTurnLength",    d.scaleWeekToTurnLength    ?? false),
+            s("advanceWorldTime",         d.advanceWorldTime         ?? false),
+            s("calendarDrivenTurns",      d.calendarDrivenTurns      ?? false),
+            s("recruitMode",              d.recruitMode),
+            s("promptAllEvents",          d.promptAllEvents          ?? false),
+            s("manualEventSelection",     d.manualEventSelection     ?? false),
+            s("nameHirelings",            d.nameHirelings            ?? false),
+            s("autoNameHirelings",        d.autoNameHirelings        ?? false),
+            s("autoNameDefenders",        d.autoNameDefenders        ?? false),
+            s("createActorsForHirelings", d.createActorsForHirelings ?? false),
+            s("menagerieArmoryBonus",     d.menagerieArmoryBonus     ?? false),
+            s("menagerieDiceMode",        d.menagerieDiceMode),
+            s("menagerieCrDiceTable",     d.menagerieCrDiceTable),
+            s("reliquaryOneTalismanLimit", d.reliquaryOneTalismanLimit ?? false),
+        ]);
+        ui.notifications.info("Bastion Manager | Settings saved.");
+    }
+}
+
 class FacilityExclusionApp extends HandlebarsApplicationMixin(ApplicationV2) {
     static DEFAULT_OPTIONS = {
         id: "facility-exclusion-app", tag: "form",
