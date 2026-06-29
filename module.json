@@ -81,5 +81,7 @@
   "flags": {
     "canUpload": true
   },
-  "description": "<p>Manages the D&amp;D 5.5e Bastion system, tracking facilities, orders, and turn advancement.</p>"
+  "description": "<p>Manages the D&amp;D 5.5e Bastion system, tracking facilities, orders, and turn advancement.</p>",
+  "manifest": "https://raw.githubusercontent.com/Unosami/dnd-2024-bastion-manager/main/module.json",
+  "download": "https://github.com/Unosami/dnd-2024-bastion-manager/archive/refs/heads/main.zip"
 }
