@@ -1,5 +1,5 @@
 import { BastionManager } from "./bastion-app.js";
-import { MODULE_ID, ORDER_SVG_MAP, ORDER_ICON_MAP, PASSIVE_INFO, GARDEN_ROOT_ID, STABLE_ROOT_ID } from "./bastion-data.js";
+import { MODULE_ID, ORDER_SVG_MAP, ORDER_ICON_MAP, PASSIVE_INFO, GARDEN_ROOT_ID, STABLE_ROOT_ID, STAFF_FOLDER_ID, FACILITY_HIRELING_TEMPLATES } from "./bastion-data.js";
 import { getActiveCalendarName, getCalendarWeekLength, effectiveDaysPerTurn } from "./bastion-calculations.js";
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
@@ -384,7 +384,7 @@ const integrateBastionDashboard = (bastionTab) => {
                 </div>
             `;
             const contentsSection = bastionTab.querySelector('section.contents');
-            if (contentsSection) contentsSection.appendChild(foundingDiv);
+            (contentsSection || bastionTab).appendChild(foundingDiv);
             foundingDiv.querySelector('.bastion-found-btn').addEventListener('click', async (ev) => {
                 ev.preventDefault();
                 const mgr = new BastionManager(actor);
@@ -2097,8 +2097,9 @@ Hooks.once("init", () => {
     game.settings.register(MODULE_ID, "autoNameHirelings",       { scope: "world",  config: false, type: Boolean, default: true });
     game.settings.register(MODULE_ID, "nameDefenders",           { scope: "world",  config: false, type: Boolean, default: true });
     game.settings.register(MODULE_ID, "autoNameDefenders",       { scope: "client", config: false, type: Boolean, default: true });
-    game.settings.register(MODULE_ID, "createActorsForHirelings",{ scope: "world",  config: false, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "createActorsForDefenders",{ scope: "world",  config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "createActorsForHirelings",  { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "createActorsForDefenders",  { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "hirelingActorTemplates",    { scope: "world", config: false, type: String,  default: JSON.stringify(FACILITY_HIRELING_TEMPLATES) });
 
     // ── Facility-Specific (hidden) ────────────────────────────────────
     game.settings.register(MODULE_ID, "menagerieArmoryBonus",    { scope: "world", config: false, type: Boolean, default: false });
@@ -2108,8 +2109,11 @@ Hooks.once("init", () => {
     game.settings.register(MODULE_ID, "freeMode",                { scope: "world", config: false, type: Boolean, default: false });
 
     // ── Root Menu Buttons ─────────────────────────────────────────────
-    game.settings.registerMenu(MODULE_ID, "bastionConfigBtn", { name: "Bastion Manager Configuration", label: "Configure Bastion Manager", icon: "fas fa-chess-rook", type: BastionSettingsApp, restricted: true });
-    game.settings.registerMenu(MODULE_ID, "resetAllTurnsBtn", { name: "Reset All Bastion Turns", label: "Reset Global Turns", icon: "fas fa-rotate-left", type: ResetBastionsApp, restricted: true });
+    game.settings.registerMenu(MODULE_ID, "bastionConfigBtn",         { name: "Bastion Manager Configuration",   label: "Configure Bastion Manager",      icon: "fas fa-chess-rook",       type: BastionSettingsApp,     restricted: true });
+    game.settings.registerMenu(MODULE_ID, "resetAllTurnsBtn",         { name: "Reset All Bastion Turns",         label: "Reset Global Turns",             icon: "fas fa-rotate-left",      type: ResetBastionsApp,       restricted: true });
+    game.settings.registerMenu(MODULE_ID, "hirelingTemplatesBtn",     { name: "Hireling Actor Templates",        label: "Configure Hireling Templates",   icon: "fas fa-masks-theater",    type: HirelingTemplatesApp,   restricted: true });
+    game.settings.registerMenu(MODULE_ID, "constructionConfigBtn",    { name: "Facility Construction Costs",     label: "Configure Construction Costs",   icon: "fas fa-hammer",           type: ConstructionConfigApp,  restricted: true });
+    game.settings.registerMenu(MODULE_ID, "facilityExclusionBtn",     { name: "Facility Availability",           label: "Manage Facility Availability",   icon: "fas fa-filter",           type: FacilityExclusionApp,   restricted: true });
 
     // dnd5e 5.3.3 / Foundry v14 compatibility: SourcedItemsMap.set() crashes when
     // parseUuid() returns null for malformed compendiumSource UUIDs, leaving item.labels
@@ -2403,12 +2407,13 @@ class BastionSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
         // Sub-app launchers
         el.querySelector("[data-action='openConstructionConfig']")?.addEventListener("click", () => new ConstructionConfigApp().render(true));
         el.querySelector("[data-action='openFacilityExclusion']")?.addEventListener("click", () => new FacilityExclusionApp().render(true));
+        el.querySelector("[data-action='openHirelingTemplates']")?.addEventListener("click", () => new HirelingTemplatesApp().render(true));
 
         // Reset to defaults
         el.querySelector("[data-action='reset-defaults']")?.addEventListener("click", async () => {
             const confirmed = await DialogV2.confirm({ window: { title: "Reset Settings" }, content: "<p>Reset all Bastion Manager settings to their defaults?</p>" });
             if (!confirmed) return;
-            const keys = ["ignoreConstructionCosts","ignoreFacilityPrereqs","specialFacilitiesBuildTime","disableNeglect","disableSpecialCap","disableDuplicateLimit","advancePermission","groupInheritsFacilities","unifyCombinedTurns","globalTurnCount","calculationMode","daysPerTurn","syncDaysPerTurn","scaleWeekToTurnLength","advanceWorldTime","calendarDrivenTurns","recruitMode","promptAllEvents","manualEventSelection","nameHirelings","autoNameHirelings","nameDefenders","autoNameDefenders","createActorsForHirelings","createActorsForDefenders","menagerieArmoryBonus","menagerieDiceMode","menagerieCrDiceTable","reliquaryOneTalismanLimit"];
+            const keys = ["ignoreConstructionCosts","ignoreFacilityPrereqs","specialFacilitiesBuildTime","disableNeglect","disableSpecialCap","disableDuplicateLimit","advancePermission","groupInheritsFacilities","unifyCombinedTurns","globalTurnCount","calculationMode","daysPerTurn","syncDaysPerTurn","scaleWeekToTurnLength","advanceWorldTime","calendarDrivenTurns","recruitMode","promptAllEvents","manualEventSelection","nameHirelings","autoNameHirelings","nameDefenders","autoNameDefenders","createActorsForHirelings","createActorsForDefenders","hirelingActorTemplates","menagerieArmoryBonus","menagerieDiceMode","menagerieCrDiceTable","reliquaryOneTalismanLimit"];
             await Promise.all(keys.map(k => game.settings.set(MODULE_ID, k, game.settings.settings.get(`${MODULE_ID}.${k}`)?.default)));
             this.render();
         });
@@ -2547,6 +2552,98 @@ class ConstructionConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
             await game.settings.set(MODULE_ID, `${s}Time`, Number(data[`${s}Time`]));
         }
         ui.notifications.info("Bastion Manager | Configuration saved.");
+    }
+}
+
+class HirelingTemplatesApp extends HandlebarsApplicationMixin(ApplicationV2) {
+    #rows = null;
+
+    static DEFAULT_OPTIONS = {
+        id: "hireling-templates-app", tag: "form",
+        window: { title: "Hireling Actor Templates", resizable: false },
+        position: { width: 560, height: "auto" }, classes: ["bastion-app"],
+        form: { handler: HirelingTemplatesApp.processForm, closeOnSubmit: true }
+    };
+
+    static PARTS = {
+        main: { template: "modules/dnd-2024-bastion-manager/templates/hireling-templates.hbs" }
+    };
+
+    _getAvailableNames(index) {
+        return [...index]
+            .filter(e => e.folder === STAFF_FOLDER_ID && e.name !== "Defender")
+            .map(e => e.name)
+            .sort();
+    }
+
+    async _prepareContext() {
+        const actorsPack = game.packs.get(`${MODULE_ID}.bastion-facility-actors`);
+        await actorsPack?.getIndex();
+        const availableNames = actorsPack ? this._getAvailableNames(actorsPack.index) : ["Hireling"];
+
+        const facilitiesPack = game.packs.get(`${MODULE_ID}.bastion-facilities`);
+        await facilitiesPack?.getIndex();
+        const facilityNames = facilitiesPack
+            ? [...facilitiesPack.index].map(e => e.name).sort()
+            : [];
+
+        if (this.#rows === null) {
+            const stored = JSON.parse(game.settings.get(MODULE_ID, "hirelingActorTemplates") || "{}");
+            this.#rows = Object.entries(stored).map(([facility, template]) => ({ facility, template }));
+        }
+
+        return {
+            noTemplates: availableNames.length === 0,
+            noFacilities: facilityNames.length === 0,
+            availableNames,
+            facilityNames,
+            rows: this.#rows.map(row => ({
+                facilityOptions: facilityNames.map(name => ({ name, selected: name === row.facility })),
+                options: availableNames.map(name => ({ name, selected: name === row.template }))
+            }))
+        };
+    }
+
+    _syncFormToRows() {
+        this.#rows = this.#rows.map((_, i) => ({
+            facility: this.element.querySelector(`[name="facility_${i}"]`)?.value ?? "",
+            template: this.element.querySelector(`[name="template_${i}"]`)?.value ?? "Hireling"
+        }));
+    }
+
+    _onRender(context, options) {
+        super._onRender(context, options);
+        const el = this.element;
+
+        el.querySelectorAll(".remove-row").forEach((btn, i) => {
+            btn.addEventListener("click", () => {
+                this._syncFormToRows();
+                this.#rows.splice(i, 1);
+                this.render();
+            });
+        });
+
+        el.querySelector("#add-template-row")?.addEventListener("click", () => {
+            this._syncFormToRows();
+            this.#rows.push({ facility: context.facilityNames?.[0] ?? "", template: context.availableNames[0] ?? "Hireling" });
+            this.render();
+        });
+
+        el.querySelector("[data-action='close-dialog']")?.addEventListener("click", () => this.close());
+    }
+
+    static async processForm(event, form, formData) {
+        const d = formData.object;
+        const result = {};
+        let i = 0;
+        while (`facility_${i}` in d) {
+            const facility = (d[`facility_${i}`] || "").trim();
+            const template = d[`template_${i}`] || "Hireling";
+            if (facility) result[facility] = template;
+            i++;
+        }
+        await game.settings.set(MODULE_ID, "hirelingActorTemplates", JSON.stringify(result));
+        ui.notifications.info("Bastion Manager | Hireling templates saved.");
     }
 }
 

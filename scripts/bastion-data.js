@@ -38,6 +38,17 @@ export const BASE_ITEMS_FOLDER_ID        = "AQ0XdVgHpL5IaNjC";
 export const RELIQUARY_ROOT_ID           = "zOMONoelQli72ZI7";
 export const SANCTUM_ROOT_ID             = "eqeKF3pxcKuI6EX0";
 
+// ─── Staff Compendium ─────────────────────────────────────────────────────────
+// Folder ID for the "Staff" folder inside the bastion-facility-actors compendium.
+// Actor names in this folder are used as templates when creating hireling/defender actors.
+export const STAFF_FOLDER_ID = "jcgbNxUlwFGCfDcb";
+
+// Maps a facility name substring to the name of its specific hireling template actor.
+// Falls back to the generic "Hireling" actor for any facility not listed here.
+export const FACILITY_HIRELING_TEMPLATES = {
+    "War Room": "Lieutenant",
+};
+
 // ─── Orders ───────────────────────────────────────────────────────────────────
 export const BASTION_ORDERS = ["Maintain", "Craft", "Harvest", "Recruit", "Research", "Trade", "Empower"];
 

@@ -9,6 +9,7 @@ import {
     SANCTUARY_ROOT_ID, SCRIPTORIUM_ROOT_ID, STABLE_ROOT_ID, MENAGERIE_ROOT_ID,
     TELEPORTATION_CIRCLE_ROOT_ID, TRAINING_AREA_ROOT_ID, PUB_ROOT_ID,
     BASE_ITEMS_FOLDER_ID, RELIQUARY_ROOT_ID, SANCTUM_ROOT_ID,
+    STAFF_FOLDER_ID,
     BASTION_ORDERS, BASTION_EVENTS_LIST, FACILITY_CONFIG
 } from "./bastion-data.js";
 
@@ -5030,7 +5031,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const basicFolderIds = basicRoot ? BastionManager._getAllSubfolderIds(pack, basicRoot.id) : [];
 
         const ignorePrereqs = game.settings.get(MODULE_ID, "ignoreFacilityPrereqs");
-        
+
+        let excludedSources = [];
+        let excludedFacilities = [];
+        try {
+            excludedSources   = game.settings.get(MODULE_ID, "excludedSourcesData")   || [];
+            excludedFacilities = game.settings.get(MODULE_ID, "excludedFacilitiesData") || [];
+        } catch(e) {}
+
         // Helper to get grouped/sorted lists
         const getFacilityOptions = (isBasicTarget) => {
             let list = [];
@@ -5038,6 +5046,15 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 const itemFolderId = d.folder?.id || d.folder;
                 const isBasic = basicFolderIds.includes(itemFolderId) || d.system?.type?.value === "basic" || d.name.toLowerCase().includes("basic");
                 if (isBasic !== isBasicTarget) return;
+
+                if (excludedFacilities.includes(d.id)) return;
+
+                let source = "Unknown Source";
+                if (typeof d.system?.source === "string") source = d.system.source;
+                else if (d.system?.source?.custom) source = d.system.source.custom;
+                else if (d.system?.source?.book)   source = d.system.source.book;
+                else if (d.system?.source?.label)  source = d.system.source.label;
+                if (excludedSources.includes(source.trim())) return;
 
                 let lvl = d.system?.prerequisites?.level || d.system?.requirements?.level || 0;
                 if (!lvl) {
@@ -5174,10 +5191,21 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     }
                     container.innerHTML = inputs;
                 };
+                const avoidDuplicate = (changed) => {
+                    const otherName = changed.name === 'spec1' ? 'spec2' : 'spec1';
+                    const other = html.querySelector(`.spec-init[name="${otherName}"]`);
+                    if (other && other.value === changed.value) {
+                        const nextOpt = Array.from(other.options).find(o => o.value !== changed.value);
+                        if (nextOpt) { other.value = nextOpt.value; updateNames(other); }
+                    }
+                };
                 html.querySelectorAll('.spec-init').forEach(s => {
-                    s.addEventListener('change', e => updateNames(e.target));
+                    s.addEventListener('change', e => { updateNames(e.target); avoidDuplicate(e.target); });
                     updateNames(s);
                 });
+                // Ensure spec2 doesn't open on the same facility as spec1
+                const spec1El = html.querySelector('select[name="spec1"]');
+                if (spec1El) avoidDuplicate(spec1El);
             },
             rejectClose: false
         });
@@ -5190,8 +5218,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (!doc) return console.error(`Bastion Manager | Facility ID ${id} not found in compendium.`);
             const data = doc.toObject();
             foundry.utils.setProperty(data, `flags.${MODULE_ID}.size`, size);
+            foundry.utils.setProperty(data, `flags.${MODULE_ID}.order`, "Maintain");
 
             const hCount = getHCountFromId(id);
+            let pendingInitNames = [];
+            let pendingInitProf = null;
             if (slotNum && hCount > 0 && game.settings.get(MODULE_ID, "nameHirelings")) {
                 const autoGen = game.settings.get(MODULE_ID, "autoNameHirelings");
                 let names = [];
@@ -5204,24 +5235,31 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
                 if (names.length > 0) {
                     foundry.utils.setProperty(data, `flags.${MODULE_ID}.hirelings`, names);
-                    let prof = BastionManager._getHirelingProfession(doc.name, null);
-                    names.forEach(n => BastionManager._createHirelingActor(n, prof, this.actor.name, doc.name, false, doc.id));
+                    pendingInitNames = names;
+                    pendingInitProf = BastionManager._getHirelingProfession(doc.name, null);
                 }
             }
-            
+
             if (doc.name.includes("Workshop") && selections.workshopTools) foundry.utils.setProperty(data, `flags.${MODULE_ID}.workshopTools`, selections.workshopTools);
             if (doc.name.includes("Garden") && !doc.name.includes("Greenhouse") && slotNum) {
                 const gardenType = selections[`gardenType${slotNum}`];
                 if (gardenType) foundry.utils.setProperty(data, `flags.${MODULE_ID}.subType`, gardenType);
             }
-            
+
+            let initFacilityId = null;
             if (this.actor.type === "group") {
                 const gf = this.actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
                 data._id = foundry.utils.randomID();
+                initFacilityId = data._id;
                 gf.push(data);
                 await this.actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", gf);
             } else {
-                await Item.create(data, { parent: this.actor });
+                const createdItem = await Item.create(data, { parent: this.actor });
+                initFacilityId = createdItem?.id;
+            }
+
+            if (pendingInitNames.length > 0 && initFacilityId) {
+                for (const n of pendingInitNames) await BastionManager._createHirelingActor(n, pendingInitProf, this.actor.name, doc.name, false, initFacilityId);
             }
         };
 
@@ -5949,10 +5987,13 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             // Apply selections
             if (formData.subType) foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.subType`, formData.subType);
             if (formData.workshopTools) foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.workshopTools`, formData.workshopTools);
+            // Collect hireling data now but defer actor creation until after the facility item exists
+            let pendingHirelings = null;
+            let pendingHirelingProf = null;
             if (formData.hirelings) {
                 foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.hirelings`, formData.hirelings);
-                let prof = BastionManager._getHirelingProfession(itemDoc.name, formData.subType);
-                formData.hirelings.forEach(h => BastionManager._createHirelingActor(h, prof, this.actor.name, itemDoc.name, false, itemDoc.id));
+                pendingHirelings = formData.hirelings;
+                pendingHirelingProf = BastionManager._getHirelingProfession(itemDoc.name, formData.subType);
             }
 
             if (isStable) {
@@ -5965,13 +6006,15 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.archiveBooks`, books);
             }
 
+            let createdFacilityId = null;
             if (turns > 0) {
                 foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.upgradeTurns`, turns);
                 foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.upgradeProgress`, 0);
                 foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.targetSize`, size);
                 foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.size`, null);
-                
+
                 newFacData._id = foundry.utils.randomID();
+                createdFacilityId = newFacData._id;
                 const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
                 gf.push(newFacData);
                 await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
@@ -5980,11 +6023,16 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 if (this.actor.type === "group") {
                     const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
                     newFacData._id = foundry.utils.randomID();
+                    createdFacilityId = newFacData._id;
                     gf.push(newFacData);
                     await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
                 } else {
-                    await Item.create(newFacData, { parent: this.actor });
+                    const createdItem = await Item.create(newFacData, { parent: this.actor });
+                    createdFacilityId = createdItem?.id;
                 }
+            }
+            if (pendingHirelings && createdFacilityId) {
+                for (const h of pendingHirelings) await BastionManager._createHirelingActor(h, pendingHirelingProf, this.actor.name, itemDoc.name, false, createdFacilityId);
             }
         } else {
             // No prompt needed, instant build (happens if all options disabled and build times off)
@@ -7942,9 +7990,17 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const settingKey = isDefender ? "createActorsForDefenders" : "createActorsForHirelings";
         if (!game.settings.get(MODULE_ID, settingKey)) return;
 
-        const templateUuid = isDefender
-            ? "Compendium.dnd-2024-bastion-manager.bastion-facility-actors.Actor.tGSjd0qBOZyOQXAW"
-            : "Compendium.dnd-2024-bastion-manager.bastion-facility-actors.Actor.Rz15e9ZuAk0fCqHv";
+        // Resolve which template actor to use (facility-specific or generic fallback)
+        let templateName = isDefender ? "Defender" : "Hireling";
+        if (!isDefender) {
+            const templates = JSON.parse(game.settings.get(MODULE_ID, "hirelingActorTemplates") || "{}");
+            const match = Object.entries(templates).find(([key]) => facilityName.includes(key));
+            if (match) templateName = match[1];
+        }
+        const pack = game.packs.get(`${MODULE_ID}.bastion-facility-actors`);
+        await pack?.getIndex();
+        const entry = pack?.index.find(e => e.name === templateName && e.folder === STAFF_FOLDER_ID);
+        const template = entry ? await pack.getDocument(entry._id) : null;
 
         let folderName = isDefender ? "Bastion Defenders" : "Bastion Hirelings";
         let folder = game.folders.find(f => f.name === folderName && f.type === "Actor");
@@ -7953,8 +8009,6 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             // Small delay to ensure the database indices catch up before the loop fires again
             await new Promise(resolve => setTimeout(resolve, 50));
         }
-
-        const template = await fromUuid(templateUuid);
         // deepClone prevents shared prototypeToken references when multiple actors are created concurrently
         const actorData = foundry.utils.deepClone(template ? template.toObject() : { type: "npc" });
         delete actorData._id;
@@ -8847,7 +8901,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (newNames.length > 0) {
                 for (const dName of newNames) {
                     if (dName) {
-                        BastionManager._createHirelingActor(dName, "Defender", actor.name, fac.name, true, fac.id);
+                        await BastionManager._createHirelingActor(dName, "Defender", actor.name, fac.name, true, fac.isFlag ? fac.doc._id : fac.doc.id);
                     }
                 }
             }
