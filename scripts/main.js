@@ -297,6 +297,17 @@ function injectBastionStyles() {
 }
 
 /**
+ * Open BastionManager for an actor.
+ * If sourceEl is inside a Foundry v14 detached window, the manager is also detached.
+ */
+function _openBastionManager(actor, sourceEl) {
+    const mgr = new BastionManager(actor);
+    const isDetached = sourceEl?.ownerDocument && (document !== sourceEl.ownerDocument);
+    if (isDetached) mgr.detachWindow({ force: true });
+    else mgr.render({ force: true });
+}
+
+/**
  * INTEGRATION ENGINE: Mutation-Based Injection
  * Since v13 sheets don't always trigger hooks on tab swap, we watch the DOM.
  */
@@ -1194,7 +1205,7 @@ const integrateBastionDashboard = (bastionTab) => {
         mgrBtn.addEventListener("mousedown", ev => ev.stopPropagation());
         mgrBtn.addEventListener("click", (ev) => {
             ev.stopPropagation();
-            new BastionManager(actor).render({ force: true });
+            _openBastionManager(actor, ev.currentTarget);
         });
 
         orderRow.appendChild(mgrBtn);
@@ -1941,6 +1952,8 @@ const integrateBastionDashboard = (bastionTab) => {
             ev.preventDefault();
             ev.stopPropagation();
 
+            const _ctxSourceEl = ev.currentTarget;
+
             // Remove any existing context menu first
             document.querySelectorAll('.bastion-facility-context-menu').forEach(m => m.remove());
 
@@ -2006,7 +2019,7 @@ const integrateBastionDashboard = (bastionTab) => {
             addSep();
 
             addItem('fa-solid fa-gauge-high', 'Open Full Manager', false, () => {
-                new BastionManager(actor).render({ force: true });
+                _openBastionManager(actor, _ctxSourceEl);
             });
 
             document.body.appendChild(menu);
@@ -2799,7 +2812,7 @@ const _buildGroupMemberBastionCard = (memberActor) => {
 
     memberHeader.querySelector('.bastion-open-member-btn').addEventListener('click', (ev) => {
         ev.stopPropagation();
-        new BastionManager(memberActor).render({ force: true });
+        _openBastionManager(memberActor, ev.currentTarget);
     });
 
     return card;
@@ -2919,14 +2932,14 @@ Hooks.on("getHeaderControlsApplicationV2", (app, controls) => {
     if (!(actor instanceof Actor) || !["character", "npc", "group"].includes(actor.type)) return;
     controls.unshift({ label: "Bastion Manager", icon: "fa-solid fa-chess-rook", action: "openBastionManager" });
     if (!app.options.actions) app.options.actions = {};
-    app.options.actions.openBastionManager = () => new BastionManager(actor).render({ force: true });
+    app.options.actions.openBastionManager = () => _openBastionManager(actor, app.element);
 });
 
 // Header hook for legacy Actor Sheets (V1/V2 backward compatibility)
 Hooks.on("getActorSheetHeaderButtons", (app, buttons) => {
     buttons.unshift({
         label: "Bastion", class: "bastion-header-btn", icon: "fa-solid fa-chess-rook",
-        onclick: () => new BastionManager(app.actor).render({ force: true })
+        onclick: () => _openBastionManager(app.actor, app.element?.[0] || app.element)
     });
 });
 
