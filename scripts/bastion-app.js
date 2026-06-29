@@ -1525,6 +1525,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 autoNextAction: autoNextAction.charAt(0).toUpperCase() + autoNextAction.slice(1),
                 tradeChoice,
                 tradeAmount,
+                storedGp,
                 storehouseLimit,
                 storehouseMarkup,
                 showArcanaItemSelect: isArcaneStudyCrafting && (craftChoice === "Magic Item (Arcana)" || isPausedProjectInQueue && storedCraftChoice === "Magic Item (Arcana)"),
@@ -5204,7 +5205,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 if (names.length > 0) {
                     foundry.utils.setProperty(data, `flags.${MODULE_ID}.hirelings`, names);
                     let prof = BastionManager._getHirelingProfession(doc.name, null);
-                    names.forEach(n => BastionManager._createHirelingActor(n, prof, this.actor.name, doc.name, false));
+                    names.forEach(n => BastionManager._createHirelingActor(n, prof, this.actor.name, doc.name, false, doc.id));
                 }
             }
             
@@ -5951,7 +5952,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (formData.hirelings) {
                 foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.hirelings`, formData.hirelings);
                 let prof = BastionManager._getHirelingProfession(itemDoc.name, formData.subType);
-                formData.hirelings.forEach(h => BastionManager._createHirelingActor(h, prof, this.actor.name, itemDoc.name, false));
+                formData.hirelings.forEach(h => BastionManager._createHirelingActor(h, prof, this.actor.name, itemDoc.name, false, itemDoc.id));
             }
 
             if (isStable) {
@@ -6763,6 +6764,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     static async _gatherPreflightInputs(actor, facilities, turns = 1) {
         const recruitMode = game.settings.get(MODULE_ID, "recruitMode");
         const nameHirelings = game.settings.get(MODULE_ID, "nameHirelings");
+        const nameDefenders = game.settings.get(MODULE_ID, "nameDefenders");
         const answers = {};
         const sections = [];
 
@@ -6801,7 +6803,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         recruited = Math.min(rolledTotal, maxDefs - defCount);
                     }
                     answers[facId] = { recruited, turns };
-                    if (nameHirelings && promptNames && recruited > 0) {
+                    if (nameDefenders && nameHirelings && promptNames && recruited > 0) {
                         sections.push({ type: "barrack-names", facId, facName, count: recruited, turns });
                     }
                 }
@@ -7936,35 +7938,34 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         };
     }
 
-    static async _createHirelingActor(name, role, ownerName, facilityName, isDefender = false) {
-        if (!game.settings.get("dnd-2024-bastion-manager", "createActorsForHirelings")) return;
-        
+    static async _createHirelingActor(name, role, ownerName, facilityName, isDefender = false, facilityItemId = null) {
+        const settingKey = isDefender ? "createActorsForDefenders" : "createActorsForHirelings";
+        if (!game.settings.get(MODULE_ID, settingKey)) return;
+
+        const templateUuid = isDefender
+            ? "Compendium.dnd-2024-bastion-manager.bastion-facility-actors.Actor.tGSjd0qBOZyOQXAW"
+            : "Compendium.dnd-2024-bastion-manager.bastion-facility-actors.Actor.Rz15e9ZuAk0fCqHv";
+
         let folderName = isDefender ? "Bastion Defenders" : "Bastion Hirelings";
         let folder = game.folders.find(f => f.name === folderName && f.type === "Actor");
-        
-        // Wait for the folder to be created and indexed before proceeding
         if (!folder) {
             folder = await Folder.create({ name: folderName, type: "Actor" });
             // Small delay to ensure the database indices catch up before the loop fires again
             await new Promise(resolve => setTimeout(resolve, 50));
         }
 
-        const actorData = {
-            name: name,
-            type: "npc",
-            folder: folder.id,
-            system: {
-                details: {
-                    biography: { value: `<p>A ${isDefender ? 'Bastion Defender' : 'Bastion Hireling'} (${role}) working at the <b>${facilityName}</b> for ${ownerName}.</p>` }
-                }
-            }
-        };
-
-        // Try to assign a generic token if possible based on role
-        if (isDefender) {
-            actorData.img = "icons/weapons/swords/sword-guard-flanged-steel.webp";
-        } else {
-            actorData.img = "icons/skills/trades/smithing-anvil-silver-red.webp";
+        const template = await fromUuid(templateUuid);
+        // deepClone prevents shared prototypeToken references when multiple actors are created concurrently
+        const actorData = foundry.utils.deepClone(template ? template.toObject() : { type: "npc" });
+        delete actorData._id;
+        actorData.name = name;
+        actorData.folder = folder.id;
+        actorData.prototypeToken = { ...(actorData.prototypeToken ?? {}), name };
+        foundry.utils.setProperty(actorData, "system.details.biography.value",
+            `<p>A ${isDefender ? "Bastion Defender" : "Bastion Hireling"} (${role}) working at the <b>${facilityName}</b> for ${ownerName}.</p>`
+        );
+        if (facilityItemId) {
+            actorData.flags = foundry.utils.mergeObject(actorData.flags ?? {}, { [MODULE_ID]: { facilityItemId } });
         }
 
         await Actor.create(actorData);
@@ -8806,7 +8807,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 return `${first} ${last}`;
             };
 
-            if (game.settings.get(MODULE_ID, "nameHirelings") && promptNames) {
+            if (!game.settings.get(MODULE_ID, "nameDefenders")) {
+                // Defender names disabled — track count only
+            } else if (game.settings.get(MODULE_ID, "nameHirelings") && promptNames) {
                 if (preflightData?.names) {
                     // Use names gathered in consolidated preflight dialog
                     for (let d = 0; d < newlyRecruited; d++) {
@@ -8833,7 +8836,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     }
                 }
             } else {
-                // Background auto-generation if prompting is off but names are enabled globally
+                // Background auto-generation if prompting is off
                 const autoName = game.settings.get(MODULE_ID, "autoNameDefenders");
                 for (let d = 0; d < newlyRecruited; d++) {
                     newNames.push(autoName ? generateFullName() : `Defender ${facDefendersCount + d + 1}`);
@@ -8844,7 +8847,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (newNames.length > 0) {
                 for (const dName of newNames) {
                     if (dName) {
-                        BastionManager._createHirelingActor(dName, "Defender", actor.name, fac.name, true);
+                        BastionManager._createHirelingActor(dName, "Defender", actor.name, fac.name, true, fac.id);
                     }
                 }
             }

@@ -29,7 +29,31 @@
       "Read(//opt/**)",
       "Read(//home/unosami/**)",
       "Bash(xargs ls)",
-      "Bash(python3 -)"
+      "Bash(python3 -)",
+      "Bash(find /mnt/Hadunkachud/FoundryVTTUserData -name \"base-actor-sheet.mjs\" 2>/dev/null | head -5)",
+      "Read(//mnt/Hadunkachud/FoundryVTTUserData/**)",
+      "Bash(find /mnt/Hadunkachud -name \"base-actor-sheet.mjs\" 2>/dev/null | head -5)",
+      "Bash(find /mnt/Hadunkachud /home/unosami -name \"dnd5e\" -type d 2>/dev/null | head -5)",
+      "Bash(find /mnt/Hadunkachud/FoundryVTTUserData/Data/systems/dnd5e -name \"base-actor-sheet*\" 2>/dev/null)",
+      "Bash(find /mnt/Hadunkachud/FoundryVTTUserData/Data/systems/dnd5e -name \"*.mjs\" | head -10 && ls /mnt/Hadunkachud/FoundryVTTUserData/Data/systems/dnd5e/)",
+      "Bash(awk -F: 'NR==1{start=$1} $1>=820 && $1<=830{print}')",
+      "Bash(git -C /mnt/Hadunkachud/FoundryVTTUserData/Data/modules/dnd-2024-bastion-manager diff bdf6007~1 bdf6007 -- scripts/main.js scripts/bastion-app.js)",
+      "Bash(git -C /mnt/Hadunkachud/FoundryVTTUserData/Data/modules/dnd-2024-bastion-manager show bdf6007 --stat)",
+      "Bash(git -C /mnt/Hadunkachud/FoundryVTTUserData/Data/modules/dnd-2024-bastion-manager show bdf6007:module.json)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('compatibility:', d.get\\('compatibility'\\)\\); print\\('relationships:', d.get\\('relationships',{}\\).get\\('systems',[]\\)\\)\")",
+      "Bash(grep -n \"\\\\\"version\\\\\"\\\\|\\\\\"build\\\\\"\" /mnt/Hadunkachud/FoundryVTTUserData/Config/options.json 2>/dev/null | head -5)",
+      "Read(//mnt/Hadunkachud/FoundryVTTUserData/Config/**)",
+      "Bash(awk -F: '$1 >= 56100 && $1 <= 59800')",
+      "Bash(awk -F: '$1 >= 22900 && $1 <= 24000')",
+      "Bash(find /mnt/Hadunkachud -name \"foundry.mjs\" 2>/dev/null | head -3)",
+      "Bash(grep -n \"prepareData\\\\b\\\\|prepareBaseData\\\\b\\\\|system\\\\.prepareBaseData\\\\|TypeDataModel\\\\|prepareEmbeddedDocuments\" /home/unosami/foundryvtt/resources/app/public/scripts/foundry.mjs | grep -v \"//\\\\|^\\\\s*/\\\\*\" | head -30)",
+      "Read(//home/unosami/foundryvtt/resources/app/public/scripts/**)",
+      "Bash(awk -F: '$1 >= 18104 && $1 <= 19000')",
+      "Bash(awk '/class ActivitiesTemplate/,/^class [A-Z]/' /mnt/Hadunkachud/FoundryVTTUserData/Data/systems/dnd5e/dnd5e.mjs)",
+      "Bash(python3 -c \"import sys,json; [print\\(json.dumps\\(json.loads\\(l\\), indent=2\\)\\) for l in sys.stdin.read\\(\\).splitlines\\(\\)[:1]]\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(python3 -c ' *)",
+      "Bash(grep -n \"ItemDataModel\\\\$1\\\\|ItemDataModel = class\\\\|class ItemDataModel\" /mnt/Hadunkachud/FoundryVTTUserData/Data/systems/dnd5e/dnd5e.mjs)"
     ]
   }
 }

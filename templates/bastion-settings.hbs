@@ -1,7 +1,7 @@
 <div style="display: flex; flex-direction: column; height: 100%; font-size: 0.9em;">
 
     {{!-- Tab Navigation --}}
-    <nav style="display: flex; gap: 2px; padding: 6px 8px 0; background: rgba(0,0,0,0.25); border-bottom: 2px solid #a32a22; flex-shrink: 0;">
+    <nav style="display: flex; gap: 2px; padding: 6px 8px 0; background: rgba(0,0,0,0.25); border-bottom: 2px solid #a32a22; flex-shrink: 0; flex-wrap: wrap;">
         <button type="button" class="settings-tab-btn active" data-tab="rules"
             style="padding: 5px 11px; font-size: 0.82em; font-weight: bold; border-radius: 3px 3px 0 0; border: 1px solid #666; border-bottom: none; cursor: pointer; background: rgba(255,255,255,0.1); color: #e8e4d9;">
             <i class="fas fa-gavel"></i> Rules
@@ -22,6 +22,10 @@
             style="padding: 5px 11px; font-size: 0.82em; font-weight: bold; border-radius: 3px 3px 0 0; border: 1px solid #555; border-bottom: none; cursor: pointer; background: rgba(0,0,0,0.1); color: #aaa;">
             <i class="fas fa-people-group"></i> Staff
         </button>
+        <button type="button" class="settings-tab-btn" data-tab="defenders"
+            style="padding: 5px 11px; font-size: 0.82em; font-weight: bold; border-radius: 3px 3px 0 0; border: 1px solid #555; border-bottom: none; cursor: pointer; background: rgba(0,0,0,0.1); color: #aaa;">
+            <i class="fas fa-shield-halved"></i> Recruitment
+        </button>
         <button type="button" class="settings-tab-btn" data-tab="facilities"
             style="padding: 5px 11px; font-size: 0.82em; font-weight: bold; border-radius: 3px 3px 0 0; border: 1px solid #555; border-bottom: none; cursor: pointer; background: rgba(0,0,0,0.1); color: #aaa;">
             <i class="fas fa-building"></i> Facilities
@@ -33,6 +37,8 @@
 
         {{!-- ── RULES TAB ─────────────────────────────────────────── --}}
         <div class="settings-panel" data-tab="rules">
+
+            <div style="font-size:0.75em; font-weight:bold; text-transform:uppercase; color:#888; letter-spacing:0.08em; margin: 4px 0 8px; border-bottom: 1px solid #3a3a3a; padding-bottom: 4px;">Construction</div>
 
             <div class="form-group">
                 <label>Ignore All Construction Requirements</label>
@@ -57,6 +63,8 @@
                 </div>
                 <p class="hint">When disabled, Special facilities are completed instantly with no construction turns required.</p>
             </div>
+
+            <div style="font-size:0.75em; font-weight:bold; text-transform:uppercase; color:#888; letter-spacing:0.08em; margin: 14px 0 8px; border-bottom: 1px solid #3a3a3a; padding-bottom: 4px;">Limits</div>
 
             <div class="form-group">
                 <label>Disable Bastion Neglect</label>
@@ -97,6 +105,8 @@
         {{!-- ── TURNS TAB ─────────────────────────────────────────── --}}
         <div class="settings-panel" data-tab="turns" style="display:none;">
 
+            <div style="font-size:0.75em; font-weight:bold; text-transform:uppercase; color:#888; letter-spacing:0.08em; margin: 4px 0 8px; border-bottom: 1px solid #3a3a3a; padding-bottom: 4px;">Access</div>
+
             <div class="form-group">
                 <label>Advance Turn Permission</label>
                 <div class="form-fields">
@@ -109,6 +119,8 @@
                 </div>
                 <p class="hint">Minimum user role required to advance a bastion turn from the Bastion Manager.</p>
             </div>
+
+            <div style="font-size:0.75em; font-weight:bold; text-transform:uppercase; color:#888; letter-spacing:0.08em; margin: 14px 0 8px; border-bottom: 1px solid #3a3a3a; padding-bottom: 4px;">Party Groups</div>
 
             <div class="form-group">
                 <label>Group Inherits Member Facilities</label>
@@ -126,6 +138,8 @@
                 <p class="hint">All bastions in a party group share one combined turn counter instead of tracking separately per character.</p>
             </div>
 
+            <div style="font-size:0.75em; font-weight:bold; text-transform:uppercase; color:#888; letter-spacing:0.08em; margin: 14px 0 8px; border-bottom: 1px solid #3a3a3a; padding-bottom: 4px;">Counter</div>
+
             <div class="form-group">
                 <label>Global Turn Count</label>
                 <div class="form-fields">
@@ -138,6 +152,8 @@
 
         {{!-- ── TIME TAB ──────────────────────────────────────────── --}}
         <div class="settings-panel" data-tab="time" style="display:none;">
+
+            <div style="font-size:0.75em; font-weight:bold; text-transform:uppercase; color:#888; letter-spacing:0.08em; margin: 4px 0 8px; border-bottom: 1px solid #3a3a3a; padding-bottom: 4px;">Display</div>
 
             <div class="form-group">
                 <label>Crafting Calculation Mode</label>
@@ -157,6 +173,8 @@
                 </div>
                 <p class="hint">Number of in-game days per Bastion Turn, used for crafting time display and world time advancement.</p>
             </div>
+
+            <div style="font-size:0.75em; font-weight:bold; text-transform:uppercase; color:#888; letter-spacing:0.08em; margin: 14px 0 8px; border-bottom: 1px solid #3a3a3a; padding-bottom: 4px;">Calendar Integration</div>
 
             <div class="form-group">
                 <label>Sync Turn Length from Active Calendar</label>
@@ -195,17 +213,7 @@
         {{!-- ── ORDERS TAB ────────────────────────────────────────── --}}
         <div class="settings-panel" data-tab="orders" style="display:none;">
 
-            <div class="form-group">
-                <label>Recruit Order Mode</label>
-                <div class="form-fields">
-                    <select name="recruitMode">
-                        <option value="roll" {{#if (eq recruitMode "roll")}}selected{{/if}}>Roll Dice</option>
-                        <option value="max" {{#if (eq recruitMode "max")}}selected{{/if}}>Maximum Allowed</option>
-                        <option value="manual" {{#if (eq recruitMode "manual")}}selected{{/if}}>Manual Prompt</option>
-                    </select>
-                </div>
-                <p class="hint">How the Recruit order determines the number of new hirelings or defenders gained.</p>
-            </div>
+            <div style="font-size:0.75em; font-weight:bold; text-transform:uppercase; color:#888; letter-spacing:0.08em; margin: 4px 0 8px; border-bottom: 1px solid #3a3a3a; padding-bottom: 4px;">Events</div>
 
             <div class="form-group">
                 <label>Prompt for Every Bastion Event</label>
@@ -228,12 +236,14 @@
         {{!-- ── STAFF TAB ─────────────────────────────────────────── --}}
         <div class="settings-panel" data-tab="staff" style="display:none;">
 
+            <div style="font-size:0.75em; font-weight:bold; text-transform:uppercase; color:#888; letter-spacing:0.08em; margin: 4px 0 8px; border-bottom: 1px solid #3a3a3a; padding-bottom: 4px;">Hireling Names</div>
+
             <div class="form-group">
-                <label>Prompt for Hireling/Defender Names</label>
+                <label>Prompt for Hireling Names</label>
                 <div class="form-fields">
                     <input type="checkbox" name="nameHirelings" {{#if nameHirelings}}checked{{/if}}>
                 </div>
-                <p class="hint">Show a prompt to enter custom names when hirelings or defenders are recruited.</p>
+                <p class="hint">Show a prompt to enter custom names when hirelings are recruited.</p>
             </div>
 
             <div class="form-group">
@@ -244,37 +254,73 @@
                 <p class="hint">Automatically generate random names for new hirelings. Works alongside the name prompt.</p>
             </div>
 
+            <div style="font-size:0.75em; font-weight:bold; text-transform:uppercase; color:#888; letter-spacing:0.08em; margin: 14px 0 8px; border-bottom: 1px solid #3a3a3a; padding-bottom: 4px;">Defender Names</div>
+
+            <div class="form-group">
+                <label>Enable Defender Names</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="nameDefenders" {{#if nameDefenders}}checked{{/if}}>
+                </div>
+                <p class="hint">Allow defenders to have individual names. When disabled, defenders are tracked only by count with no names recorded — for players who prefer nameless guards.</p>
+            </div>
+
             <div class="form-group">
                 <label>Auto-Generate Defender Names <span style="font-size: 0.8em; color: #888; font-weight: normal;">(per client)</span></label>
                 <div class="form-fields">
                     <input type="checkbox" name="autoNameDefenders" {{#if autoNameDefenders}}checked{{/if}}>
                 </div>
-                <p class="hint">Automatically generate random names for defenders on your character sheet. This is a per-client setting and does not affect other players.</p>
+                <p class="hint">Automatically generate random names for newly recruited defenders. This is a per-client setting — each player controls it independently. Has no effect when Enable Defender Names is off.</p>
             </div>
 
+            <div style="font-size:0.75em; font-weight:bold; text-transform:uppercase; color:#888; letter-spacing:0.08em; margin: 14px 0 8px; border-bottom: 1px solid #3a3a3a; padding-bottom: 4px;">Actor Documents</div>
+
             <div class="form-group">
-                <label>Create Actor Documents for Staff</label>
+                <label>Create Actor Documents for Hirelings</label>
                 <div class="form-fields">
                     <input type="checkbox" name="createActorsForHirelings" {{#if createActorsForHirelings}}checked{{/if}}>
                 </div>
-                <p class="hint">Create Foundry Actor documents for hirelings and defenders when they are recruited.</p>
+                <p class="hint">Create a Foundry Actor document for each hireling when they are recruited, using the Hireling template from the module compendium.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Create Actor Documents for Defenders</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="createActorsForDefenders" {{#if createActorsForDefenders}}checked{{/if}}>
+                </div>
+                <p class="hint">Create a Foundry Actor document for each defender when they are recruited, using the Defender template from the module compendium.</p>
             </div>
 
         </div>
 
-        {{!-- ── FACILITIES TAB ───────────────────────────────────── --}}
-        <div class="settings-panel" data-tab="facilities" style="display:none;">
+        {{!-- ── DEFENDERS TAB ─────────────────────────────────────── --}}
+        <div class="settings-panel" data-tab="defenders" style="display:none;">
+
+            <div style="font-size:0.75em; font-weight:bold; text-transform:uppercase; color:#888; letter-spacing:0.08em; margin: 4px 0 8px; border-bottom: 1px solid #3a3a3a; padding-bottom: 4px;">Recruitment</div>
 
             <div class="form-group">
-                <label>Menagerie: Armory Equips Defenders</label>
+                <label>Recruit Order Mode</label>
+                <div class="form-fields">
+                    <select name="recruitMode">
+                        <option value="roll" {{#if (eq recruitMode "roll")}}selected{{/if}}>Roll Dice</option>
+                        <option value="max" {{#if (eq recruitMode "max")}}selected{{/if}}>Maximum Allowed</option>
+                        <option value="manual" {{#if (eq recruitMode "manual")}}selected{{/if}}>Manual Prompt</option>
+                    </select>
+                </div>
+                <p class="hint">How the Recruit order determines the number of new hirelings or defenders gained.</p>
+            </div>
+
+            <div style="font-size:0.75em; font-weight:bold; text-transform:uppercase; color:#888; letter-spacing:0.08em; margin: 14px 0 8px; border-bottom: 1px solid #3a3a3a; padding-bottom: 4px;">Menagerie</div>
+
+            <div class="form-group">
+                <label>Armory Equips Menagerie Defenders</label>
                 <div class="form-fields">
                     <input type="checkbox" name="menagerieArmoryBonus" {{#if menagerieArmoryBonus}}checked{{/if}}>
                 </div>
-                <p class="hint">If enabled, Armory stocking applies to Menagerie creature defenders the same as regular defenders.</p>
+                <p class="hint">Armory stocking applies to Menagerie creature defenders the same as regular defenders.</p>
             </div>
 
             <div class="form-group">
-                <label>Menagerie: Defender Dice Mode</label>
+                <label>Menagerie Defender Dice Mode</label>
                 <div class="form-fields">
                     <select name="menagerieDiceMode">
                         <option value="raw" {{#if (eq menagerieDiceMode "raw")}}selected{{/if}}>d6 (Rules as Written)</option>
@@ -287,19 +333,26 @@
             </div>
 
             <div class="form-group">
-                <label>Menagerie: CR Dice Scale Table (JSON)</label>
+                <label>Menagerie CR Dice Scale Table (JSON)</label>
                 <div class="form-fields">
                     <input type="text" name="menagerieCrDiceTable" value="{{menagerieCrDiceTable}}" style="width: 100%;">
                 </div>
                 <p class="hint">Used only with Custom Dice mode. JSON mapping minimum CR to die size. Example: {"0":"d6","1":"d8","4":"d10","9":"d12"}.</p>
             </div>
 
+        </div>
+
+        {{!-- ── FACILITIES TAB ───────────────────────────────────── --}}
+        <div class="settings-panel" data-tab="facilities" style="display:none;">
+
+            <div style="font-size:0.75em; font-weight:bold; text-transform:uppercase; color:#888; letter-spacing:0.08em; margin: 4px 0 8px; border-bottom: 1px solid #3a3a3a; padding-bottom: 4px;">Reliquary</div>
+
             <div class="form-group">
-                <label>Reliquary: Limit to One Talisman</label>
+                <label>Limit to One Talisman</label>
                 <div class="form-fields">
                     <input type="checkbox" name="reliquaryOneTalismanLimit" {{#if reliquaryOneTalismanLimit}}checked{{/if}}>
                 </div>
-                <p class="hint">If enabled, the Reliquary cannot craft a new Talisman while the character already has one. Disable to allow multiple Talismans.</p>
+                <p class="hint">The Reliquary cannot craft a new Talisman while the character already has one. Disable to allow multiple Talismans.</p>
             </div>
 
         </div>

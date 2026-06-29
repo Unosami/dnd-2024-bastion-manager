@@ -2095,8 +2095,10 @@ Hooks.once("init", () => {
     // ── Hirelings & Staff (hidden) ────────────────────────────────────
     game.settings.register(MODULE_ID, "nameHirelings",           { scope: "world",  config: false, type: Boolean, default: true });
     game.settings.register(MODULE_ID, "autoNameHirelings",       { scope: "world",  config: false, type: Boolean, default: true });
-    game.settings.register(MODULE_ID, "autoNameDefenders",       { scope: "client", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "nameDefenders",           { scope: "world",  config: false, type: Boolean, default: true });
+    game.settings.register(MODULE_ID, "autoNameDefenders",       { scope: "client", config: false, type: Boolean, default: true });
     game.settings.register(MODULE_ID, "createActorsForHirelings",{ scope: "world",  config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "createActorsForDefenders",{ scope: "world",  config: false, type: Boolean, default: false });
 
     // ── Facility-Specific (hidden) ────────────────────────────────────
     game.settings.register(MODULE_ID, "menagerieArmoryBonus",    { scope: "world", config: false, type: Boolean, default: false });
@@ -2108,6 +2110,19 @@ Hooks.once("init", () => {
     // ── Root Menu Buttons ─────────────────────────────────────────────
     game.settings.registerMenu(MODULE_ID, "bastionConfigBtn", { name: "Bastion Manager Configuration", label: "Configure Bastion Manager", icon: "fas fa-chess-rook", type: BastionSettingsApp, restricted: true });
     game.settings.registerMenu(MODULE_ID, "resetAllTurnsBtn", { name: "Reset All Bastion Turns", label: "Reset Global Turns", icon: "fas fa-rotate-left", type: ResetBastionsApp, restricted: true });
+
+    // dnd5e 5.3.3 / Foundry v14 compatibility: SourcedItemsMap.set() crashes when
+    // parseUuid() returns null for malformed compendiumSource UUIDs, leaving item.labels
+    // undefined and crashing CharacterActorSheet._prepareItem. Ensure labels is always
+    // initialized after _safePrepareData, even when system.prepareBaseData() throws.
+    const Item5e = CONFIG.Item.documentClass;
+    if (Item5e?.prototype) {
+        const _origItemSafe = Item5e.prototype._safePrepareData;
+        Item5e.prototype._safePrepareData = function() {
+            _origItemSafe.call(this);
+            this.labels ??= {};
+        };
+    }
 });
 
 Hooks.once("ready", async () => {
@@ -2117,6 +2132,28 @@ Hooks.once("ready", async () => {
         registerFacilityType: (config) => BastionManager.registerFacilityType(config),
     };
     await BastionManager.loadProfessions();
+
+    // Migrate items with malformed compendiumSource UUIDs that crash dnd5e 5.3.3's
+    // SourcedItemsMap.set() when parseUuid() returns null.
+    if (game.user.isGM) {
+        const brokenItems = [];
+        for (const actor of game.actors) {
+            for (const item of actor.items) {
+                const csrc = item._stats?.compendiumSource;
+                const sid  = item.flags?.dnd5e?.sourceId;
+                const hasBadCsrc = csrc && foundry.utils.parseUuid(csrc) === null;
+                const hasBadSid  = sid  && foundry.utils.parseUuid(sid)  === null;
+                if (hasBadCsrc || hasBadSid) brokenItems.push({ item, hasBadCsrc, hasBadSid });
+            }
+        }
+        for (const { item, hasBadCsrc, hasBadSid } of brokenItems) {
+            const updates = {};
+            if (hasBadCsrc) updates["_stats.compendiumSource"] = null;
+            if (hasBadSid)  updates["flags.dnd5e.-=sourceId"] = null;
+            console.warn(`Bastion Manager | Clearing malformed source UUID on "${item.parent?.name} / ${item.name}"`, item._stats?.compendiumSource ?? item.flags?.dnd5e?.sourceId);
+            await item.update(updates);
+        }
+    }
 
     // Migrate workshopTools flag: correct historical wrong tool names
     if (game.user.isGM) {
@@ -2330,8 +2367,10 @@ class BastionSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
             manualEventSelection:    g("manualEventSelection"),
             nameHirelings:           g("nameHirelings"),
             autoNameHirelings:       g("autoNameHirelings"),
+            nameDefenders:           g("nameDefenders"),
             autoNameDefenders:       g("autoNameDefenders"),
             createActorsForHirelings: g("createActorsForHirelings"),
+            createActorsForDefenders: g("createActorsForDefenders"),
             menagerieArmoryBonus:    g("menagerieArmoryBonus"),
             menagerieDiceMode:       g("menagerieDiceMode"),
             menagerieCrDiceTable:    g("menagerieCrDiceTable"),
@@ -2369,7 +2408,7 @@ class BastionSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
         el.querySelector("[data-action='reset-defaults']")?.addEventListener("click", async () => {
             const confirmed = await DialogV2.confirm({ window: { title: "Reset Settings" }, content: "<p>Reset all Bastion Manager settings to their defaults?</p>" });
             if (!confirmed) return;
-            const keys = ["ignoreConstructionCosts","ignoreFacilityPrereqs","specialFacilitiesBuildTime","disableNeglect","disableSpecialCap","disableDuplicateLimit","advancePermission","groupInheritsFacilities","unifyCombinedTurns","globalTurnCount","calculationMode","daysPerTurn","syncDaysPerTurn","scaleWeekToTurnLength","advanceWorldTime","calendarDrivenTurns","recruitMode","promptAllEvents","manualEventSelection","nameHirelings","autoNameHirelings","autoNameDefenders","createActorsForHirelings","menagerieArmoryBonus","menagerieDiceMode","menagerieCrDiceTable","reliquaryOneTalismanLimit"];
+            const keys = ["ignoreConstructionCosts","ignoreFacilityPrereqs","specialFacilitiesBuildTime","disableNeglect","disableSpecialCap","disableDuplicateLimit","advancePermission","groupInheritsFacilities","unifyCombinedTurns","globalTurnCount","calculationMode","daysPerTurn","syncDaysPerTurn","scaleWeekToTurnLength","advanceWorldTime","calendarDrivenTurns","recruitMode","promptAllEvents","manualEventSelection","nameHirelings","autoNameHirelings","nameDefenders","autoNameDefenders","createActorsForHirelings","createActorsForDefenders","menagerieArmoryBonus","menagerieDiceMode","menagerieCrDiceTable","reliquaryOneTalismanLimit"];
             await Promise.all(keys.map(k => game.settings.set(MODULE_ID, k, game.settings.settings.get(`${MODULE_ID}.${k}`)?.default)));
             this.render();
         });
@@ -2403,8 +2442,10 @@ class BastionSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
             s("manualEventSelection",     d.manualEventSelection     ?? false),
             s("nameHirelings",            d.nameHirelings            ?? false),
             s("autoNameHirelings",        d.autoNameHirelings        ?? false),
-            s("autoNameDefenders",        d.autoNameDefenders        ?? false),
+            s("nameDefenders",            d.nameDefenders            ?? true),
+            s("autoNameDefenders",        d.autoNameDefenders        ?? true),
             s("createActorsForHirelings", d.createActorsForHirelings ?? false),
+            s("createActorsForDefenders", d.createActorsForDefenders ?? false),
             s("menagerieArmoryBonus",     d.menagerieArmoryBonus     ?? false),
             s("menagerieDiceMode",        d.menagerieDiceMode),
             s("menagerieCrDiceTable",     d.menagerieCrDiceTable),
@@ -2762,6 +2803,14 @@ Hooks.on("updateItem", (item, changes) => {
         const section = app.element?.querySelector('[data-bastion-group-overview="true"]');
         if (section) renderGroupBastionContent(section, app.document);
     }
+});
+
+Hooks.on("deleteItem", async (item) => {
+    if (item.type !== "facility" || !item.isEmbedded) return;
+    const toDelete = game.actors
+        .filter(a => a.getFlag(MODULE_ID, "facilityItemId") === item.id)
+        .map(a => a.id);
+    if (toDelete.length) await Actor.deleteDocuments(toDelete);
 });
 
 /**
