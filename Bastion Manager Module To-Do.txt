@@ -1,4 +1,6 @@
 Bastion Module notes:
+14.364
+
 OUTLINE to COMPLETION:
 - Finish Facility Flesh-outs (DMG)
 - Flesh out additional source facilities (Optional)
@@ -10,17 +12,19 @@ OUTLINE to COMPLETION:
 
 
 GENERAL
-- Give DM ability to advance construction by a certain number of turns, in case the party has done something to speed it up.
-- Move hireling and defender name pools to seperate editable files.
-- Tie day-based time to native calendar?
-- Consolidate multiple turn events into a single prompt. For example, if you recruit for 3 turns there should be a single prompt asking for all names instead of 3 recruit name prompts.
-- Enlarging special facilities should show what the mechanical benefits of expanding that facility are in the staging prompt.
-- Tie long-rest charms into the long-rest of the charater sheet?
+- MAKING GUARD AND HIRELING TOKENS FOR USE IN ACTORS
+- Give players a "Mark Ready" button on the scene tool where the Dm gets "Run Global Turn"
+- The DM should be able to "advance progress" on facility orders in addition to the existing construction advancement. The buttons should have hover-over info explaining what they do.
+- "Unify Combined Bastion Turns" might be a defunct option.
 
 
 EVENTS:
 - Combined Bastions should all share a single bastion event, rather than generating one-per bastion per Maintenance turn.
 - Allow for custom events?
+
+CALENDAR STUFF:
+The bastion module can currently advance the calender by advancing the bastion turn. It can also sync turn lengths to calendar week lengths.
+- Next I want the ability for advancing the calender to advance the bastion turn one week after an order is issued. The "Advance Turn" buttons will all have to change to "Issue Order" buttons for this.
 
 
 Next I want to start fleshing out the other facility outputs:
@@ -33,36 +37,21 @@ ARMORY
 
 TELEPORTATION CIRCLE 
 - A cool way to display the glyphs of the specific bastion's teleportation circle? (So Extra)
-    
-THEATER
-- Nice to have: Writers type in name of the production. That production script is saved as an item (in the compendium?) so they can look back on it.
 
 
 GRID CHANGES
 - Change the grid layout of combined bastions to have each player be a color and their facilities be different shades of that color. (Or some way to distinguish who owns what without text) (Might be done already?)
-- Combine both walls buttons into a single wall dropdown, like with doors.
-(Might be done already:)
-- Closets (might not need to be included)
-- Corridors, Ramps, Staircases
-- Defensive walls (each 5-foot segement has a time and gold cost)
-- Doors and Windows
-
-GRID STANDALONE MODULE
-- Change the grid layout to populate the squares with relevent furnishings.
-- The option of Structure shapes/outlines? Tower, shrine, fortified keep, lodge vs village(current freeform) Prefabs.
-
-Calendar compatibility
-    - Make the module track days using Simple Calendar rather than internally? (Only works if Simple Calendar gets an update to be compatible with current versions of Foundry)
-
-- Homebrew (not hardcoded, I want them to be like submodules?):
-    - Veteran Hirelings: After a certain length of service/special event/the hireling is attained in a special way the hireling should give bonuses to the facility they work.
-    - Specialized defenders: Mages, warriors, rogues. Each has a different benefit to the bastion.
-
 
 ---
 Known Bugs:
-- At the end need to go back and do a blanket "Make sure The Horizon reflects all facilities"
-- 
+- The "Bastion Utilities" section should not contain the main use of facilities.
+- The exclude facilities setting is way too granular.
+- When a facility is first crafted it should default to the Maintain order.
+- When a facility is being built and facility caps are active then the "Build Facility" buttons should account for the under construction facilities.
+- Garden Change Type submenu not appearing on character sheet ui.
+- If the Garden is made from the founding dialog it doesn't prompt for the type of Garden like it should.
+- New facilities being set to Maintain also need to include ones made through the Bastion Founding dialog.
+- Cap storehouse procurement gold to amount of gold on character sheet.
 
 ---
 Long Rest:
@@ -76,3 +65,32 @@ Long Rest:
 Short Rest:
 - Workshop * 
 - Sacristy 
+
+
+On naming conventions — here's what I'd suggest:
+
+Bastion Dashboard or Bastion Window
+    The floating ApplicationV2 app (BastionManager) rendered from bastion-main.hbs
+
+Character Sheet Bastion Tab or Native Tab
+    The [Bastion] tab injected into the dnd5e character sheet, augmented via integrateBastionDashboard in main.js
+
+Sidebar
+    The right-side button column in the Bastion Window (flex-direction: column with the enlarge/delete/layout buttons)
+
+Order block (Dashboard)
+    The dark orderBlock div injected per facility in the Native Tab
+
+Info block (Dashboard)
+    The dark infoBlock div injected per facility in the Native Tab
+
+----------
+SUBMODULE IDEAS
+
+GRID STANDALONE MODULE
+- Change the grid layout to populate the squares with relevent furnishings.
+- The option of Structure shapes/outlines? Tower, shrine, fortified keep, lodge vs village(current freeform) Prefabs.
+
+HOMEBREW (not hardcoded, I want them to be like submodules?):
+    - Veteran Hirelings: After a certain length of service/special event/the hireling is attained in a special way the hireling should give bonuses to the facility they work.
+    - Specialized defenders: Mages, warriors, rogues. Each has a different benefit to the bastion.

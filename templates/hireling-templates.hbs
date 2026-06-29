@@ -1,0 +1,55 @@
+<div style="padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; font-size: 0.9em;">
+
+    <p style="color: #999; margin: 0; line-height: 1.4;">
+        Map facilities to template actors from the <strong>Staff</strong> folder of the
+        <em>bastion-facility-actors</em> compendium. The first matching entry is used; facilities
+        with no entry fall back to the generic <strong>Hireling</strong> actor.
+    </p>
+
+    {{#if noTemplates}}
+    <p style="color: #a55; margin: 0;">No actor templates found in the Staff folder of the bastion-facility-actors compendium. Add actors there first.</p>
+    {{/if}}
+
+    {{#if noFacilities}}
+    <p style="color: #a55; margin: 0;">Could not load the bastion-facilities compendium.</p>
+    {{/if}}
+
+    <div id="template-rows" style="display: flex; flex-direction: column; gap: 6px;">
+        {{#each rows}}
+        <div class="template-row" style="display: flex; gap: 8px; align-items: center;">
+            <select name="facility_{{@index}}" style="flex: 1; padding: 4px 6px; min-width: 0;">
+                {{#each this.facilityOptions}}
+                <option value="{{this.name}}" {{#if this.selected}}selected{{/if}}>{{this.name}}</option>
+                {{/each}}
+            </select>
+            <span style="white-space: nowrap; font-size: 0.82em; color: #aaa;">→ use</span>
+            <select name="template_{{@index}}" style="flex: 1; padding: 4px 6px; min-width: 0;">
+                {{#each this.options}}
+                <option value="{{this.name}}" {{#if this.selected}}selected{{/if}}>{{this.name}}</option>
+                {{/each}}
+            </select>
+            <button type="button" class="remove-row"
+                    style="flex-shrink: 0; padding: 3px 8px; color: #a32a22; cursor: pointer;" title="Remove">
+                <i class="fas fa-trash-alt"></i>
+            </button>
+        </div>
+        {{/each}}
+    </div>
+
+    <div>
+        <button type="button" id="add-template-row"
+                {{#if noTemplates}}disabled{{/if}} {{#if noFacilities}}disabled{{/if}}
+                style="padding: 4px 12px; cursor: pointer; font-size: 0.85em;">
+            <i class="fas fa-plus"></i> Add Entry
+        </button>
+    </div>
+
+    <div style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid #444; padding-top: 10px;">
+        <button type="button" data-action="close-dialog" style="padding: 5px 14px; cursor: pointer;">Cancel</button>
+        <button type="submit"
+                style="padding: 5px 18px; font-weight: bold; cursor: pointer; background: rgba(163,42,34,0.3); border-color: #a32a22;">
+            <i class="fas fa-save"></i> Save
+        </button>
+    </div>
+
+</div>

@@ -1,5 +1,6 @@
 import { BastionManager } from "./bastion-app.js";
-const MODULE_ID = "dnd-2024-bastion-manager";
+import { MODULE_ID, ORDER_SVG_MAP, ORDER_ICON_MAP, PASSIVE_INFO, GARDEN_ROOT_ID, STABLE_ROOT_ID, STAFF_FOLDER_ID, FACILITY_HIRELING_TEMPLATES } from "./bastion-data.js";
+import { getActiveCalendarName, getCalendarWeekLength, effectiveDaysPerTurn } from "./bastion-calculations.js";
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
 /**
@@ -16,8 +17,12 @@ class BastionTurnControl extends HandlebarsApplicationMixin(ApplicationV2) {
         actions: {
             advance: function(event, target) {
                 const actor = game.user.character || game.actors.find(a => a.items.some(i => i.type === "facility") && a.isOwner) || game.actors.find(a => a.items.some(i => i.type === "facility"));
-                if (actor) BastionManager.onAdvanceGlobalTurn.call({ actor, element: this.element }, event, target);
-                else ui.notifications.warn("No owned actor with a Bastion found.");
+                if (!actor) return ui.notifications.warn("No owned actor with a Bastion found.");
+                if (game.settings.get(MODULE_ID, "calendarDrivenTurns")) {
+                    BastionManager.onIssueOrders.call({ actor, element: this.element }, event, target);
+                } else {
+                    BastionManager.onAdvanceGlobalTurn.call({ actor, element: this.element }, event, target);
+                }
             }
         }
     };
@@ -34,9 +39,13 @@ class BastionTurnControl extends HandlebarsApplicationMixin(ApplicationV2) {
             const ownedByActivePlayer = activeNonGMs.some(u => a.testUserPermission(u, "OWNER"));
             return isAllowedType && hasFacilities && ownedByActivePlayer;
         });
+        const calendarDrivenTurns = game.settings.get(MODULE_ID, "calendarDrivenTurns");
+        const issuedAt = game.settings.get(MODULE_ID, "ordersIssuedAt") || 0;
         return {
             readyCount: bastionActors.filter(a => a.getFlag(MODULE_ID, "isReady")).length,
-            totalBastions: bastionActors.length
+            totalBastions: bastionActors.length,
+            calendarDrivenTurns,
+            ordersIssued: issuedAt > 0,
         };
     }
 
@@ -159,28 +168,14 @@ Hooks.on("renderSceneControls", (app, html, data) => {
 });
 
 /**
- * INTEGRATION ENGINE: Mutation-Based Injection
- * Since v13 sheets don't always trigger hooks on tab swap, we watch the DOM.
+ * Inject bastion tab CSS overrides into document.head once (idempotent).
+ * Extracted so the style block lives outside the per-tab augmentation function.
  */
-const integrateBastionDashboard = (bastionTab) => {
-    // 2. Identify the Actor (Foundry v13 / ApplicationV2 support)
-    // We check both the modern instances list and the legacy windows list
-    const app = Array.from(foundry.applications.instances.values()).find(a => a.element?.contains(bastionTab))
-             || Object.values(ui.windows).find(w => (w.element?.[0] || w.element)?.contains(bastionTab));
-
-    // v13 Stability: Use game.actors.get to ensure we have the most current DB state,
-    // as app references can be stale during asynchronous render cycles.
-    const actor = game.actors.get((app?.document || app?.actor)?.id);
-    if (!actor || actor.documentName !== "Actor") return;
-    if (!["character", "npc", "group"].includes(actor.type)) return;
-    // Group overview sections are rendered by renderGroupBastionContent — skip native augmentation
-    if (bastionTab.dataset.bastionGroupOverview === "true") return;
-
-    // Inject bastion tab CSS overrides once into document.head (idempotent)
-    if (!document.getElementById('bastion-manager-tab-styles')) {
-        const style = document.createElement('style');
-        style.id = 'bastion-manager-tab-styles';
-        style.textContent = `
+function injectBastionStyles() {
+    if (document.getElementById('bastion-manager-tab-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'bastion-manager-tab-styles';
+    style.textContent = `
             /* Facility title: white text + dark text-shadow for readability over any image overlay */
             .dnd5e2 .tab[data-tab="bastion"] li.facility:not(.empty) .facility-header .name-stacked .title {
                 color: white !important;
@@ -211,19 +206,19 @@ const integrateBastionDashboard = (bastionTab) => {
             [data-tab-contents-for="bastion"] li.facility .bastion-augmented-info b {
                 color: #e8e4d9 !important;
             }
-            /* Progress bar track — needs light bg to be visible on dark block */
             .tab[data-tab="bastion"] li.facility .bastion-augmented-info div[style*="height:6px"],
             [data-tab-contents-for="bastion"] li.facility .bastion-augmented-info div[style*="height:6px"] {
-                background: rgba(255, 255, 255, 0.18) !important;
+                background: none !important;
             }
-            /* Turn counter beside bastion name */
             .tab[data-tab="bastion"] section.name .bastion-turn-counter,
             [data-tab-contents-for="bastion"] section.name .bastion-turn-counter {
-                color: var(--dnd5e-color-gold, var(--t5e-primary-accent, #c9a227)) !important;
+                font-size: 0.8em;
+                opacity: 0.8;
+                margin-top: 4px;
             }
-            /* Reflow layout: special top, basic middle, defenders/roster at bottom */
+            /* Native sheet: reflow — Special top, Basic middle, Roster bottom */
             .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .contents {
-                grid-template: "c c" 1fr "b b" auto "a a" auto / minmax(0, 1fr) minmax(0, 1fr) !important;
+                grid-template: "c c" auto "b b" auto "a a" auto / minmax(0, 1fr) minmax(0, 1fr) !important;
             }
             .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .contents .facilities.special {
                 grid-area: c !important;
@@ -231,14 +226,17 @@ const integrateBastionDashboard = (bastionTab) => {
             .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .contents .facilities.basic {
                 grid-area: b !important;
             }
-            .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .contents section.roster {
+            .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .contents .roster {
                 grid-area: a !important;
             }
-            /* Special facilities: 2-column layout so up to 6 facilities fit without scrolling */
-            .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .facilities.special ul.unlist {
+            /* Native sheet: 2-column layout for facility lists */
+            .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .facilities.special ul.unlist,
+            .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .facilities.basic ul.unlist {
+                display: flex !important;
                 flex-direction: row !important;
                 flex-wrap: wrap !important;
                 align-items: stretch !important;
+                gap: 8px !important;
             }
             .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .facilities.special li.facility:not(.empty) {
                 flex: 0 0 calc(50% - 4px) !important;
@@ -250,11 +248,6 @@ const integrateBastionDashboard = (bastionTab) => {
                 flex: 0 0 100% !important;
                 width: 100% !important;
             }
-            /* Basic facilities list: compact horizontal wrap at the bottom */
-            .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .facilities.basic ul.unlist {
-                flex-direction: row !important;
-                flex-wrap: wrap !important;
-            }
             .dnd5e2.sheet.actor.character .tab[data-tab="bastion"] .facilities.basic li.facility:not(.empty) {
                 flex: 0 0 calc(50% - 4px) !important;
                 max-width: calc(50% - 4px) !important;
@@ -264,9 +257,13 @@ const integrateBastionDashboard = (bastionTab) => {
                 flex: 0 0 100% !important;
                 width: 100% !important;
             }
-            /* Group actor sheet — bastion overview tab scrollable container */
-            .dnd5e2.sheet.actor.group section.bastion-group-tab {
-                overflow-y: auto !important;
+            /* Bastion order-block select: full width, dark theme */
+            .tab[data-tab="bastion"] li.facility .bastion-order-block select,
+            [data-tab-contents-for="bastion"] li.facility .bastion-order-block select {
+                width: 100% !important;
+                background: rgba(30,25,18,0.9) !important;
+                color: #e8e4d9 !important;
+                border: 1px solid rgba(200,190,170,0.3) !important;
                 flex: 1 1 auto !important;
             }
             /* Tidy 5e Sheets: facility title readability */
@@ -277,6 +274,17 @@ const integrateBastionDashboard = (bastionTab) => {
             [data-tab-contents-for="bastion"] li.facility:not(.empty) .title-and-subtitle .subtitle {
                 display: none !important;
             }
+            /* Tidy 5e: disable the native useFacility click on the facility header link —
+               module handles orders via the injected dropdown, not the native dialog */
+            [data-tab-contents-for="bastion"] li.facility:not(.empty) a.facility-header-details {
+                pointer-events: none !important;
+                cursor: default !important;
+            }
+            /* Native sheet: remove pointer cursor from [data-action="useFacility"] —
+               click is already blocked by JS, but the system CSS still shows a pointer */
+            .dnd5e2 .tab[data-tab="bastion"] li.facility [data-action="useFacility"] {
+                cursor: default !important;
+            }
             /* Tidy 5e Sheets: special and basic are already side-by-side columns via
                Tidy's own grid-template-columns:1fr 1fr on .facility-panels, so items
                stack vertically by default. Just ensure empty slots are full-width. */
@@ -285,8 +293,40 @@ const integrateBastionDashboard = (bastionTab) => {
                 width: 100% !important;
             }
         `;
-        document.head.appendChild(style);
-    }
+    document.head.appendChild(style);
+}
+
+/**
+ * Open BastionManager for an actor.
+ * If sourceEl is inside a Foundry v14 detached window, the manager is also detached.
+ */
+function _openBastionManager(actor, sourceEl) {
+    const mgr = new BastionManager(actor);
+    const isDetached = sourceEl?.ownerDocument && (document !== sourceEl.ownerDocument);
+    if (isDetached) mgr.detachWindow({ force: true });
+    else mgr.render({ force: true });
+}
+
+/**
+ * INTEGRATION ENGINE: Mutation-Based Injection
+ * Since v13 sheets don't always trigger hooks on tab swap, we watch the DOM.
+ */
+const integrateBastionDashboard = (bastionTab) => {
+    // 2. Identify the Actor (Foundry v13 / ApplicationV2 support)
+    // We check both the modern instances list and the legacy windows list
+    const app = Array.from(foundry.applications.instances.values()).find(a => a.element?.contains(bastionTab))
+             || Object.values(ui.windows).find(w => (w.element?.[0] || w.element)?.contains(bastionTab));
+
+    // v13 Stability: Use game.actors.get to ensure we have the most current DB state,
+    // as app references can be stale during asynchronous render cycles.
+    const actor = game.actors.get((app?.document || app?.actor)?.id);
+    if (!actor || actor.documentName !== "Actor") return;
+    if (!["character", "npc", "group"].includes(actor.type)) return;
+    // Group overview sections are rendered by renderGroupBastionContent — skip native augmentation
+    if (bastionTab.dataset.bastionGroupOverview === "true") return;
+
+    injectBastionStyles();
+
 
     const combinedId = actor.getFlag(MODULE_ID, "combinedGroupId");
     const unify = game.settings.get(MODULE_ID, "unifyCombinedTurns");
@@ -355,7 +395,7 @@ const integrateBastionDashboard = (bastionTab) => {
                 </div>
             `;
             const contentsSection = bastionTab.querySelector('section.contents');
-            if (contentsSection) contentsSection.appendChild(foundingDiv);
+            (contentsSection || bastionTab).appendChild(foundingDiv);
             foundingDiv.querySelector('.bastion-found-btn').addEventListener('click', async (ev) => {
                 ev.preventDefault();
                 const mgr = new BastionManager(actor);
@@ -632,33 +672,6 @@ const integrateBastionDashboard = (bastionTab) => {
         const { availableOrders, safeOrder, fFlags: stateFlags } = BastionManager.buildFacilityOrderState(actor, item);
 
         // --- A2. Update the native order-slot to reflect the current order ---
-        // The native template uses <div class="slot order-slot"> with a <dnd5e-icon src="..."> inside.
-        // We use the same system SVG paths so the icon matches the native look exactly.
-        const ORDER_SVG_MAP = {
-            "maintain":         "systems/dnd5e/icons/svg/facilities/maintain.svg",
-            "craft":            "systems/dnd5e/icons/svg/facilities/craft.svg",
-            "trade":            "systems/dnd5e/icons/svg/facilities/trade.svg",
-            "recruit":          "systems/dnd5e/icons/svg/facilities/recruit.svg",
-            "research":         "systems/dnd5e/icons/svg/facilities/research.svg",
-            "harvest":          "systems/dnd5e/icons/svg/facilities/harvest.svg",
-            "empower":          "systems/dnd5e/icons/svg/facilities/empower.svg",
-            "change type":      "systems/dnd5e/icons/svg/facilities/change.svg",
-            "continue project": "systems/dnd5e/icons/svg/facilities/build.svg",
-            "progress queue":   "systems/dnd5e/icons/svg/facilities/craft.svg",
-        };
-        // Also keep a FA fallback map for the change-handler (used on order dropdown change)
-        const ORDER_ICON_MAP = {
-            "maintain":         "fa-solid fa-broom",
-            "craft":            "fa-solid fa-hammer",
-            "trade":            "fa-solid fa-coins",
-            "recruit":          "fa-solid fa-person-circle-plus",
-            "research":         "fa-solid fa-book-open",
-            "harvest":          "fa-solid fa-seedling",
-            "empower":          "fa-solid fa-star",
-            "change type":      "fa-solid fa-arrows-rotate",
-            "continue project": "fa-solid fa-forward",
-            "progress queue":   "fa-solid fa-list-ol",
-        };
         const _setOrderSlot = (orderSlot, svgSrc, tooltipLabel) => {
             if (!orderSlot) return;
             orderSlot.classList.remove('empty');
@@ -821,7 +834,7 @@ const integrateBastionDashboard = (bastionTab) => {
             const _getOutPack = () => game.packs.get(`${MODULE_ID}.bastion-output-items`);
             const _craftSettings = () => ({
                 calculationMode: game.settings.get(MODULE_ID, "calculationMode"),
-                daysPerTurn: game.settings.get(MODULE_ID, "daysPerTurn") || 7,
+                daysPerTurn: effectiveDaysPerTurn(),
             });
 
             // Arcane Study craft sub-selectors
@@ -1037,6 +1050,129 @@ const integrateBastionDashboard = (bastionTab) => {
                 })();
             }
 
+            // Garden harvest sub-selectors
+            if (facName.includes("Garden") && !facName.includes("Greenhouse") && safeOrder.startsWith("Harvest")) {
+                const facSubType  = fFlags.subType  || "";
+                const facSubType2 = fFlags.subType2 || "";
+                const isVastGarden = (fFlags.size || "Roomy") === "Vast";
+                (async () => {
+                    const outPack = _getOutPack();
+                    if (!outPack) return;
+                    const gardenRoot = outPack.folders.get(GARDEN_ROOT_ID)
+                        || outPack.folders.find(f => f.name.toLowerCase().trim() === "garden");
+                    if (!gardenRoot) return;
+                    const typeFolders = outPack.folders.filter(f =>
+                        String(f.folder?.id || f.folder || f.parentId) === String(gardenRoot.id));
+                    const index = await outPack.getIndex({ fields: ["folder", "system.quantity", "uuid"] });
+
+                    const _makeHarvestRow = (subType, flagKey, label) => {
+                        const tf = typeFolders.find(f => f.name.toLowerCase().trim() === subType.toLowerCase().trim());
+                        if (!tf) return null;
+                        const opts = index.filter(i => i.folder === tf.id).map(i => ({
+                            value: i.name, label: `${i.name} (Qty: ${i.system?.quantity || 1})`,
+                            selected: i.name === (fFlags[flagKey] || "")
+                        }));
+                        const sel = _buildSelect(opts, fFlags[flagKey] || "", flagKey, "— Choose Harvest —");
+                        if (!label) return sel;
+                        const row = document.createElement("div");
+                        row.style.cssText = "display:flex; align-items:center; gap:4px;";
+                        const lbl = document.createElement("span");
+                        lbl.style.cssText = "font-size:0.8em; color:#888; white-space:nowrap;";
+                        lbl.textContent = label;
+                        row.appendChild(lbl); row.appendChild(sel);
+                        return row;
+                    };
+
+                    if (facSubType) {
+                        const el = _makeHarvestRow(facSubType, "harvestChoice", isVastGarden ? "Plot 1:" : null);
+                        if (el) choiceContainer.appendChild(el);
+                    }
+                    if (isVastGarden && facSubType2) {
+                        const el2 = _makeHarvestRow(facSubType2, "harvestChoice2", "Plot 2:");
+                        if (el2) choiceContainer.appendChild(el2);
+                    }
+                    if (choiceContainer.children.length > 0 && !choiceContainer.parentElement) orderBlock.appendChild(choiceContainer);
+                })();
+            }
+
+            // Garden change-type sub-selector
+            if (facName.includes("Garden") && !facName.includes("Greenhouse") && safeOrder === "Change Type") {
+                (async () => {
+                    const outPack = _getOutPack();
+                    if (!outPack) return;
+                    const gardenRoot = outPack.folders.get(GARDEN_ROOT_ID)
+                        || outPack.folders.find(f => f.name.toLowerCase().trim() === "garden");
+                    if (!gardenRoot) return;
+                    const typeFolders = outPack.folders.filter(f =>
+                        String(f.folder?.id || f.folder || f.parentId) === String(gardenRoot.id));
+                    const currentPending = fFlags.pendingSubType || "";
+                    const opts = typeFolders.map(f => ({
+                        value: f.name, label: f.name, selected: f.name === currentPending
+                    }));
+                    const lbl = document.createElement("label");
+                    lbl.style.cssText = "font-size: 0.8em; opacity: 0.7; display: block; margin-bottom: 1px;";
+                    lbl.textContent = "Change garden to (takes 3 turns):";
+                    const sel = _buildSelect(opts, currentPending, "pendingSubType", "— Choose New Type —");
+                    choiceContainer.appendChild(lbl);
+                    choiceContainer.appendChild(sel);
+                    if (!choiceContainer.parentElement) orderBlock.appendChild(choiceContainer);
+                })();
+            }
+
+            // Stable trade sub-selectors
+            if (facName.includes("Stable") && safeOrder === "Trade") {
+                (async () => {
+                    const outPack = _getOutPack();
+                    if (!outPack) return;
+                    const stableFolder = outPack.folders.get(STABLE_ROOT_ID)
+                        || outPack.folders.find(f => f.name.toLowerCase().includes("stable") || f.name.toLowerCase().includes("mount"));
+                    if (!stableFolder) return;
+                    const { calculationMode, daysPerTurn } = _craftSettings();
+                    const tradeChoice = fFlags.stableTradeChoice || "buy";
+                    const currentItemChoice = fFlags.stableItemChoice || "";
+                    const stableAnimals = fFlags.stableAnimals || [];
+
+                    const allOptions = await BastionManager._getNestedCompendiumOptions(
+                        outPack, stableFolder.id, currentItemChoice, calculationMode, daysPerTurn, "t", false);
+
+                    let options = allOptions;
+                    if (tradeChoice === "sell") {
+                        options = [];
+                        for (const o of allOptions) {
+                            if (o.groupOptions) {
+                                const filtered = o.groupOptions.filter(s => stableAnimals.some(a => a.species === s.value));
+                                if (filtered.length) options.push({ ...o, groupOptions: filtered });
+                            } else if (stableAnimals.some(a => a.species === o.value)) {
+                                options.push(o);
+                            }
+                        }
+                    }
+
+                    const tradeRow = document.createElement("div");
+                    tradeRow.style.cssText = "display:flex; gap:4px; align-items:center;";
+
+                    const tradeSel = document.createElement("select");
+                    tradeSel.style.cssText = "height:22px; font-size:0.85em; flex:0 0 55px;";
+                    ["buy", "sell"].forEach(v => {
+                        const opt = document.createElement("option");
+                        opt.value = v; opt.textContent = v.charAt(0).toUpperCase() + v.slice(1);
+                        opt.selected = v === tradeChoice;
+                        tradeSel.appendChild(opt);
+                    });
+                    tradeSel.addEventListener("mousedown", ev => ev.stopPropagation());
+                    tradeSel.addEventListener("change", async (ev) => {
+                        await item.setFlag(MODULE_ID, "stableTradeChoice", ev.target.value);
+                    });
+
+                    const itemSel = _buildSelect(options, currentItemChoice, "stableItemChoice", "— Select Mount —");
+                    itemSel.style.flex = "1";
+
+                    tradeRow.appendChild(tradeSel); tradeRow.appendChild(itemSel);
+                    choiceContainer.appendChild(tradeRow);
+                    if (!choiceContainer.parentElement) orderBlock.appendChild(choiceContainer);
+                })();
+            }
+
             // Generic Queue Button for all crafting facilities
             if (safeOrder.startsWith("Craft") && craftChoice) {
                 const qRow = document.createElement("div");
@@ -1069,7 +1205,7 @@ const integrateBastionDashboard = (bastionTab) => {
         mgrBtn.addEventListener("mousedown", ev => ev.stopPropagation());
         mgrBtn.addEventListener("click", (ev) => {
             ev.stopPropagation();
-            new BastionManager(actor).render({ force: true });
+            _openBastionManager(actor, ev.currentTarget);
         });
 
         orderRow.appendChild(mgrBtn);
@@ -1093,7 +1229,7 @@ const integrateBastionDashboard = (bastionTab) => {
             rows.push(`<div><i class="fa-solid fa-tag" style="opacity:0.6; width:12px;"></i> <b>Type:</b> ${subType}</div>`);
         }
 
-        // C3. Defenders — count only (names listed in the Defenders section above)
+        // C3. Defenders
         const defenders = fFlags.defenders || {};
         if ((defenders.count || 0) > 0) {
             rows.push(`<div><i class="fa-solid fa-shield" style="color:#ef9a9a; width:12px;"></i> <b>Defenders:</b> ${defenders.count}</div>`);
@@ -1270,10 +1406,6 @@ const integrateBastionDashboard = (bastionTab) => {
         }
 
         // D9. Facility passive abilities — Sanctuary and Sacristy static rows
-        const PASSIVE_INFO = {
-            "Sanctuary":    { icon: "fa-solid fa-heart-pulse",   color: "#ef9a9a", name: "Healing Word Charm",  restIcon: "fa-solid fa-moon",          rest: "Long Rest",  tip: "After each Long Rest in your Bastion, you may cast Healing Word as a Charm (no spell slot required)." },
-            "Sacristy":     { icon: "fa-solid fa-wand-sparkles", color: "#ef9a9a", name: "Sacred Spellcasting", restIcon: "fa-solid fa-hourglass-half", rest: "Short Rest", tip: "After a Short Rest in your Bastion, you regain one expended spell slot of level 5 or lower." },
-        };
         for (const [keyword, info] of Object.entries(PASSIVE_INFO)) {
             if (facName.includes(keyword) && !isUpgrading) {
                 rows.push(`<div data-tooltip="${info.tip}" style="cursor: help; display: flex; align-items: center; justify-content: space-between; gap: 4px;"><span><i class="${info.icon}" style="color:${info.color}; width:12px;"></i> <b>${info.name}</b></span><span style="opacity: 0.7; font-size: 0.88em; white-space: nowrap;"><i class="${info.restIcon}" style="width:10px;"></i> ${info.rest} · Bastion</span></div>`);
@@ -1798,13 +1930,19 @@ const integrateBastionDashboard = (bastionTab) => {
         for (const fn of postInjectFns) fn();
 
         // Add hireling name tooltips to native occupant slots (if naming is enabled)
+        // Uses .slot.hireling to cover both native dnd5e (.occupant-slot) and Tidy 5e (.member-slot).
+        // MutationObserver re-applies names when Tidy 5e's Svelte reactivity resets data-tooltip on hover.
         if (game.settings.get(MODULE_ID, "nameHirelings")) {
             const hirelingNames = fFlags.hirelings || [];
             if (hirelingNames.length > 0) {
-                li.querySelectorAll(".slot.occupant-slot.hireling").forEach((slot, i) => {
-                    if (hirelingNames[i]) {
-                        slot.setAttribute("data-tooltip", hirelingNames[i]);
-                    }
+                [...li.querySelectorAll(".slot.hireling:not(.empty)")].forEach((slot, i) => {
+                    if (!hirelingNames[i]) return;
+                    slot.setAttribute("data-tooltip", hirelingNames[i]);
+                    const obs = new MutationObserver(() => {
+                        if (slot.getAttribute("data-tooltip") !== hirelingNames[i])
+                            slot.setAttribute("data-tooltip", hirelingNames[i]);
+                    });
+                    obs.observe(slot, { attributes: true, attributeFilter: ["data-tooltip"] });
                 });
             }
         }
@@ -1813,6 +1951,8 @@ const integrateBastionDashboard = (bastionTab) => {
         li.addEventListener("contextmenu", (ev) => {
             ev.preventDefault();
             ev.stopPropagation();
+
+            const _ctxSourceEl = ev.currentTarget;
 
             // Remove any existing context menu first
             document.querySelectorAll('.bastion-facility-context-menu').forEach(m => m.remove());
@@ -1879,7 +2019,7 @@ const integrateBastionDashboard = (bastionTab) => {
             addSep();
 
             addItem('fa-solid fa-gauge-high', 'Open Full Manager', false, () => {
-                new BastionManager(actor).render({ force: true });
+                _openBastionManager(actor, _ctxSourceEl);
             });
 
             document.body.appendChild(menu);
@@ -1928,47 +2068,134 @@ Hooks.once("init", () => {
     };
 
     // --- Settings Registration ---
-    game.settings.register(MODULE_ID, "ignoreConstructionCosts", { name: "Construction: Ignore All Requirements", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "disableNeglect", { name: "Disable Bastion Neglect", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "disableSpecialCap", { name: "Disable Special Facility Cap", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "disableDuplicateLimit", { name: "Disable One-Per-Bastion Limit", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "globalCostMultiplier", { scope: "world", config: false, type: Number, default: 100 });
-    game.settings.register(MODULE_ID, "globalTimeMultiplier", { scope: "world", config: false, type: Number, default: 100 });
+    // All user-facing settings are managed via the Configure Bastion Manager menu button.
+    // config: false keeps them hidden from the flat settings list.
 
+    // ── Rules & Restrictions (hidden) ────────────────────────────────
+    game.settings.register(MODULE_ID, "ignoreConstructionCosts", { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "ignoreFacilityPrereqs",   { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "specialFacilitiesBuildTime", { scope: "world", config: false, type: Boolean, default: true });
+    game.settings.register(MODULE_ID, "disableNeglect",          { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "disableSpecialCap",       { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "disableDuplicateLimit",   { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "globalCostMultiplier",    { scope: "world", config: false, type: Number,  default: 100 });
+    game.settings.register(MODULE_ID, "globalTimeMultiplier",    { scope: "world", config: false, type: Number,  default: 100 });
     const defaultValues = { buildCrampedCost: 500, buildCrampedTime: 3, buildRoomyCost: 1000, buildRoomyTime: 7, buildVastCost: 3000, buildVastTime: 18, enlargeRoomyCost: 500, enlargeRoomyTime: 4, enlargeVastCost: 2000, enlargeVastTime: 12 };
     for (const [key, val] of Object.entries(defaultValues)) game.settings.register(MODULE_ID, key, { scope: "world", config: false, type: Number, default: val });
+    game.settings.register(MODULE_ID, "excludedSourcesData",     { scope: "world", config: false, type: Array,   default: [] });
+    game.settings.register(MODULE_ID, "excludedFacilitiesData",  { scope: "world", config: false, type: Array,   default: [] });
 
-    game.settings.registerMenu(MODULE_ID, "constructionConfigBtn", { name: "Construction Configuration", label: "Configure Construction", icon: "fas fa-hammer", type: ConstructionConfigApp, restricted: true });
-    game.settings.register(MODULE_ID, "advancePermission", { name: "Advance Turn Permission", scope: "world", config: true, type: Number, choices: { 1: "Player", 2: "Trusted Player", 3: "Assistant GM", 4: "Game Master" }, default: 4 });
-    game.settings.register(MODULE_ID, "groupInheritsFacilities", { name: "Group Inherits Member Facilities", scope: "world", config: true, type: Boolean, default: true });
-    game.settings.register(MODULE_ID, "unifyCombinedTurns", { name: "Unify Combined Bastion Turns", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "globalTurnCount", { name: "Global Turn Count", scope: "world", config: true, type: Number, default: 0 });
-    game.settings.registerMenu(MODULE_ID, "resetAllTurnsBtn", { name: "Reset All Bastion Turns", label: "Reset Global Turns", icon: "fas fa-rotate-left", type: ResetBastionsApp, restricted: true });
-    game.settings.register(MODULE_ID, "recruitMode", { name: "Recruit Order Mode", scope: "world", config: true, type: String, default: "roll", choices: { "roll": "Roll Dice", "max": "Maximum Allowed", "manual": "Manual Prompt" } });
-    game.settings.register(MODULE_ID, "nameHirelings", { name: "Prompt for Hireling/Defender Names", scope: "world", config: true, type: Boolean, default: true });
-    game.settings.register(MODULE_ID, "specialFacilitiesBuildTime", { name: "Special Facilities Have Build Times", scope: "world", config: true, type: Boolean, default: true });
-    game.settings.register(MODULE_ID, "calculationMode", { name: "Crafting Calculation Mode", scope: "world", config: true, type: String, default: "turns", choices: { "turns": "Bastion Turns", "days": "Days" } });
-    game.settings.register(MODULE_ID, "daysPerTurn", { name: "Days per Bastion Turn", scope: "world", config: true, type: Number, default: 7 });
-    game.settings.register(MODULE_ID, "scaleWeekToTurnLength", { name: "Scale Weekly Durations", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "autoNameHirelings", { name: "Auto-Generate Hireling Names", scope: "world", config: true, type: Boolean, default: true });
-    game.settings.register(MODULE_ID, "autoNameDefenders", { name: "Auto-Generate Defender Names", scope: "client", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "menagerieArmoryBonus", { name: "Menagerie: Armory Equips Defenders", hint: "If enabled, Armory stocking applies to Menagerie creature defenders the same as regular defenders.", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "reliquaryOneTalismanLimit", { name: "Reliquary: Limit to One Talisman", hint: "If enabled, the Reliquary cannot craft a new Talisman while the character already has one. Disable to allow multiple Talismans.", scope: "world", config: true, type: Boolean, default: true });
-    game.settings.register(MODULE_ID, "menagerieDiceMode", { name: "Menagerie: Defender Dice Mode", hint: "RAW: all defenders roll d6. Digital: die scales from d2 at CR 0 (+1 per CR tier). Physical: locked to real dice (d4/d6/d8/d10/d12/d20). Custom: use the JSON table below.", scope: "world", config: true, type: String, default: "raw", choices: { "raw": "d6 (Rules as Written)", "digital": "Digital Dice (d2 \u2192 d3 \u2192 \u2026)", "physical": "Physical Dice (d4 \u2192 d6 \u2192 d8 \u2192 d10 \u2192 d12 \u2192 d20)", "custom": "Custom (JSON Table)" } });
-    game.settings.register(MODULE_ID, "menagerieCrDiceTable", { name: "Menagerie: CR Dice Scale Table (JSON)", hint: 'Used only with Custom Dice mode. JSON mapping minimum CR to die size. Example: {"0":"d6","1":"d8","4":"d10","9":"d12"}.', scope: "world", config: true, type: String, default: '{"0":"d6","1":"d8","4":"d10","9":"d12"}' });
-    game.settings.register(MODULE_ID, "createActorsForHirelings", { name: "Create Actors for Staff", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "ignoreFacilityPrereqs", { name: "Ignore Facility Prerequisites", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "promptAllEvents", { name: "Prompt for Every Event", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "manualEventSelection", { name: "Manually Choose Events", scope: "world", config: true, type: Boolean, default: false });
-    game.settings.register(MODULE_ID, "excludedSourcesData", { scope: "world", config: false, type: Array, default: [] });
-    game.settings.register(MODULE_ID, "excludedFacilitiesData", { scope: "world", config: false, type: Array, default: [] });
-    game.settings.registerMenu(MODULE_ID, "exclusionMenuBtn", { name: "Manage Facility Availability", label: "Filter Facilities", icon: "fas fa-filter", type: FacilityExclusionApp, restricted: true });
+    // ── Turn Management (hidden) ──────────────────────────────────────
+    game.settings.register(MODULE_ID, "advancePermission",       { scope: "world", config: false, type: Number,  default: 4 });
+    game.settings.register(MODULE_ID, "groupInheritsFacilities", { scope: "world", config: false, type: Boolean, default: true });
+    game.settings.register(MODULE_ID, "unifyCombinedTurns",      { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "globalTurnCount",         { scope: "world", config: false, type: Number,  default: 0 });
+
+    // ── Time & Calendar (hidden) ──────────────────────────────────────
+    game.settings.register(MODULE_ID, "calculationMode",         { scope: "world", config: false, type: String,  default: "turns" });
+    game.settings.register(MODULE_ID, "daysPerTurn",             { scope: "world", config: false, type: Number,  default: 7 });
+    game.settings.register(MODULE_ID, "syncDaysPerTurn",         { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "scaleWeekToTurnLength",   { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "advanceWorldTime",        { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "calendarDrivenTurns",     { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "ordersIssuedAt",          { scope: "world", config: false, type: Number,  default: 0 });
+
+    // ── Orders (hidden) ───────────────────────────────────────────────
+    game.settings.register(MODULE_ID, "recruitMode",             { scope: "world", config: false, type: String,  default: "roll" });
+    game.settings.register(MODULE_ID, "promptAllEvents",         { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "manualEventSelection",    { scope: "world", config: false, type: Boolean, default: false });
+
+    // ── Hirelings & Staff (hidden) ────────────────────────────────────
+    game.settings.register(MODULE_ID, "nameHirelings",           { scope: "world",  config: false, type: Boolean, default: true });
+    game.settings.register(MODULE_ID, "autoNameHirelings",       { scope: "world",  config: false, type: Boolean, default: true });
+    game.settings.register(MODULE_ID, "nameDefenders",           { scope: "world",  config: false, type: Boolean, default: true });
+    game.settings.register(MODULE_ID, "autoNameDefenders",       { scope: "client", config: false, type: Boolean, default: true });
+    game.settings.register(MODULE_ID, "createActorsForHirelings",  { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "createActorsForDefenders",  { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "hirelingActorTemplates",    { scope: "world", config: false, type: String,  default: JSON.stringify(FACILITY_HIRELING_TEMPLATES) });
+
+    // ── Facility-Specific (hidden) ────────────────────────────────────
+    game.settings.register(MODULE_ID, "menagerieArmoryBonus",    { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "menagerieDiceMode",       { scope: "world", config: false, type: String,  default: "raw" });
+    game.settings.register(MODULE_ID, "menagerieCrDiceTable",    { scope: "world", config: false, type: String,  default: '{"0":"d6","1":"d8","4":"d10","9":"d12"}' });
+    game.settings.register(MODULE_ID, "reliquaryOneTalismanLimit",{ scope: "world", config: false, type: Boolean, default: true });
+    game.settings.register(MODULE_ID, "freeMode",                { scope: "world", config: false, type: Boolean, default: false });
+
+    // ── Root Menu Buttons ─────────────────────────────────────────────
+    game.settings.registerMenu(MODULE_ID, "bastionConfigBtn",         { name: "Bastion Manager Configuration",   label: "Configure Bastion Manager",      icon: "fas fa-chess-rook",       type: BastionSettingsApp,     restricted: true });
+    game.settings.registerMenu(MODULE_ID, "resetAllTurnsBtn",         { name: "Reset All Bastion Turns",         label: "Reset Global Turns",             icon: "fas fa-rotate-left",      type: ResetBastionsApp,       restricted: true });
+    game.settings.registerMenu(MODULE_ID, "hirelingTemplatesBtn",     { name: "Hireling Actor Templates",        label: "Configure Hireling Templates",   icon: "fas fa-masks-theater",    type: HirelingTemplatesApp,   restricted: true });
+    game.settings.registerMenu(MODULE_ID, "constructionConfigBtn",    { name: "Facility Construction Costs",     label: "Configure Construction Costs",   icon: "fas fa-hammer",           type: ConstructionConfigApp,  restricted: true });
+    game.settings.registerMenu(MODULE_ID, "facilityExclusionBtn",     { name: "Facility Availability",           label: "Manage Facility Availability",   icon: "fas fa-filter",           type: FacilityExclusionApp,   restricted: true });
+
+    // dnd5e 5.3.3 / Foundry v14 compatibility: SourcedItemsMap.set() crashes when
+    // parseUuid() returns null for malformed compendiumSource UUIDs, leaving item.labels
+    // undefined and crashing CharacterActorSheet._prepareItem. Ensure labels is always
+    // initialized after _safePrepareData, even when system.prepareBaseData() throws.
+    const Item5e = CONFIG.Item.documentClass;
+    if (Item5e?.prototype) {
+        const _origItemSafe = Item5e.prototype._safePrepareData;
+        Item5e.prototype._safePrepareData = function() {
+            _origItemSafe.call(this);
+            this.labels ??= {};
+        };
+    }
 });
 
 Hooks.once("ready", async () => {
     console.log("Bastion Manager | Foundry is ready.");
-    game.modules.get("dnd-2024-bastion-manager").api = { BastionManager };
+    game.modules.get("dnd-2024-bastion-manager").api = {
+        BastionManager,
+        registerFacilityType: (config) => BastionManager.registerFacilityType(config),
+    };
     await BastionManager.loadProfessions();
+
+    // Migrate items with malformed compendiumSource UUIDs that crash dnd5e 5.3.3's
+    // SourcedItemsMap.set() when parseUuid() returns null.
+    if (game.user.isGM) {
+        const brokenItems = [];
+        for (const actor of game.actors) {
+            for (const item of actor.items) {
+                const csrc = item._stats?.compendiumSource;
+                const sid  = item.flags?.dnd5e?.sourceId;
+                const hasBadCsrc = csrc && foundry.utils.parseUuid(csrc) === null;
+                const hasBadSid  = sid  && foundry.utils.parseUuid(sid)  === null;
+                if (hasBadCsrc || hasBadSid) brokenItems.push({ item, hasBadCsrc, hasBadSid });
+            }
+        }
+        for (const { item, hasBadCsrc, hasBadSid } of brokenItems) {
+            const updates = {};
+            if (hasBadCsrc) updates["_stats.compendiumSource"] = null;
+            if (hasBadSid)  updates["flags.dnd5e.-=sourceId"] = null;
+            console.warn(`Bastion Manager | Clearing malformed source UUID on "${item.parent?.name} / ${item.name}"`, item._stats?.compendiumSource ?? item.flags?.dnd5e?.sourceId);
+            await item.update(updates);
+        }
+    }
+
+    // Migrate workshopTools flag: correct historical wrong tool names
+    if (game.user.isGM) {
+        const TOOL_NAME_CORRECTIONS = { "Painter's Tools": "Painter's Supplies" };
+        const needsFix = (tools) => Array.isArray(tools) && tools.some(t => TOOL_NAME_CORRECTIONS[t]);
+        const applyFix = (tools) => tools.map(t => TOOL_NAME_CORRECTIONS[t] ?? t);
+        for (const actor of game.actors) {
+            // Fix actor items (Workshop facility items)
+            for (const item of actor.items) {
+                if (!item.name.includes("Workshop")) continue;
+                const tools = item.getFlag("dnd-2024-bastion-manager", "workshopTools");
+                if (needsFix(tools)) await item.setFlag("dnd-2024-bastion-manager", "workshopTools", applyFix(tools));
+            }
+            // Fix groupFacilities flag (group/party bastions)
+            const groupFacs = actor.getFlag("dnd-2024-bastion-manager", "groupFacilities");
+            if (Array.isArray(groupFacs)) {
+                let changed = false;
+                for (const fac of groupFacs) {
+                    const tools = fac.flags?.["dnd-2024-bastion-manager"]?.workshopTools;
+                    if (needsFix(tools)) { fac.flags["dnd-2024-bastion-manager"].workshopTools = applyFix(tools); changed = true; }
+                }
+                if (changed) await actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacs);
+            }
+        }
+    }
 
     // Inject global styles for the "WORKING" pulse animation
     const style = document.createElement("style");
@@ -2029,7 +2256,11 @@ Hooks.once("ready", async () => {
 
         if ( actor ) {
             console.log(`Bastion Manager | Hijacking native advancement for ${actor.name}.`);
-            BastionManager.onAdvanceGlobalTurn.call({ actor, element: btn.parentElement }, event, btn);
+            if (game.settings.get(MODULE_ID, "calendarDrivenTurns")) {
+                BastionManager.onIssueOrders.call({ actor, element: btn.parentElement }, event, btn);
+            } else {
+                BastionManager.onAdvanceGlobalTurn.call({ actor, element: btn.parentElement }, event, btn);
+            }
         }
     }, { capture: true });
 
@@ -2120,6 +2351,128 @@ Hooks.on("updateItem", (item, changes) => {
 /**
  * CONFIGURATION CLASSES
  */
+class BastionSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
+    static DEFAULT_OPTIONS = {
+        id: "bastion-settings-app", tag: "form",
+        window: { title: "Bastion Manager Configuration", resizable: true },
+        position: { width: 560, height: 620 }, classes: ["bastion-app"],
+        form: { handler: BastionSettingsApp.processForm, closeOnSubmit: true }
+    };
+    static PARTS = { main: { template: "modules/dnd-2024-bastion-manager/templates/bastion-settings.hbs" } };
+
+    async _prepareContext() {
+        const g = (k) => game.settings.get(MODULE_ID, k);
+        return {
+            ignoreConstructionCosts: g("ignoreConstructionCosts"),
+            ignoreFacilityPrereqs:   g("ignoreFacilityPrereqs"),
+            specialFacilitiesBuildTime: g("specialFacilitiesBuildTime"),
+            disableNeglect:          g("disableNeglect"),
+            disableSpecialCap:       g("disableSpecialCap"),
+            disableDuplicateLimit:   g("disableDuplicateLimit"),
+            advancePermission:       g("advancePermission"),
+            groupInheritsFacilities: g("groupInheritsFacilities"),
+            unifyCombinedTurns:      g("unifyCombinedTurns"),
+            globalTurnCount:         g("globalTurnCount"),
+            calculationMode:         g("calculationMode"),
+            daysPerTurn:             g("daysPerTurn"),
+            syncDaysPerTurn:         g("syncDaysPerTurn"),
+            scaleWeekToTurnLength:   g("scaleWeekToTurnLength"),
+            advanceWorldTime:        g("advanceWorldTime"),
+            calendarDrivenTurns:     g("calendarDrivenTurns"),
+            recruitMode:             g("recruitMode"),
+            promptAllEvents:         g("promptAllEvents"),
+            manualEventSelection:    g("manualEventSelection"),
+            nameHirelings:           g("nameHirelings"),
+            autoNameHirelings:       g("autoNameHirelings"),
+            nameDefenders:           g("nameDefenders"),
+            autoNameDefenders:       g("autoNameDefenders"),
+            createActorsForHirelings: g("createActorsForHirelings"),
+            createActorsForDefenders: g("createActorsForDefenders"),
+            menagerieArmoryBonus:    g("menagerieArmoryBonus"),
+            menagerieDiceMode:       g("menagerieDiceMode"),
+            menagerieCrDiceTable:    g("menagerieCrDiceTable"),
+            reliquaryOneTalismanLimit: g("reliquaryOneTalismanLimit"),
+        };
+    }
+
+    _onRender(context, options) {
+        super._onRender(context, options);
+        const el = this.element;
+
+        // Tab switching
+        const panels = el.querySelectorAll(".settings-panel");
+        el.querySelectorAll(".settings-tab-btn").forEach(btn => {
+            btn.addEventListener("click", () => {
+                el.querySelectorAll(".settings-tab-btn").forEach(b => {
+                    b.classList.remove("active");
+                    b.style.background = "rgba(0,0,0,0.1)";
+                    b.style.color = "#aaa";
+                    b.style.borderColor = "#555";
+                });
+                btn.classList.add("active");
+                btn.style.background = "rgba(255,255,255,0.1)";
+                btn.style.color = "#e8e4d9";
+                btn.style.borderColor = "#666";
+                panels.forEach(p => { p.style.display = p.dataset.tab === btn.dataset.tab ? "" : "none"; });
+            });
+        });
+
+        // Sub-app launchers
+        el.querySelector("[data-action='openConstructionConfig']")?.addEventListener("click", () => new ConstructionConfigApp().render(true));
+        el.querySelector("[data-action='openFacilityExclusion']")?.addEventListener("click", () => new FacilityExclusionApp().render(true));
+        el.querySelector("[data-action='openHirelingTemplates']")?.addEventListener("click", () => new HirelingTemplatesApp().render(true));
+
+        // Reset to defaults
+        el.querySelector("[data-action='reset-defaults']")?.addEventListener("click", async () => {
+            const confirmed = await DialogV2.confirm({ window: { title: "Reset Settings" }, content: "<p>Reset all Bastion Manager settings to their defaults?</p>" });
+            if (!confirmed) return;
+            const keys = ["ignoreConstructionCosts","ignoreFacilityPrereqs","specialFacilitiesBuildTime","disableNeglect","disableSpecialCap","disableDuplicateLimit","advancePermission","groupInheritsFacilities","unifyCombinedTurns","globalTurnCount","calculationMode","daysPerTurn","syncDaysPerTurn","scaleWeekToTurnLength","advanceWorldTime","calendarDrivenTurns","recruitMode","promptAllEvents","manualEventSelection","nameHirelings","autoNameHirelings","nameDefenders","autoNameDefenders","createActorsForHirelings","createActorsForDefenders","hirelingActorTemplates","menagerieArmoryBonus","menagerieDiceMode","menagerieCrDiceTable","reliquaryOneTalismanLimit"];
+            await Promise.all(keys.map(k => game.settings.set(MODULE_ID, k, game.settings.settings.get(`${MODULE_ID}.${k}`)?.default)));
+            this.render();
+        });
+
+        // Cancel button
+        el.querySelector("[data-action='close-settings']")?.addEventListener("click", () => this.close());
+    }
+
+    static async processForm(event, form, formData) {
+        const d = formData.object;
+        const s = (k, v) => game.settings.set(MODULE_ID, k, v);
+        await Promise.all([
+            s("ignoreConstructionCosts",  d.ignoreConstructionCosts  ?? false),
+            s("ignoreFacilityPrereqs",    d.ignoreFacilityPrereqs    ?? false),
+            s("specialFacilitiesBuildTime", d.specialFacilitiesBuildTime ?? false),
+            s("disableNeglect",           d.disableNeglect           ?? false),
+            s("disableSpecialCap",        d.disableSpecialCap        ?? false),
+            s("disableDuplicateLimit",    d.disableDuplicateLimit    ?? false),
+            s("advancePermission",        Number(d.advancePermission)),
+            s("groupInheritsFacilities",  d.groupInheritsFacilities  ?? false),
+            s("unifyCombinedTurns",       d.unifyCombinedTurns       ?? false),
+            s("globalTurnCount",          Number(d.globalTurnCount)  || 0),
+            s("calculationMode",          d.calculationMode),
+            s("daysPerTurn",              Number(d.daysPerTurn)      || 7),
+            s("syncDaysPerTurn",          d.syncDaysPerTurn          ?? false),
+            s("scaleWeekToTurnLength",    d.scaleWeekToTurnLength    ?? false),
+            s("advanceWorldTime",         d.advanceWorldTime         ?? false),
+            s("calendarDrivenTurns",      d.calendarDrivenTurns      ?? false),
+            s("recruitMode",              d.recruitMode),
+            s("promptAllEvents",          d.promptAllEvents          ?? false),
+            s("manualEventSelection",     d.manualEventSelection     ?? false),
+            s("nameHirelings",            d.nameHirelings            ?? false),
+            s("autoNameHirelings",        d.autoNameHirelings        ?? false),
+            s("nameDefenders",            d.nameDefenders            ?? true),
+            s("autoNameDefenders",        d.autoNameDefenders        ?? true),
+            s("createActorsForHirelings", d.createActorsForHirelings ?? false),
+            s("createActorsForDefenders", d.createActorsForDefenders ?? false),
+            s("menagerieArmoryBonus",     d.menagerieArmoryBonus     ?? false),
+            s("menagerieDiceMode",        d.menagerieDiceMode),
+            s("menagerieCrDiceTable",     d.menagerieCrDiceTable),
+            s("reliquaryOneTalismanLimit", d.reliquaryOneTalismanLimit ?? false),
+        ]);
+        ui.notifications.info("Bastion Manager | Settings saved.");
+    }
+}
+
 class FacilityExclusionApp extends HandlebarsApplicationMixin(ApplicationV2) {
     static DEFAULT_OPTIONS = {
         id: "facility-exclusion-app", tag: "form",
@@ -2138,6 +2491,7 @@ class FacilityExclusionApp extends HandlebarsApplicationMixin(ApplicationV2) {
         let facilityList = [];
         for (const item of allDocs) {
             let source = item.system?.source?.label || item.system?.source || "Unknown";
+            if (typeof source === "string") source = source.replace(/,?\s*(?:pp?g?|page)\.?\s*\d+.*/i, "").trim() || "Unknown";
             if (!sourceMap.has(source)) sourceMap.set(source, { name: source, excluded: excludedSources.includes(source) });
             facilityList.push({ id: item.id, name: item.name, source, excluded: excludedFacilities.includes(item.id) });
         }
@@ -2211,6 +2565,98 @@ class ConstructionConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
             await game.settings.set(MODULE_ID, `${s}Time`, Number(data[`${s}Time`]));
         }
         ui.notifications.info("Bastion Manager | Configuration saved.");
+    }
+}
+
+class HirelingTemplatesApp extends HandlebarsApplicationMixin(ApplicationV2) {
+    #rows = null;
+
+    static DEFAULT_OPTIONS = {
+        id: "hireling-templates-app", tag: "form",
+        window: { title: "Hireling Actor Templates", resizable: false },
+        position: { width: 560, height: "auto" }, classes: ["bastion-app"],
+        form: { handler: HirelingTemplatesApp.processForm, closeOnSubmit: true }
+    };
+
+    static PARTS = {
+        main: { template: "modules/dnd-2024-bastion-manager/templates/hireling-templates.hbs" }
+    };
+
+    _getAvailableNames(index) {
+        return [...index]
+            .filter(e => e.folder === STAFF_FOLDER_ID && e.name !== "Defender")
+            .map(e => e.name)
+            .sort();
+    }
+
+    async _prepareContext() {
+        const actorsPack = game.packs.get(`${MODULE_ID}.bastion-facility-actors`);
+        await actorsPack?.getIndex();
+        const availableNames = actorsPack ? this._getAvailableNames(actorsPack.index) : ["Hireling"];
+
+        const facilitiesPack = game.packs.get(`${MODULE_ID}.bastion-facilities`);
+        await facilitiesPack?.getIndex();
+        const facilityNames = facilitiesPack
+            ? [...facilitiesPack.index].map(e => e.name).sort()
+            : [];
+
+        if (this.#rows === null) {
+            const stored = JSON.parse(game.settings.get(MODULE_ID, "hirelingActorTemplates") || "{}");
+            this.#rows = Object.entries(stored).map(([facility, template]) => ({ facility, template }));
+        }
+
+        return {
+            noTemplates: availableNames.length === 0,
+            noFacilities: facilityNames.length === 0,
+            availableNames,
+            facilityNames,
+            rows: this.#rows.map(row => ({
+                facilityOptions: facilityNames.map(name => ({ name, selected: name === row.facility })),
+                options: availableNames.map(name => ({ name, selected: name === row.template }))
+            }))
+        };
+    }
+
+    _syncFormToRows() {
+        this.#rows = this.#rows.map((_, i) => ({
+            facility: this.element.querySelector(`[name="facility_${i}"]`)?.value ?? "",
+            template: this.element.querySelector(`[name="template_${i}"]`)?.value ?? "Hireling"
+        }));
+    }
+
+    _onRender(context, options) {
+        super._onRender(context, options);
+        const el = this.element;
+
+        el.querySelectorAll(".remove-row").forEach((btn, i) => {
+            btn.addEventListener("click", () => {
+                this._syncFormToRows();
+                this.#rows.splice(i, 1);
+                this.render();
+            });
+        });
+
+        el.querySelector("#add-template-row")?.addEventListener("click", () => {
+            this._syncFormToRows();
+            this.#rows.push({ facility: context.facilityNames?.[0] ?? "", template: context.availableNames[0] ?? "Hireling" });
+            this.render();
+        });
+
+        el.querySelector("[data-action='close-dialog']")?.addEventListener("click", () => this.close());
+    }
+
+    static async processForm(event, form, formData) {
+        const d = formData.object;
+        const result = {};
+        let i = 0;
+        while (`facility_${i}` in d) {
+            const facility = (d[`facility_${i}`] || "").trim();
+            const template = d[`template_${i}`] || "Hireling";
+            if (facility) result[facility] = template;
+            i++;
+        }
+        await game.settings.set(MODULE_ID, "hirelingActorTemplates", JSON.stringify(result));
+        ui.notifications.info("Bastion Manager | Hireling templates saved.");
     }
 }
 
@@ -2366,7 +2812,7 @@ const _buildGroupMemberBastionCard = (memberActor) => {
 
     memberHeader.querySelector('.bastion-open-member-btn').addEventListener('click', (ev) => {
         ev.stopPropagation();
-        new BastionManager(memberActor).render({ force: true });
+        _openBastionManager(memberActor, ev.currentTarget);
     });
 
     return card;
@@ -2413,6 +2859,35 @@ const _injectGroupBastionTab = (app) => {
 
 Hooks.on("renderGroupActorSheet", (app) => _injectGroupBastionTab(app));
 
+// Wire up Pay Army buttons embedded in bastion turn summary chat messages
+Hooks.on("renderChatMessageHTML", (message, html) => {
+    html.querySelectorAll(".bastion-pay-army-btn").forEach(btn => {
+        btn.addEventListener("click", async (ev) => {
+            ev.preventDefault();
+            const actorId = btn.dataset.actorId;
+            const cost = parseInt(btn.dataset.cost || "0");
+            const period = btn.dataset.period || "daily";
+            const actor = game.actors.get(actorId);
+            if (!actor) return ui.notifications.warn("Could not find the associated actor.");
+            if (!actor.isOwner) return ui.notifications.warn("You do not own this actor.");
+            if (!cost || cost <= 0) return;
+            const currentGP = Number(actor.system.currency?.gp || 0);
+            if (currentGP < cost) return ui.notifications.warn(`Insufficient gold. Need ${cost} GP but only have ${currentGP} GP.`);
+            const label = period === "weekly" ? "weekly (7 days)" : "daily";
+            const confirmed = await foundry.applications.api.DialogV2.confirm({
+                window: { title: "War Room: Pay Army Upkeep", icon: "fa-solid fa-coins" },
+                content: `<p>Pay <b>${cost} GP</b> ${label} army upkeep? You currently have <b>${currentGP} GP</b>.</p>`,
+                yes: { label: `Pay ${cost} GP` },
+                no: { label: "Cancel" },
+                rejectClose: false
+            });
+            if (!confirmed) return;
+            await actor.update({ "system.currency.gp": currentGP - cost });
+            ui.notifications.info(`Paid ${cost} GP ${label} army upkeep. Remaining GP: ${currentGP - cost}.`);
+        });
+    });
+});
+
 // Re-render the group bastion overview when a member actor's facility flags change
 Hooks.on("updateActor", (actor, changes) => {
     if (!foundry.utils.hasProperty(changes, `flags.${MODULE_ID}`)) return;
@@ -2440,6 +2915,14 @@ Hooks.on("updateItem", (item, changes) => {
     }
 });
 
+Hooks.on("deleteItem", async (item) => {
+    if (item.type !== "facility" || !item.isEmbedded) return;
+    const toDelete = game.actors
+        .filter(a => a.getFlag(MODULE_ID, "facilityItemId") === item.id)
+        .map(a => a.id);
+    if (toDelete.length) await Actor.deleteDocuments(toDelete);
+});
+
 /**
  * HEADER CONTROLS
  * Add a 3-dot menu option to open the manager directly for any actor sheet.
@@ -2449,15 +2932,74 @@ Hooks.on("getHeaderControlsApplicationV2", (app, controls) => {
     if (!(actor instanceof Actor) || !["character", "npc", "group"].includes(actor.type)) return;
     controls.unshift({ label: "Bastion Manager", icon: "fa-solid fa-chess-rook", action: "openBastionManager" });
     if (!app.options.actions) app.options.actions = {};
-    app.options.actions.openBastionManager = () => new BastionManager(actor).render({ force: true });
+    app.options.actions.openBastionManager = () => _openBastionManager(actor, app.element);
 });
 
 // Header hook for legacy Actor Sheets (V1/V2 backward compatibility)
 Hooks.on("getActorSheetHeaderButtons", (app, buttons) => {
     buttons.unshift({
         label: "Bastion", class: "bastion-header-btn", icon: "fa-solid fa-chess-rook",
-        onclick: () => new BastionManager(app.actor).render({ force: true })
+        onclick: () => _openBastionManager(app.actor, app.element?.[0] || app.element)
     });
+});
+
+/**
+ * When calendar-driven mode is active, watch world time and auto-resolve
+ * the pending bastion turn once enough time has elapsed since orders were issued.
+ */
+Hooks.on("updateWorldTime", async (worldTime) => {
+    if (!game.user.isGM) return;
+    if (!game.settings.get(MODULE_ID, "calendarDrivenTurns")) return;
+    const issuedAt = game.settings.get(MODULE_ID, "ordersIssuedAt") || 0;
+    if (!issuedAt) return;
+    if (worldTime < issuedAt + effectiveDaysPerTurn() * 86400) return;
+    await BastionManager.resolveCalendarDrivenTurn();
+});
+
+/**
+ * Inject live calendar info into the syncDaysPerTurn setting hint whenever
+ * the settings dialog opens.
+ */
+Hooks.on("renderSettingsConfig", (app, html) => {
+    const root = html instanceof HTMLElement ? html : html[0];
+    if (!root) return;
+
+    // --- Live calendar name in syncDaysPerTurn hint ---
+    const syncInput = root.querySelector(`[name="${MODULE_ID}.syncDaysPerTurn"]`);
+    if (syncInput) {
+        const hint = syncInput.closest(".form-group")?.querySelector(".hint, .notes");
+        if (hint) {
+            const calName = getActiveCalendarName();
+            const weekLen = getCalendarWeekLength();
+            hint.textContent = `Use the active calendar's week length as the Bastion Turn duration everywhere — crafting times, construction display, and world time advancement. Active calendar: ${calName} (${weekLen}-day week).`;
+        }
+    }
+
+    // --- Dependent setting dimming ---
+    const setGroupDisabled = (inputEl, disabled) => {
+        if (!inputEl) return;
+        const group = inputEl.closest(".form-group");
+        if (!group) return;
+        inputEl.disabled = disabled;
+        group.style.opacity = disabled ? "0.45" : "";
+        group.style.pointerEvents = disabled ? "none" : "";
+    };
+
+    // daysPerTurn is dimmed when syncDaysPerTurn is on
+    const daysInput = root.querySelector(`[name="${MODULE_ID}.daysPerTurn"]`);
+    const syncCheckbox = root.querySelector(`[name="${MODULE_ID}.syncDaysPerTurn"]`);
+    if (daysInput && syncCheckbox) {
+        setGroupDisabled(daysInput, syncCheckbox.checked);
+        syncCheckbox.addEventListener("change", () => setGroupDisabled(daysInput, syncCheckbox.checked));
+    }
+
+    // advanceWorldTime is dimmed when calendarDrivenTurns is on
+    const advanceInput = root.querySelector(`[name="${MODULE_ID}.advanceWorldTime"]`);
+    const calDrivenCheckbox = root.querySelector(`[name="${MODULE_ID}.calendarDrivenTurns"]`);
+    if (advanceInput && calDrivenCheckbox) {
+        setGroupDisabled(advanceInput, calDrivenCheckbox.checked);
+        calDrivenCheckbox.addEventListener("change", () => setGroupDisabled(advanceInput, calDrivenCheckbox.checked));
+    }
 });
 
 /**

@@ -1,10 +1,22 @@
 {
   "id": "dnd-2024-bastion-manager",
   "title": "DnD 2024 Bastion Manager",
-  "version": "0.0.1",
+  "version": "14.0.0",
   "compatibility": {
     "minimum": "13",
-    "verified": "13"
+    "verified": "14.362"
+  },
+  "relationships": {
+    "systems": [
+      {
+        "id": "dnd5e",
+        "type": "system",
+        "compatibility": {
+          "minimum": "5.0.0",
+          "verified": "5.3.3"
+        }
+      }
+    ]
   },
   "authors": [
     {
@@ -25,37 +37,49 @@
       "ownership": {
         "PLAYER": "OBSERVER",
         "ASSISTANT": "OWNER"
-      }
+      },
+      "flags": {}
     },
     {
       "name": "bastion-output-items",
       "label": "Bastion Output Items",
       "path": "packs/bastion-output-items",
       "type": "Item",
-      "system": "dnd5e"
+      "system": "dnd5e",
+      "ownership": {
+        "PLAYER": "OBSERVER",
+        "ASSISTANT": "OWNER"
+      },
+      "flags": {}
     },
     {
       "name": "bastion-facility-actors",
       "label": "Bastion Facility Actors",
       "path": "packs/bastion-facility-actors",
       "type": "Actor",
-      "system": "dnd5e"
+      "system": "dnd5e",
+      "ownership": {
+        "PLAYER": "OBSERVER",
+        "ASSISTANT": "OWNER"
+      },
+      "flags": {}
     }
   ],
   "packFolders": [
-        {
-            "name": "D&D Bastion Manager",
-            "color": "#111144",
-            "sorting": "m",
-            "packs": [
-                "bastion-facilities",
-                "bastion-output-items",
-                "bastion-facility-actors"
-            ]
-        }
-    ],
+    {
+      "name": "D&D Bastion Manager",
+      "color": "#111144",
+      "sorting": "m",
+      "packs": [
+        "bastion-facilities",
+        "bastion-output-items",
+        "bastion-facility-actors"
+      ],
+      "folders": []
+    }
+  ],
   "flags": {
     "canUpload": true
   },
-  "description": "Manages the D&D 5.5e Bastion system, tracking facilities, orders, and turn advancement."
+  "description": "<p>Manages the D&amp;D 5.5e Bastion system, tracking facilities, orders, and turn advancement.</p>"
 }

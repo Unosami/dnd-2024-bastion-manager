@@ -1,6 +1,6 @@
 <div class="bastion-manager-container" style="display: flex; gap: 15px; height: 100%; overflow: hidden;">
     
-    <div class="bastion-sidebar" style="flex: 0 0 400px; overflow-y: auto; padding-right: 10px; border-right: 1px solid #ccc; display: flex; flex-direction: column;">
+    <div class="bastion-sidebar" style="flex: 0 0 370px; overflow-y: auto; padding-right: 10px; border-right: 1px solid #ccc; display: flex; flex-direction: column;">
     <div class="sidebar-content-column">
     <div class="bastion-header" style="text-align: center; margin-bottom: 5px;">
         <h2 style="margin-bottom: 5px; line-height: 1.2; display: flex; align-items: center; justify-content: center; gap: 6px;">
@@ -35,30 +35,46 @@
             {{/if}}
             
             <div style="display: flex; gap: 5px; align-items: center; border: 1px solid #ccc; padding: 4px; border-radius: 4px; background: rgba(0,0,0,0.05);">
-                <button type="button" data-action="maintainAll" style="width: auto; padding: 2px 8px; font-size: 0.75em;" title="Set all facilities to Maintain">
+                <button type="button" data-action="maintainAll" style="width: auto; height: auto !important; padding: 3px 8px; font-size: 0.75em;" title="Set all facilities to Maintain">
                     <i class="fa-solid fa-broom"></i> Maintain All
                 </button>
             
                 {{#if canAdvanceTurn}}
                     <span style="border-left: 1px solid #ccc; height: 20px; margin: 0 5px;"></span>
-                    <div style="display: flex; gap: 0; align-items: center; border: 1px solid #777; border-radius: 4px; overflow: hidden; background: white;">
-                        <button type="button" data-action="toggleAdvanceMode" style="width: auto; padding: 2px 6px; border: none; border-right: 1px solid #777; background: {{#if (eq advanceMode "global")}}#2e7d32{{else}}none{{/if}}; color: {{#if (eq advanceMode "global")}}white{{else}}#666{{/if}}; border-radius: 0;" title="Global Mode: Advance all active Bastions">
-                            <i class="fa-solid fa-earth-americas"></i>
-                        </button>
-                        <button type="button" data-action="toggleAdvanceMode" style="width: auto; padding: 2px 6px; border: none; background: {{#if (eq advanceMode "individual")}}#a32a22{{else}}none{{/if}}; color: {{#if (eq advanceMode "individual")}}white{{else}}#666{{/if}}; border-radius: 0;" title="Individual Mode: Advance ONLY this character (Catch-up)">
-                            <i class="fa-solid fa-person-running"></i>
-                        </button>
-                    </div>
-                    <input type="number" name="turns" value="1" min="1" style="width: 30px; text-align: center; height: 20px; font-size: 0.8em; border: 1px solid #777;" title="Turns to advance">
-                    
-                    {{#if (eq advanceMode "global")}}
-                        <button type="button" data-action="advanceGlobalTurn" style="width: auto; padding: 2px 8px; font-size: 0.75em; color: #2e7d32;" title="Process all Bastions owned by logged-in players">
-                            <i class="fa-solid fa-play"></i> Run Turn ({{readyCount}}/{{totalBastions}})
-                        </button>
+                    {{#if calendarDrivenTurns}}
+                        {{#if ordersIssued}}
+                            <span style="font-size: 0.8em; color: #555; font-style: italic; display: flex; align-items: center; gap: 4px;">
+                                <i class="fa-solid fa-hourglass-half"></i> Orders Pending{{#if ordersCountdown}} ({{ordersCountdown}}d){{/if}}
+                            </span>
+                            {{#if isGM}}
+                                <button type="button" data-action="cancelOrders" style="width: auto; padding: 2px 8px; font-size: 0.75em; color: #a32a22;" title="Cancel pending orders — the turn will not resolve automatically">
+                                    <i class="fa-solid fa-xmark"></i> Cancel
+                                </button>
+                            {{/if}}
+                        {{else}}
+                            <button type="button" data-action="issueOrders" style="width: auto; height: auto !important; padding: 3px 8px; font-size: 0.75em; color: #2e7d32;" title="Lock in current orders. The turn resolves automatically once enough in-game time passes.">
+                                <i class="fa-solid fa-scroll"></i> Issue Orders ({{readyCount}}/{{totalBastions}})
+                            </button>
+                        {{/if}}
                     {{else}}
-                        <button type="button" data-action="advanceIndividualTurn" style="width: auto; padding: 2px 8px; font-size: 0.75em; color: #a32a22;" title="Process only this character's Bastion">
-                            <i class="fa-solid fa-person-running"></i> Run Catch-up
-                        </button>
+                        <div style="display: flex; gap: 0; align-items: center; border: 1px solid #777; border-radius: 4px; overflow: hidden; background: white;">
+                            <button type="button" data-action="toggleAdvanceMode" style="width: auto; padding: 2px 6px; border: none; border-right: 1px solid #777; background: {{#if (eq advanceMode "global")}}#2e7d32{{else}}none{{/if}}; color: {{#if (eq advanceMode "global")}}white{{else}}#666{{/if}}; border-radius: 0;" title="Global Mode: Advance all active Bastions">
+                                <i class="fa-solid fa-earth-americas"></i>
+                            </button>
+                            <button type="button" data-action="toggleAdvanceMode" style="width: auto; padding: 2px 6px; border: none; background: {{#if (eq advanceMode "individual")}}#a32a22{{else}}none{{/if}}; color: {{#if (eq advanceMode "individual")}}white{{else}}#666{{/if}}; border-radius: 0;" title="Individual Mode: Advance ONLY this character (Catch-up)">
+                                <i class="fa-solid fa-person-running"></i>
+                            </button>
+                        </div>
+                        <input type="number" name="turns" value="1" min="1" style="width: 30px; text-align: center; height: 20px; font-size: 0.8em; border: 1px solid #777;" title="Turns to advance">
+                        {{#if (eq advanceMode "global")}}
+                            <button type="button" data-action="advanceGlobalTurn" style="width: auto; height: auto !important; padding: 3px 8px; font-size: 0.75em; color: #2e7d32;" title="Process all Bastions owned by logged-in players">
+                                <i class="fa-solid fa-play"></i> Run Turn ({{readyCount}}/{{totalBastions}})
+                            </button>
+                        {{else}}
+                            <button type="button" data-action="advanceIndividualTurn" style="width: auto; padding: 2px 8px; font-size: 0.75em; color: #a32a22;" title="Process only this character's Bastion">
+                                <i class="fa-solid fa-person-running"></i> Run Catch-up
+                            </button>
+                        {{/if}}
                     {{/if}}
                 {{else}}
                     {{#if (ne actor.type "group")}}
@@ -67,6 +83,14 @@
                             <i class="fa-solid fa-check-to-slot"></i> {{#if isReady}}Ready!{{else}}Mark Ready{{/if}}
                         </button>
                     {{/if}}
+                {{/if}}
+                {{#if isGM}}
+                    <span style="border-left: 1px solid #ccc; height: 20px; margin: 0 5px;"></span>
+                    <button type="button" data-action="toggleFreeMode"
+                        style="width: auto; height: auto !important; padding: 3px 8px; font-size: 0.75em; {{#if freeMode}}background: #7b1fa2; color: white; font-weight: bold;{{else}}color: #888;{{/if}}"
+                        title="Free Mode: Orders complete instantly with no gold or items consumed">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> {{#if freeMode}}Free Mode ON{{else}}Free Mode{{/if}}
+                    </button>
                 {{/if}}
             </div>
         </div>
@@ -81,7 +105,18 @@
             {{#if defendersByFacility.length}}
                 <div style="margin-top: 3px; display: flex; flex-direction: column; gap: 2px;">
                 {{#each defendersByFacility}}
-                    <div><b>{{this.facilityName}}:</b> {{this.count}}{{#if this.names.length}} — {{#each this.names}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}{{/if}}</div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 2px; align-items: center;">
+                        <b>{{this.facilityName}}:</b>&nbsp;{{this.count}}
+                        {{#each this.names}}
+                            <span style="display: inline-flex; align-items: center; gap: 1px;">
+                                &nbsp;— {{this}}
+                                <button type="button" data-action="renameDefender" data-item-id="{{../id}}" data-is-flag="{{../isFlag}}" data-index="{{@index}}"
+                                        style="width: auto; padding: 0 2px; font-size: 0.75em; height: 14px; border: none; background: none; color: #888; cursor: pointer; line-height: 1;" title="Rename defender">
+                                    <i class="fa-solid fa-pen" style="font-size: 0.7em;"></i>
+                                </button>
+                            </span>
+                        {{/each}}
+                    </div>
                 {{/each}}
                 </div>
             {{else}}
@@ -165,8 +200,19 @@
                         <span style="font-size: 0.8em; color: darkgreen; margin-left: 5px; font-weight: bold;">[{{this.subType}}]</span>
                     {{/if}}
 
-                    {{#if this.hirelings}}
-                        <span style="font-size: 0.85em; color: #555; font-style: italic; display: block;">(Hirelings: {{this.hirelings}})</span>
+                    {{#if this.hirelingsArr.length}}
+                        <div style="font-size: 0.85em; color: #555; font-style: italic; display: flex; flex-wrap: wrap; gap: 2px; align-items: center; margin-top: 1px;">
+                            <span>Hirelings:</span>
+                            {{#each this.hirelingsArr}}
+                                <span style="display: inline-flex; align-items: center; gap: 1px; background: rgba(0,0,0,0.05); padding: 0 3px; border-radius: 3px;">
+                                    {{this}}
+                                    <button type="button" data-action="renameHireling" data-item-id="{{../id}}" data-is-flag="{{../isFlag}}" data-index="{{@index}}"
+                                            style="width: auto; padding: 0 2px; font-size: 0.75em; height: 14px; border: none; background: none; color: #888; cursor: pointer; line-height: 1;" title="Rename hireling">
+                                        <i class="fa-solid fa-pen" style="font-size: 0.7em;"></i>
+                                    </button>
+                                </span>
+                            {{/each}}
+                        </div>
                     {{/if}}
 
                     {{#if (and this.isGreenhouse (not this.isBuilding))}}
@@ -560,7 +606,7 @@
                                     </div>
                                 {{/if}}
 
-                                {{#if this.isGuildhall}}
+                                {{#if this.isGuildhallRecruiting}}
                                     <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px; width: 100%;">
                                         <div style="display:flex; justify-content:space-between; align-items:center;">
                                             <div style="font-size:0.9em;"><i class="fa-solid fa-users" style="color:#4caf50;"></i> <b>Guild:</b> <span style="color:#81c784;">{{this.guildhallGuildType}}</span></div>
@@ -592,7 +638,7 @@
                                     </div>
                                 {{/if}}
 
-                                {{#if this.isSanctum}}
+                                {{#if this.isSanctumEmpowering}}
                                     <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px; width: 100%;">
                                         <label style="font-size: 0.88em; opacity: 0.75; white-space: nowrap;">Rites beneficiary:</label>
                                         <select class="sanctum-beneficiary-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
@@ -604,7 +650,7 @@
                                     </div>
                                 {{/if}}
 
-                                {{#if this.isWarRoom}}
+                                {{#if this.isWarRoomRecruiting}}
                                     <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px; width: 100%;">
                                         <label style="font-size: 0.88em; opacity: 0.75; white-space: nowrap;">Recruit:</label>
                                         <select class="war-room-recruit-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
@@ -638,7 +684,7 @@
                         </div>
 
                         {{#if (or (eq this.theaterPhase "Writing") (eq this.theaterPhase "Rehearsing"))}}
-                            <div class="bastion-progress-bar" title="Days: {{this.theaterProgress}} / 14" style="height: 10px; background: rgba(0,0,0,0.2); border: 1px solid #555; border-radius: 5px; position: relative; overflow: hidden; margin-bottom: 5px;">
+                            <div class="bastion-progress-bar" title="Days: {{this.theaterProgress}} / {{this.theaterPhaseDays}}" style="height: 10px; background: rgba(0,0,0,0.2); border: 1px solid #555; border-radius: 5px; position: relative; overflow: hidden; margin-bottom: 5px;">
                                 <div class="fill" style="width: {{this.theaterProgressPct}}%; height: 100%; background: #82cfff; transition: width 0.5s;"></div>
                             </div>
                         {{/if}}
@@ -653,6 +699,14 @@
                                         <span style="color: #777; font-style: italic;">None</span>
                                     {{/if}}
                                 </div>
+                                {{#if this.isWritingPhase}}
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span><b>Script Title:</b></span>
+                                        <input type="text" class="theater-script-title" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                            value="{{this.theaterScriptTitle}}" placeholder="Untitled Script"
+                                            style="width: 60%; font-size: 0.9em; height: 20px; padding: 0 4px; border: 1px solid #555; background: #222; color: #eee; border-radius: 3px;">
+                                    </div>
+                                {{/if}}
                             {{/if}}
                             
                             {{#if this.isActingPhase}}
@@ -911,7 +965,8 @@
                         <hr style="opacity: 0.15; margin: 5px 0;">
                         <div style="margin-bottom: 3px;"><i class="fa-solid fa-shield-halved" style="color: #ef5350;"></i> <b>Army:</b> <span style="color: #ef9a9a;">ACTIVE</span></div>
                         <div style="font-size: 0.85em; opacity: 0.8; margin-bottom: 2px;">{{this.warRoomArmyGuards}} Guards{{#if this.warRoomArmyMounted}} (mounted){{/if}}</div>
-                        <div style="font-size: 0.85em; opacity: 0.8; margin-bottom: 5px;">Commander: <b>{{this.warRoomArmyLeaderName}}</b></div>
+                        <div style="font-size: 0.85em; opacity: 0.8; margin-bottom: 2px;">Commander: <b>{{this.warRoomArmyLeaderName}}</b></div>
+                        <div style="font-size: 0.85em; opacity: 0.75; margin-bottom: 5px;"><i class="fa-solid fa-coins" style="color: #c9a227;"></i> Upkeep: <b>{{this.warRoomArmyDailyCost}} GP/day</b> · <b>{{this.warRoomArmyWeeklyCost}} GP/week</b></div>
                         <button type="button" data-action="disbandWarRoomArmy" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
                                 style="width: auto; padding: 2px 8px; font-size: 0.82em; height: 24px; background: rgba(100,0,0,0.4); color: #ef9a9a; border-color: #b71c1c;">
                             <i class="fa-solid fa-flag-checkered"></i> Disband Army
@@ -1305,6 +1360,28 @@
                                 {{this.constructionLabel}}: {{this.upgradeProgress}} / {{this.upgradeTurns}} Turns
                             </span>
                         </div>
+                        {{#if ../isGM}}
+                        <button type="button" data-action="advanceConstruction" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                style="width: auto; padding: 1px 7px; font-size: 0.78em; height: 20px; margin-top: 3px; opacity: 0.85;"
+                                title="Advance construction progress by a number of turns">
+                            <i class="fa-solid fa-forward-fast"></i> Advance Progress
+                        </button>
+                        {{/if}}
+                    {{/if}}
+
+                    {{#if (and this.hasActiveOrder ../isGM (not this.isBuilding) (not this.isDamaged))}}
+                        <button type="button" data-action="advanceOrder" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-max-craft-turns="{{this.maxCraftTurns}}"
+                                style="width: auto; padding: 1px 7px; font-size: 0.78em; height: 20px; margin-top: 3px; opacity: 0.85;"
+                                title="Advance order progress by a number of turns (GM only)">
+                            <i class="fa-solid fa-forward-fast"></i> Advance Order
+                        </button>
+                    {{/if}}
+
+                    {{#if (eq this.itemName "Barrack")}}
+                        <div data-tooltip="Defenders: {{this.barrackDefenderCount}} / {{this.barrackMaxDefenders}} (cap based on facility size)"
+                             style="font-size: 0.75em; font-weight: bold; color: {{#if (ge this.barrackDefenderCount this.barrackMaxDefenders)}}#ef9a9a{{else}}#e8e4d9{{/if}}; margin-top: 4px; cursor: help;">
+                            <i class="fa-solid fa-shield" style="color:#ef9a9a;"></i> <b>Defenders:</b> {{this.barrackDefenderCount}} / {{this.barrackMaxDefenders}}
+                        </div>
                     {{/if}}
                 </div>
                 </div>
@@ -1322,10 +1399,6 @@
                             title="Toggle Name Prompting ({{#if this.promptNames}}On{{else}}Off{{/if}})">
                             <i class="fa-solid fa-id-card"></i>
                         </button>
-                        <span data-tooltip="Defenders: {{this.barrackDefenderCount}} / {{this.barrackMaxDefenders}} (cap based on facility size)"
-                              style="font-size: 0.7em; font-weight: bold; color: {{#if (ge this.barrackDefenderCount this.barrackMaxDefenders)}}#ef9a9a{{else}}#e8e4d9{{/if}}; white-space: nowrap; cursor: help; padding: 1px 4px; background: rgba(0,0,0,0.3); border-radius: 4px; border: 1px solid rgba(255,255,255,0.12);">
-                            <i class="fa-solid fa-shield" style="color:#ef9a9a;"></i> {{this.barrackDefenderCount}}/{{this.barrackMaxDefenders}}
-                        </span>
                     {{/if}}
 
                     {{#if (eq this.itemName "Storehouse")}}
@@ -1383,6 +1456,13 @@
                                 {{this.constructionLabel}}: {{this.upgradeProgress}} / {{this.upgradeTurns}}
                             </span>
                         </div>
+                        {{#if ../isGM}}
+                        <button type="button" data-action="advanceConstruction" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                style="width: auto; padding: 1px 7px; font-size: 0.78em; height: 20px; margin: 2px 0 0 26px; opacity: 0.85;"
+                                title="Advance construction progress by a number of turns">
+                            <i class="fa-solid fa-forward-fast"></i> Advance Progress
+                        </button>
+                        {{/if}}
                     {{/if}}
 
                     <div style="font-size: 0.6em; padding-left: 26px; color: #777;">
@@ -1432,43 +1512,37 @@
                     </button>
                 </div>
             </div>
-            <div style="display: flex; justify-content: space-between; font-size: 0.85em;">
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    <button type="button" data-action="buildDefensiveWall" style="width: auto; padding: 2px 4px; font-size: 0.85em;" title="Buy 5ft wall squares ({{wallCost}} GP, {{wallTime}} Days)">
-                        <i class="fa-solid fa-plus"></i> Buy Walls
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85em;">
+                <div style="display: flex; gap: 2px; align-items: center; border: 1px solid #777; padding: 1px 3px; border-radius: 3px; background: rgba(0,0,0,0.05);">
+                    <button type="button" data-action="selectFacilityLayout" data-item-id="{{structIds.wall}}"
+                        style="width: auto; height: auto !important; padding: 3px 8px; font-size: 0.85em; border: none; background: {{#if (eq selectedId structIds.wall)}}#444; color: white;{{else}}transparent;{{/if}}" title="Draw walls on grid">
+                        <i class="fa-solid fa-wall-brick"></i> {{placedWallSquares}}/{{totalWallSquaresAllowed}}
                     </button>
-                    <button type="button" data-action="selectFacilityLayout" data-item-id="{{structIds.wall}}" 
-                        style="width: auto; padding: 2px 5px; font-size: 0.85em; {{#if (eq selectedId structIds.wall)}}background: #444; color: white;{{/if}}" title="Draw walls">
-                        <i class="fa-solid fa-wall-brick"></i> Walls: {{placedWallSquares}}/{{totalWallSquaresAllowed}}
+                    <button type="button" data-action="buildDefensiveWall"
+                        style="width: auto; height: auto !important; padding: 3px 8px; font-size: 0.85em; border: none; background: transparent;" title="Buy 5ft wall squares ({{wallCost}} GP, {{wallTime}} Days)">
+                        <i class="fa-solid fa-plus"></i>
                     </button>
-                    <button type="button" data-action="selectFacilityLayout" data-item-id="{{structIds.path}}" 
-                        style="width: auto; padding: 2px 5px; font-size: 0.85em; {{#if (eq selectedId structIds.path)}}background: #444; color: white;{{/if}}" title="Corridors/Ramps/Stairs (1 Turn)">
-                        <i class="fa-solid fa-stairs"></i> Paths
-                    </button>
-                    <button type="button" data-action="selectFacilityLayout" data-item-id="{{structIds.closet}}" 
-                        style="width: auto; padding: 2px 5px; font-size: 0.85em; {{#if (eq selectedId structIds.closet)}}background: #444; color: white;{{/if}}" title="Closets/Washrooms">
-                        <i class="fa-solid fa-door-closed"></i> Closets
-                    </button>
-                    <div style="display: flex; gap: 2px; align-items: center; border: 1px solid #777; padding: 1px 3px; border-radius: 3px; background: rgba(0,0,0,0.05);">
-                        <button type="button" data-action="selectFacilityLayout" data-item-id="{{selectedOpening}}" 
-                            style="width: auto; padding: 2px 5px; font-size: 0.85em; border: none; background: {{#if (eq selectedId selectedOpening)}}#444; color: white;{{else}}transparent;{{/if}}" title="Place selected opening type">
-                            <i class="fa-solid fa-door-open"></i>
-                        </button>
-                        <select name="opening-type" style="font-size: 0.75em; height: 18px; width: 80px; border: none; background: #333; color: #eee;">
-                            <option value="Door" {{#if (eq selectedOpening "Door")}}selected{{/if}}>Door</option>
-                            <option value="Window" {{#if (eq selectedOpening "Window")}}selected{{/if}}>Window</option>
-                            <option value="Locked Door" {{#if (eq selectedOpening "Locked Door")}}selected{{/if}}>Locked</option>
-                            <option value="Secret Door" {{#if (eq selectedOpening "Secret Door")}}selected{{/if}}>Secret</option>
-                            <option value="Portcullis" {{#if (eq selectedOpening "Portcullis")}}selected{{/if}}>Portcullis</option>
-                        </select>
-                    </div>
                 </div>
-                <div style="text-align: right;">
-                    {{#if selectedId}}
-                        <span style="color: #a32a22; font-weight: bold; font-size: 0.9em;">Placing: {{#if (eq selectedId structIds.wall)}}Walls{{else}}{{#if (eq selectedId structIds.path)}}Paths{{else}}{{#if (eq selectedId structIds.closet)}}Closet{{else}}{{#if (eq selectedId selectedOpening)}}{{selectedOpening}}{{else}}{{#each specialFacilitiesBuilt}}{{#if (eq this.id ../selectedId)}}{{this.name}}{{/if}}{{/each}}{{#each basicFacilitiesBuilt}}{{#if (eq this.id ../selectedId)}}{{this.name}}{{/if}}{{/each}}{{/if}}{{/if}}{{/if}}{{/if}}</span>
-                    {{else}}
-                        <span style="font-style: italic; color: #666;">Select an item to begin...</span>
-                    {{/if}}
+                <button type="button" data-action="selectFacilityLayout" data-item-id="{{structIds.path}}"
+                    style="width: auto; height: auto !important; padding: 3px 8px; font-size: 0.85em; {{#if (eq selectedId structIds.path)}}background: #444; color: white;{{/if}}" title="Corridors/Ramps/Stairs (1 Turn)">
+                    <i class="fa-solid fa-stairs"></i> Paths
+                </button>
+                <button type="button" data-action="selectFacilityLayout" data-item-id="{{structIds.closet}}"
+                    style="width: auto; height: auto !important; padding: 3px 8px; font-size: 0.85em; {{#if (eq selectedId structIds.closet)}}background: #444; color: white;{{/if}}" title="Closets/Washrooms">
+                    <i class="fa-solid fa-door-closed"></i> Closets
+                </button>
+                <div style="display: flex; gap: 2px; align-items: center; border: 1px solid #777; padding: 1px 3px; border-radius: 3px; background: rgba(0,0,0,0.05);">
+                    <button type="button" data-action="selectFacilityLayout" data-item-id="{{selectedOpening}}"
+                        style="width: auto; height: auto !important; padding: 3px 8px; font-size: 0.85em; border: none; background: {{#if (eq selectedId selectedOpening)}}#444; color: white;{{else}}transparent;{{/if}}" title="Place selected opening type">
+                        <i class="fa-solid fa-door-open"></i>
+                    </button>
+                    <select name="opening-type" style="font-size: 0.75em; height: 18px; width: 80px; border: none; background: #333; color: #eee;">
+                        <option value="Door" {{#if (eq selectedOpening "Door")}}selected{{/if}}>Door</option>
+                        <option value="Window" {{#if (eq selectedOpening "Window")}}selected{{/if}}>Window</option>
+                        <option value="Locked Door" {{#if (eq selectedOpening "Locked Door")}}selected{{/if}}>Locked</option>
+                        <option value="Secret Door" {{#if (eq selectedOpening "Secret Door")}}selected{{/if}}>Secret</option>
+                        <option value="Portcullis" {{#if (eq selectedOpening "Portcullis")}}selected{{/if}}>Portcullis</option>
+                    </select>
                 </div>
             </div>
         </div>
@@ -1498,32 +1572,61 @@
             <div class="bastion-info-panel" style="flex: 1; background: rgba(0,0,0,0.03); padding: 12px; border-radius: 4px; border: 1px solid #ccc; overflow-y: auto;">
                 <h3 style="border-bottom: 2px solid #555; padding-bottom: 5px; margin-top: 0;"><i class="fa-solid fa-warehouse"></i> Bastion Logistics</h3>
                 
-                <!-- Thematic Forecast at the top -->
+                <!-- The Horizon: multi-turn lookahead -->
                 <section style="margin-bottom: 20px; background: rgba(46, 125, 50, 0.05); padding: 10px; border-radius: 5px; border: 1px solid rgba(46, 125, 50, 0.2);">
-                    <h4 style="color: #2e7d32; border-bottom: 1px solid rgba(46, 125, 50, 0.3); padding-bottom: 4px; margin-top: 0; margin-bottom: 10px;">
-                        <i class="fa-solid fa-sun-cloud"></i> The Horizon
+                    <h4 style="color: #2e7d32; border-bottom: 1px solid rgba(46, 125, 50, 0.3); padding-bottom: 4px; margin-top: 0; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                        <span><i class="fa-solid fa-sun-cloud"></i> The Horizon</span>
+                        {{#if horizonGold}}
+                        <span style="font-size: 0.8em; font-weight: normal; color: {{#if (gte horizonGold.net 0)}}#2e7d32{{else}}#a32a22{{/if}};">
+                            <i class="fa-solid fa-coins"></i> Net: {{#if (gt horizonGold.net 0)}}+{{/if}}{{horizonGold.net}} GP / Turn
+                        </span>
+                        {{/if}}
                     </h4>
-                    {{#if expectedOutputs.length}}
+                    {{#if horizonEntries.length}}
                         <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px;">
-                            {{#each expectedOutputs}}
-                                <li style="background: rgba(255,255,255,0.8); color: #111; padding: 4px 8px; border-radius: 4px; border-left: 3px solid {{#if this.color}}{{this.color}}{{else}}#2e7d32{{/if}}; box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: flex; flex-direction: column; font-size: 0.9em;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                                        <span style="font-weight: bold; color: #333; flex-shrink: 0; margin-right: 10px;">{{this.facName}}:</span>
-                                        <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right;">{{this.label}} <span style="font-size: 0.85em; color: #666; font-style: italic;">{{this.progressInfo}}</span></span>
-                                    </div>
-                                    {{#if (ne this.progressPct null)}}
-                                        <div class="bastion-horizon-progress" style="margin-top: 4px; height: 6px; background: rgba(0,0,0,0.05); border: 1px solid #ccc; border-radius: 2px; overflow: hidden; position: relative;" title="{{this.progressPct}}% Complete">
-                                            <div class="fill" style="width: {{this.progressPct}}%; height: 100%; background: {{#if this.color}}{{this.color}}{{else}}#2e7d32{{/if}}; transition: width 0.5s;"></div>
-                                        </div>
+                            {{#each horizonEntries}}
+                            <li style="background: rgba(255,255,255,0.8); color: #111; padding: 4px 8px; border-radius: 4px; border-left: 3px solid {{this.color}}; box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: flex; flex-direction: column; font-size: 0.9em;">
+                                <div style="display: flex; align-items: center; gap: 6px; width: 100%;">
+                                    {{#if this.isRecurring}}
+                                        <span style="flex-shrink: 0; font-size: 0.72em; background: rgba(0,0,0,0.06); border-radius: 3px; padding: 1px 5px; color: #555; white-space: nowrap;">↺ Every Turn</span>
+                                    {{else}}
+                                        {{#if (eq this.turnsRemaining 1)}}
+                                            <span style="flex-shrink: 0; font-size: 0.72em; background: rgba(46,125,50,0.15); border-radius: 3px; padding: 1px 5px; color: #2e7d32; font-weight: bold; white-space: nowrap;">Next Turn</span>
+                                        {{else}}
+                                            {{#if this.turnsRemaining}}
+                                                <span style="flex-shrink: 0; font-size: 0.72em; background: rgba(0,0,0,0.06); border-radius: 3px; padding: 1px 5px; color: #555; white-space: nowrap;">in {{this.turnsRemaining}} turns</span>
+                                            {{else}}
+                                                <span style="flex-shrink: 0; font-size: 0.72em; background: rgba(0,0,0,0.04); border-radius: 3px; padding: 1px 5px; color: #999; white-space: nowrap;">Queued</span>
+                                            {{/if}}
+                                        {{/if}}
                                     {{/if}}
-                                </li>
+                                    <span style="font-weight: bold; color: #444; flex-shrink: 0;">{{this.facName}}:</span>
+                                    <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{this.label}}</span>
+                                    {{#if (ne this.gpDelta 0)}}
+                                        <span style="flex-shrink: 0; font-size: 0.85em; color: {{this.color}}; font-style: italic; white-space: nowrap;">{{#if (gt this.gpDelta 0)}}+{{/if}}{{this.gpDelta}} GP</span>
+                                    {{/if}}
+                                </div>
+                                {{#if (ne this.progressPct null)}}
+                                <div style="margin-top: 4px; height: 5px; background: rgba(0,0,0,0.08); border-radius: 2px; overflow: hidden;" title="{{this.progressPct}}% complete">
+                                    <div style="width: {{this.progressPct}}%; height: 100%; background: {{this.color}}; transition: width 0.3s;"></div>
+                                </div>
+                                {{/if}}
+                            </li>
                             {{/each}}
                         </ul>
-                        <div style="font-size: 0.8em; color: #555; margin-top: 10px; font-style: italic; opacity: 0.8;">
-                            <i class="fa-solid fa-circle-info"></i> These projects are active and will progress when the next Bastion Turn is advanced.
+                        {{#if horizonGold}}
+                        <div style="margin-top: 8px; padding: 5px 8px; background: rgba(0,0,0,0.04); border-radius: 3px; font-size: 0.82em; color: #444; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                            <span style="display: flex; gap: 10px;">
+                                {{#if horizonGold.income}}<span style="color: #2e7d32;"><i class="fa-solid fa-arrow-up"></i> +{{horizonGold.income}} GP income</span>{{/if}}
+                                {{#if horizonGold.costs}}<span style="color: #a32a22;"><i class="fa-solid fa-arrow-down"></i> −{{horizonGold.costs}} GP costs</span>{{/if}}
+                            </span>
+                            <span style="font-weight: bold; color: {{#if (gte horizonGold.net 0)}}#2e7d32{{else}}#a32a22{{/if}}; white-space: nowrap;">
+                                Net: {{#if (gt horizonGold.net 0)}}+{{/if}}{{horizonGold.net}} GP
+                            </span>
                         </div>
+                        {{/if}}
                     {{else}}
-                        <p style="font-style: italic; color: #777; font-size: 0.9em; margin: 5px 0;">The coming days appear quiet; no projects are nearing completion.</p>
+                        <p style="font-style: italic; color: #777; font-size: 0.9em; margin: 5px 0;">The coming days appear quiet; no active projects.</p>
                     {{/if}}
                 </section>
 

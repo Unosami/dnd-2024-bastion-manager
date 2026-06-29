@@ -1,85 +1,27 @@
+import {
+    MODULE_ID,
+    SPECIAL_ROOT_ID, BASIC_ROOT_ID,
+    GARDEN_ROOT_ID, ARCANE_STUDY_ROOT_ID, ARCANE_FOCUSES_FOLDER_ID, DRUID_FOCUS_FOLDER_ID,
+    HOLY_SYMBOL_FOLDER_ID, SMITHY_ROOT_ID, WORKSHOP_ROOT_ID, LAB_ALCH_FOLDER_ID,
+    LAB_POISON_FOLDER_ID, ARCHIVE_BOOKS_FOLDER_ID, MEDITATION_FOLDER_ID,
+    OBSERVATORY_ROOT_FOLDER_ID, ARCHIVE_ROOT_FOLDER_ID, ARTISANS_TOOLS_FOLDER_ID,
+    GREENHOUSE_ROOT_ID, GUILDHALL_ROOT_ID, LABORATORY_ROOT_ID, SACRISTY_ROOT_ID,
+    SANCTUARY_ROOT_ID, SCRIPTORIUM_ROOT_ID, STABLE_ROOT_ID, MENAGERIE_ROOT_ID,
+    TELEPORTATION_CIRCLE_ROOT_ID, TRAINING_AREA_ROOT_ID, PUB_ROOT_ID,
+    BASE_ITEMS_FOLDER_ID, RELIQUARY_ROOT_ID, SANCTUM_ROOT_ID,
+    STAFF_FOLDER_ID,
+    BASTION_ORDERS, BASTION_EVENTS_LIST, FACILITY_CONFIG
+} from "./bastion-data.js";
+
+import {
+    getAllSubfolderIds, extractSize, getScrollRequirements, getMagicItemRequirements,
+    getMountSlotCost, getMenagerieSlotCost, getMenagerieCost, getMenagerieDie,
+    getEffectiveDays, getSpecialFacilityCap, getNestedCompendiumOptions,
+    generateRandomName, generateSpellcasterName, getHirelingProfession,
+    effectiveDaysPerTurn
+} from "./bastion-calculations.js";
+
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
-const MODULE_ID = "dnd-2024-bastion-manager";
-const SPECIAL_ROOT_ID = "jvwwGTr0bMORqJD4";
-const BASIC_ROOT_ID = "oocJkCsQvkXOWJbL";
-const BASTION_ORDERS = ["Maintain", "Craft", "Harvest", "Recruit", "Research", "Trade", "Empower"];
-// Output-items compendium folder IDs
-const GARDEN_ROOT_ID          = "HYjssa08njsoKbTO";
-const ARCANE_STUDY_ROOT_ID    = "8yYUu27NcOQJc3qx";
-const ARCANE_FOCUSES_FOLDER_ID = "ByVgJZyPE5H3M5tV";
-const DRUID_FOCUS_FOLDER_ID   = "RTYj3BJ6ZRvuKxPq";
-const HOLY_SYMBOL_FOLDER_ID   = "BiV5sM1bdzI3ZWS6";
-const SMITHY_ROOT_ID          = "wti6MOvq9leZqgp9";
-const WORKSHOP_ROOT_ID        = "XkNDvStirzNpw8G2";
-const LAB_ALCH_FOLDER_ID      = "mqk8IahDyEIKpvcj";
-const LAB_POISON_FOLDER_ID    = "fwyUIxfHsEGOLHYc";
-const ARCHIVE_BOOKS_FOLDER_ID = "1gNhp4TlPZmeUuND";
-const MEDITATION_FOLDER_ID    = "MHEBG1MAdvgjzJk1";
-const OBSERVATORY_ROOT_FOLDER_ID    = "e88xHkwROqUs8TGK";
-const ARCHIVE_ROOT_FOLDER_ID = "abF82Om5im6lVTmF";
-const ARTISANS_TOOLS_FOLDER_ID = "6BSYdjswSgM0HRib";
-const GREENHOUSE_ROOT_ID      = "L5IXLxn3kjBeN7Vx";
-const GUILDHALL_ROOT_ID       = "ni06boefwcrUwFQa";
-const LABORATORY_ROOT_ID      = "ZGn3LuZo6zyzHOoK";
-const SACRISTY_ROOT_ID        = "hU4DDWFnK13sSUSP";
-const SANCTUARY_ROOT_ID       = "B6m3PJWbZ81SSYeW";
-const SCRIPTORIUM_ROOT_ID     = "RbGD7EB1jyD26fq6";
-const STABLE_ROOT_ID          = "7fgBYawFLeER4MtQ";
-const MENAGERIE_ROOT_ID       = "2NJBOp0l0PxvBN6B";
-const TELEPORTATION_CIRCLE_ROOT_ID = "7Iiukg7IXSfJxnXS";
-const TRAINING_AREA_ROOT_ID   = "cxAgMJ71ADZ2APKu";
-const PUB_ROOT_ID             = "soSkXpUmtteM4mgD";
-const BASE_ITEMS_FOLDER_ID    = "AQ0XdVgHpL5IaNjC"; // Weapons & Armor used as base items for magic item crafting
-const RELIQUARY_ROOT_ID       = "zOMONoelQli72ZI7"; // Reliquary output folder
-const SANCTUM_ROOT_ID         = "eqeKF3pxcKuI6EX0"; // Sanctum output folder
-
-const BASTION_EVENTS_LIST = [
-    { label: "All Is Well (01-50)", roll: 1 },
-    { label: "Attack (51-55)", roll: 51 },
-    { label: "Criminal Hireling (56-58)", roll: 56 },
-    { label: "Extraordinary Opportunity (59-63)", roll: 59 },
-    { label: "Friendly Visitors (64-72)", roll: 64 },
-    { label: "Guest (73-76)", roll: 73 },
-    { label: "Lost Hirelings (77-79)", roll: 77 },
-    { label: "Magical Discovery (80-83)", roll: 80 },
-    { label: "Refugees (84-91)", roll: 84 },
-    { label: "Request for Aid (92-98)", roll: 92 },
-    { label: "Treasure (99-00)", roll: 99 }
-];
-
-// Hardcoded Utility & Tool Utilize Effects for Logistics Panel
-const UTILITY_DESCRIPTIONS = {
-    "Alchemist's Supplies": "Identify a substance (DC 15), or start a fire (DC 15)",
-    "Brewer's Supplies": "Detect poisoned drink (DC 15), or identify alcohol (DC 10)",
-    "Calligrapher's Supplies": "Write text with impressive flourishes that guard against forgery (DC 15)",
-    "Carpenter's Tools": "Seal or pry open a door or container (DC 20)",
-    "Cartographer's Tools": "Draft a map of a small area (DC 15)",
-    "Cobbler's Tools": "Modify footwear to give Advantage on the wearer's next Dexterity (Acrobatics) check (DC 10)",
-    "Cook's Utensils": "Improve food's flavor (DC 10), or detect spoiled or poisoned food (DC 15)",
-    "Glassblower's Tools": "Discern what a glass object held in the past 24 hours (DC 15)",
-    "Jeweler's Tools": "Discern a gem's value (DC 15)",
-    "Leatherworker's Tools": "Add a design to a leather item (DC 10)",
-    "Mason's Tools": "Chisel a symbol or hole in stone (DC 10)",
-    "Painter's Tools": "Paint a recognizable image of something you've seen (DC 10)",
-    "Potter's Tools": "Discern what a ceramic object held in the past 24 hours (DC 15)",
-    "Smith's Tools": "Pry open a door or container (DC 20)",
-    "Tinker's Tools": "Assemble a Tiny item composed of scrap, which falls apart in 1 minute (DC 20)",
-    "Weaver's Tools": "Mend a tear in clothing (DC 10), or sew a Tiny design (DC 10)",
-    "Woodcarver's Tools": "Carve a pattern in wood (DC 10)",
-    "Thieves' Tools": "Pick a lock (DC 15), or disarm a trap (DC 15)",
-    "Arcane Spellcasting": "Cast 'Identify' (Charm) after Long Rest. Level 9+ hireling assists with magic item crafting.",
-    "Sacred Spellcasting": "Cast 'Healing Word' (Charm) or 'Greater Restoration' (Reliquary). Access to spell slot refreshment.",
-    "Expert Recruiter": "Recruit friendly NPC spellcasters who can cast Wizard spells (up to level 8)."
-};
-const FACILITY_CONFIG = {
-    "Workshop": {
-        type: "tools",
-        options: [
-            "Carpenter's Tools", "Cobbler's Tools", "Glassblower's Tools", "Jeweler's Tools", "Leatherworker's Tools", 
-            "Mason's Tools", "Painter's Tools", "Potter's Tools", "Tinker's Tools", "Weaver's Tools", "Woodcarver's Tools"
-        ]
-    }
-};
 
 class SpellSelectionApp extends ApplicationV2 {
     static DEFAULT_OPTIONS = {
@@ -253,13 +195,51 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     constructor(actor, options = {}) { 
         super(options); 
         this.actor = actor; 
-        this._activeTab = "map";
+        this._activeTab = localStorage.getItem("dnd-2024-bastion-manager.lastTab") || "map";
         this._queueStates = {};
         this._changingOrders = new Set();
         this._advanceMode = "global";
     }
 
     static _professionsMap = null;
+
+    /** Registry of custom facility types added by external modules via registerFacilityType(). */
+    static _customFacilityTypes = [];
+
+    /**
+     * Register a custom facility type so it appears in the Build Facility dialog.
+     *
+     * @param {object} config
+     * @param {string} config.id        Unique dot-namespaced ID, e.g. "my-module.war-room"
+     * @param {string} config.name      Display name shown in the dropdown
+     * @param {"special"|"basic"} config.type  Which section to list it under
+     * @param {string} config.itemUuid  UUID of the compendium Item to add to the actor
+     * @param {number} [config.level]   Minimum character level (shown as hint next to name)
+     *
+     * @example
+     * // Called from another module's ready hook:
+     * game.modules.get("dnd-2024-bastion-manager").api.registerFacilityType({
+     *   id: "my-module.war-room",
+     *   name: "War Room",
+     *   type: "special",
+     *   level: 17,
+     *   itemUuid: "Compendium.my-module.facilities.AbCdEfGh"
+     * });
+     */
+    static registerFacilityType(config) {
+        const required = ["id", "name", "type", "itemUuid"];
+        for (const field of required) {
+            if (!config[field]) return console.error(`Bastion Manager | registerFacilityType: missing required field "${field}".`, config);
+        }
+        if (!["special", "basic"].includes(config.type)) {
+            return console.error(`Bastion Manager | registerFacilityType: "type" must be "special" or "basic".`);
+        }
+        if (BastionManager._customFacilityTypes.find(f => f.id === config.id)) {
+            return console.warn(`Bastion Manager | registerFacilityType: type "${config.id}" is already registered.`);
+        }
+        BastionManager._customFacilityTypes.push(config);
+        console.log(`Bastion Manager | Registered custom facility type: "${config.name}" (${config.type})`);
+    }
 
     /**
      * Loads the professions reference file and parses it into a searchable map.
@@ -340,24 +320,21 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             showGuildhallAssignment:  BastionManager.onShowGuildhallAssignment,
             showWarRoomRoster:        BastionManager.onShowWarRoomRoster,
             disbandWarRoomArmy:       BastionManager.onDisbandWarRoomArmy,
+            payWarRoomArmy:           BastionManager.onPayWarRoomArmy,
+            advanceConstruction:      BastionManager.onAdvanceConstruction,
+            advanceOrder:             BastionManager.onAdvanceOrder,
+            toggleFreeMode:           BastionManager.onToggleFreeMode,
+            renameHireling:           BastionManager.onRenameHireling,
+            renameDefender:           BastionManager.onRenameDefender,
+            issueOrders:              BastionManager.onIssueOrders,
+            cancelOrders:             BastionManager.onCancelOrders,
         }
     };
     static PARTS = { main: { template: "modules/dnd-2024-bastion-manager/templates/bastion-main.hbs" } };
 
-    /**
-     * Recursively collects all folder IDs under a given parent folder.
-     * @param {CompendiumCollection} pack The compendium collection.
-     * @param {string} parentFolderId The ID of the parent folder.
-     * @returns {string[]} An array of all folder IDs, including the parent.
-     */
-    static _getAllSubfolderIds(pack, parentFolderId) {
-        if (!pack?.folders) return [parentFolderId];
-        const subfolders = pack.folders.filter(f => {
-            const pid = f.parentId || f.folder?.id || f.folder;
-            return pid === parentFolderId;
-        });
-        return [parentFolderId, ...subfolders.flatMap(f => BastionManager._getAllSubfolderIds(pack, f.id))];
-    }
+    // Calculation helpers — logic lives in bastion-calculations.js; these aliases
+    // keep the BastionManager.* call-sites unchanged for backward compatibility.
+    static _getAllSubfolderIds = getAllSubfolderIds;
 
     /**
      * Computes the available order labels and the effective "safe" selected order for a single
@@ -589,315 +566,19 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         } else {
             await fac.update(updates);
         }
+        Hooks.callAll("dnd-bastion.orderChanged", targetActor, itemId, newOrder, isFlag);
     }
 
-    /**
-     * Extracts a size key from a document (Actor or Item).
-     * Looks for system.size, then checks system.properties for size tags.
-     * @param {object} doc The document or index entry.
-     * @returns {string} The size key (tiny, sm, med, lg, huge, grg).
-     */
-    static async _extractSize(doc) {
-        if (!doc) return "lg";
-        // 1. Direct size field (standard for Actors, some Item schemas)
-        let size = doc.system?.size || doc.system?.details?.size || doc.system?.traits?.size;
-        if (size && typeof size === "string") return size.toLowerCase();
-
-        // 2. Look in properties (Set, Array, or Object)
-        let props = doc.system?.properties;
-        let propList = (props instanceof Set) ? Array.from(props) : (Array.isArray(props) ? props : (typeof props === "object" && props !== null ? Object.keys(props).filter(k => props[k]) : []));
-        const sizeKeys = ["tiny", "sm", "med", "lg", "huge", "grg"];
-        const found = propList.find(p => sizeKeys.includes(String(p).toLowerCase()));
-        if (found) return found.toLowerCase();
-
-        // 3. Parse Description for Link (Actor UUID)
-        const desc = doc.system?.description?.value;
-        if (desc) {
-            const match = desc.match(/@(?:UUID|Actor)\[([^\]]+)\]/);
-            if (match) {
-                try {
-                    const linkedDoc = await fromUuid(match[1]);
-                    if (linkedDoc && linkedDoc.documentName === "Actor") {
-                        // Traits.size is the standard dnd5e path for Actor size
-                        let linkedSize = linkedDoc.system?.traits?.size || linkedDoc.system?.size;
-                        if (linkedSize) return linkedSize.toLowerCase();
-                    }
-                } catch (e) {
-                    console.error("Bastion Manager | Error resolving linked actor for size:", e);
-                }
-            }
-        }
-
-        return "lg";
-    }
-
-    static _getScrollRequirements(name) {
-        const n = name.toLowerCase();
-        let level = 1;
-        const lvlMatch = n.match(/\b(\d)(?:st|nd|rd|th)\b/);
-        if (lvlMatch) level = parseInt(lvlMatch[1]);
-        else if (n.includes("cantrip")) level = 0;
-        else {
-            const lvlMatch2 = n.match(/level\s+(\d)/);
-            if (lvlMatch2) level = parseInt(lvlMatch2[1]);
-        }
-        const table = {
-            0: { days: 1, gp: 15 }, 1: { days: 1, gp: 25 },
-            2: { days: 3, gp: 100 }, 3: { days: 5, gp: 150 },
-            4: { days: 10, gp: 1000 }, 5: { days: 25, gp: 1500 },
-            6: { days: 40, gp: 10000 }, 7: { days: 50, gp: 12500 },
-            8: { days: 60, gp: 15000 }, 9: { days: 120, gp: 50000 }
-        };
-        return table[level] || table[1];
-    }
-
-    /**
-     * Returns standard crafting time and gold costs based on item rarity.
-     */
-    static _getMagicItemRequirements(rarity) {
-        const r = String(rarity || "common").toLowerCase();
-        const table = {
-            "common": { days: 5, gp: 50 },
-            "uncommon": { days: 10, gp: 200 },
-            "rare": { days: 50, gp: 2000 },
-            "veryrare": { days: 125, gp: 20000 },
-            "very rare": { days: 125, gp: 20000 },
-            "legendary": { days: 250, gp: 100000 },
-            "artifact": { days: 500, gp: 500000 }
-        };
-        return table[r] || table.common;
-    }
-
-    /**
-     * Returns the slot cost based on actor size key.
-     * Future-proofed for homebrew sizes.
-     */
-    static _getMountSlotCost(sizeKey) {
-        const s = String(sizeKey || "lg").toLowerCase();
-        // Tiny, Small, Medium all count as 0.5
-        if ( ["tiny", "sm", "med", "small", "medium"].includes(s) ) return 0.5;
-        // Large counts as 1.0
-        if ( s === "lg" || s === "large" ) return 1.0;
-        // Huge counts as 3.0
-        if ( s === "huge" || s === "hg" ) return 3.0;
-        // Anything larger (Gargantuan+) or unknown defaults to a "cannot house" value
-        return 999;
-    }
-
-    /** Slot cost for Menagerie: Large = 1, Small/Medium/Tiny = 0.25 (4 per Large slot). */
-    static _getMenagerieSlotCost(sizeKey) {
-        const s = String(sizeKey || "med").toLowerCase();
-        return ["lg", "large", "huge", "grg", "gargantuan"].includes(s) ? 1 : 0.25;
-    }
-
-    /** GP cost for a Menagerie creature — table lookup with CR-based fallback. */
-    static _getMenagerieCost(name, cr) {
-        const TABLE = {
-            "Ape": 500, "Black Bear": 500, "Brown Bear": 1000,
-            "Constrictor Snake": 250, "Crocodile": 500, "Dire Wolf": 1000,
-            "Giant Vulture": 1000, "Hyena": 50, "Jackal": 50,
-            "Lion": 1000, "Owlbear": 3500, "Panther": 250, "Tiger": 1000
-        };
-        if (TABLE[name] !== undefined) return TABLE[name];
-        // CR-based fallback
-        let crNum = 0;
-        if (typeof cr === "string") {
-            if (cr === "1/8") crNum = 0.125;
-            else if (cr === "1/4") crNum = 0.25;
-            else if (cr === "1/2") crNum = 0.5;
-            else crNum = parseFloat(cr) || 0;
-        } else crNum = cr || 0;
-        if (crNum <= 0.125) return 50;
-        if (crNum <= 0.25) return 250;
-        if (crNum <= 0.5) return 500;
-        if (crNum <= 1) return 1000;
-        if (crNum <= 2) return 2000;
-        if (crNum <= 3) return 3500;
-        // CR > 3: cost = 5 × XP by CR (DMG 2024), rounded to nearest 5 GP
-        // Index: 0=CR0, 1=CR1/8, 2=CR1/4, 3=CR1/2, 4=CR1, 5=CR2, 6=CR3, 7=CR4, 8=CR5, …
-        const XP_BY_CR = [10,25,50,100,200,450,700,1100,1800,2300,2900,3900,5000,5900,7200,8400,10000,11500,13000,15000,18000,20000,22000,25000,33000,41000,50000,62000,75000,90000,105000,120000,135000,155000];
-        const crIdx = Math.min(Math.floor(crNum) + 3, XP_BY_CR.length - 1);
-        return Math.round(XP_BY_CR[crIdx] * 5 / 5) * 5;
-    }
-
-    /** Returns the die type string for a Menagerie defender based on its CR and the dice mode setting. */
-    static _getMenagerieDie(crNum) {
-        const mode = game.settings.get(MODULE_ID, "menagerieDiceMode");
-        if (mode === "raw") return "d6";
-        if (mode === "digital") {
-            // CR tiers: 0→d2, 1/8→d3, 1/4→d4, 1/2→d5, 1→d6, 2→d7, 3→d8, 4→d9, …
-            const CR_TIERS = [0,0.125,0.25,0.5,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30];
-            let idx = 0;
-            for (let i = 0; i < CR_TIERS.length; i++) { if (crNum >= CR_TIERS[i]) idx = i; }
-            return `d${idx + 2}`;
-        }
-        if (mode === "physical") {
-            if (crNum >= 6) return "d20";
-            if (crNum >= 3) return "d12";
-            if (crNum >= 2) return "d10";
-            if (crNum >= 1) return "d8";
-            if (crNum >= 0.125) return "d6"; // CR 1/8 through 1/2
-            return "d4"; // CR 0
-        }
-        // "custom" mode — JSON threshold table
-        let table;
-        try { table = JSON.parse(game.settings.get(MODULE_ID, "menagerieCrDiceTable")); } catch { return "d6"; }
-        const thresholds = Object.keys(table).map(Number).sort((a, b) => b - a);
-        for (const t of thresholds) {
-            if (crNum >= t) return String(table[String(t)] || "d6").toLowerCase();
-        }
-        return "d6";
-    }
-
-    /**
-     * Returns the effective number of days for a project, scaling multiples of 7
-     * if the 'scaleWeekToTurnLength' setting is enabled.
-     * @param {number} baseDays The original day count from the rulebook.
-     * @returns {number}
-     */
-    static _getEffectiveDays(baseDays) {
-        const scale = game.settings.get(MODULE_ID, "scaleWeekToTurnLength");
-        if (!scale || baseDays % 7 !== 0) return baseDays;
-        const daysPerTurn = game.settings.get(MODULE_ID, "daysPerTurn") || 7;
-        return (baseDays / 7) * daysPerTurn;
-    }
-
-    /**
-     * Returns the special facility cap for the given actor level, per DMG 2024 rules.
-     * @param {number} actorLevel
-     * @param {boolean} [ignoreFacilityPrereqs=false] If true, applies a minimum cap of 2.
-     * @returns {number}
-     */
-    static _getSpecialFacilityCap(actorLevel, ignoreFacilityPrereqs = false) {
-        if (actorLevel >= 17) return 6;
-        if (actorLevel >= 13) return 5;
-        if (actorLevel >= 9) return 4;
-        if (actorLevel >= 5) return 2;
-        return ignoreFacilityPrereqs ? 2 : 0;
-    }
-
-    /**
-     * Recursively builds a nested option structure for select menus matching folder hierarchy.
-     */
-    static async _getNestedCompendiumOptions(pack, rootFolderId, selectedValue, calculationMode, daysPerTurn, progressLabel, isMagicItem = true, folderNamesFilter = null, folderNamesExclude = null, showDetails = true) {
-        const index = await pack.getIndex({ fields: ["folder", "system.rarity", "system.price", "system.quantity", "system.requirements.level", "system.size", "system.properties", "system.description.value"] });
-        const allRelevantFolderIds = BastionManager._getAllSubfolderIds(pack, rootFolderId);
-        
-        let rootItems = [];
-        let subGroups = [];
-
-        const rarityOrder = { "common": 1, "uncommon": 2, "rare": 3, "veryrare": 4, "very rare": 4, "legendary": 5, "artifact": 6 };
-        const sizeMap = { "tiny": "Tiny", "sm": "Small", "med": "Medium", "lg": "Large", "huge": "Huge", "grg": "Gargantuan" };
-
-        for (const fId of allRelevantFolderIds) {
-            const folder = pack.folders.get(fId);
-            if (!folder) continue;
-
-            // Filter folders by tools if a filter is provided (used for Workshop mundane gear)
-            if (folderNamesFilter && String(fId) !== String(rootFolderId) && !folderNamesFilter.includes(folder.name)) continue;
-            
-            // Exclude folders (used to keep Magic Items out of mundane lists). Checks full hierarchy.
-            if (folderNamesExclude) {
-                const exclusions = folderNamesExclude.toLowerCase().split("|");
-                let check = folder;
-                let excluded = false;
-                while (check && !excluded) { 
-                    const folderName = check.name.toLowerCase();
-                    if (exclusions.some(ex => folderName.includes(ex))) excluded = true;
-                    check = check.parentId ? pack.folders.get(check.parentId) : null; 
-                }
-                if (excluded) continue;
-            }
-
-            // Support both string IDs and folder objects found in different index schemas
-            const items = index.filter(i => {
-                let itemFolderId = i.folder?.id || i.folder;
-                if ( !itemFolderId ) return false;
-                if ( typeof itemFolderId !== "string" ) itemFolderId = String(itemFolderId);
-                return itemFolderId === String(fId) || itemFolderId.endsWith(`.${fId}`);
-            });
-            if (items.length === 0) continue;
-
-            const processedItems = await Promise.all(items.map(async i => {
-                const rarity = i.system.rarity || "common";
-                let price = i.system.price?.value ?? i.system.price ?? 0;
-                if (typeof price === "string") price = parseFloat(price.replace(/[^0-9.]/g, "")) || 0;
-                const size = await BastionManager._extractSize(i);
-                const slots = BastionManager._getMountSlotCost(size);
-                const qty = i.system.quantity || 1;
-
-                let days, gp;
-                const isScroll = i.name.toLowerCase().includes("spell scroll");
-                if (isScroll) { // Scrolls handled first
-                    const reqs = BastionManager._getScrollRequirements(i.name);
-                    days = reqs.days;
-                    gp = reqs.gp;
-                } else if (isMagicItem) {
-                    const reqs = BastionManager._getMagicItemRequirements(rarity);
-                    days = reqs.days;
-                    gp = reqs.gp;
-                } else {
-                    // Override for Stables: All mounts take 7 days / 1 turn
-                    const isMount = folder?.name.toLowerCase().includes("mount") || folder?.name.toLowerCase().includes("stable");
-                    const isPoison = folder?.name.toLowerCase().includes("poison");
-
-                    if (isMount) {
-                        days = BastionManager._getEffectiveDays(7);
-                        gp = Number(price);
-                        let label = i.name;
-                        if (showDetails) label = `${i.name} (${gp} GP, ${sizeMap[size] || "Unknown"} - ${slots} slots)`;
-                        return { 
-                            value: i.name, 
-                            label: label, 
-                            selected: i.name === selectedValue, 
-                            slots,
-                            rarity, time: 1, price: gp, 
-                            uuid: i.uuid || `Compendium.dnd-2024-bastion-manager.bastion-output-items.Item.${i._id || i.id}` 
-                        };                    }
-
-                    if (isPoison) {
-                        days = BastionManager._getEffectiveDays(7);
-                    } else {
-                        days = Math.max(1, Math.ceil(Number(price) / 10));
-                    }
-                    gp = Math.floor(Number(price) / 2);
-                }
-
-                const tCount = calculationMode === "days" ? days : Math.ceil(days / daysPerTurn);
-                let label = i.name;
-                if (showDetails) {
-                    label = `${i.name} (${rarity.charAt(0).toUpperCase() + rarity.slice(1)}: ${gp} GP, ${tCount} ${progressLabel})${qty > 1 ? ` [x${qty}]` : ''}`;
-                }
-                return {
-                    value: i.name,
-                    label: label,
-                    selected: i.name === selectedValue,
-                    rarity,
-                    time: tCount,
-                    price: gp,
-                    uuid: i.uuid || `Compendium.dnd-2024-bastion-manager.bastion-output-items.Item.${i._id || i.id}`
-                };
-            }));
-
-            const sortedItems = processedItems.sort((a,b) => {
-                if (isMagicItem) {
-                    const aOrder = rarityOrder[a.rarity] || 0;
-                    const bOrder = rarityOrder[b.rarity] || 0;
-                    if (aOrder !== bOrder) return aOrder - bOrder;
-                }
-                return a.label.localeCompare(b.label);
-            });
-
-            if (String(fId) === String(rootFolderId)) {
-                rootItems = sortedItems;
-            } else {
-                subGroups.push({ label: folder.name, groupOptions: sortedItems });
-            }
-        }
-        
-        subGroups.sort((a,b) => a.label.localeCompare(b.label));
-        return [...rootItems, ...subGroups];
-    }
+    static _extractSize             = extractSize;
+    static _getScrollRequirements   = getScrollRequirements;
+    static _getMagicItemRequirements = getMagicItemRequirements;
+    static _getMountSlotCost        = getMountSlotCost;
+    static _getMenagerieSlotCost    = getMenagerieSlotCost;
+    static _getMenagerieCost        = getMenagerieCost;
+    static _getMenagerieDie         = getMenagerieDie;
+    static _getEffectiveDays        = getEffectiveDays;
+    static _getSpecialFacilityCap   = getSpecialFacilityCap;
+    static _getNestedCompendiumOptions = getNestedCompendiumOptions;
 
     _getUnifiedFacilities() {
         const combinedGroupId = this.actor.getFlag(MODULE_ID, "combinedGroupId");
@@ -987,7 +668,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const atSpecCap = !disableSpecialCap && currentSpecials >= specCap;
 
         const calculationMode = game.settings.get(MODULE_ID, "calculationMode");
-        const daysPerTurn = game.settings.get(MODULE_ID, "daysPerTurn") || 7;
+        const daysPerTurn = effectiveDaysPerTurn();
         const progressLabel = calculationMode === "days" ? "d" : "t";
 
         // Dynamic Garden Configuration from Compendium
@@ -1192,7 +873,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             const theaterPhase = isTheater ? (getFacFlag("theaterPhase") || "Idle") : "Idle";
             const theaterProgress = isTheater ? Number(getFacFlag("theaterProgress") || 0) : 0;
-            const theaterProgressPct = isTheater ? Math.round((Math.min(theaterProgress, 14) / 14) * 100) : 0;
+            const theaterPhaseDays = BastionManager._getEffectiveDays(14);
+            const theaterProgressPct = isTheater ? Math.round((Math.min(theaterProgress, theaterPhaseDays) / theaterPhaseDays) * 100) : 0;
             const theaterContributors = isTheater ? (getFacFlag("theaterContributors") || []) : [];
             const theaterAuthor = isTheater ? (getFacFlag("theaterAuthor") || "") : "";
             const theaterRoster = isTheater ? {
@@ -1237,6 +919,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const bookTitle = getFacFlag("bookTitle") || "";
             const paperworkTitle = getFacFlag("paperworkTitle") || "";
             const paperworkQty = getFacFlag("paperworkQty") || 50;
+            const theaterScriptTitle = isTheater ? (getFacFlag("theaterScriptTitle") || "") : "";
             
             // Declare effective choices at a higher scope to ensure accessibility
             let effectiveFocusChoice = "";
@@ -1282,7 +965,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const isSacristyCrafting = fac.name.includes("Sacristy") && isCraftingOrPaused;
             const isScriptoriumCrafting = fac.name.includes("Scriptorium") && isCraftingOrPaused;
             const isLaboratoryCrafting = fac.name.includes("Laboratory") && isCraftingOrPaused;
-            const isGardenHarvesting = fac.name.includes("Garden") && safeOrder === "Harvest";
+            const isGardenHarvesting = fac.name.includes("Garden") && !fac.name.includes("Greenhouse") && safeOrder.startsWith("Harvest");
             const isGreenhouseHarvesting = fac.name.includes("Greenhouse") && (safeOrder.startsWith("Harvest") || isPausedProjectInQueue || progress > 0);
             const isSmithyCrafting = fac.name.includes("Smithy") && isCraftingOrPaused;
 
@@ -1303,8 +986,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             const hasOrders = availableOrders.length > 1;
 
-            const isLibraryResearching = (fac.name.includes("Library") && safeOrder === "Research") || (fac.name.includes("Trophy Room") && safeOrder.includes("Lore")) || (fac.name.includes("Archive") && safeOrder === "Research: Helpful Lore") || (fac.name === "Pub" && safeOrder === "Research");
-            const isPubResearching          = fac.name === "Pub" && safeOrder === "Research";
+            const isLibraryResearching = (fac.name.includes("Library") && safeOrder === "Research: Lore") || (fac.name.includes("Trophy Room") && safeOrder.includes("Lore")) || (fac.name.includes("Archive") && safeOrder === "Research: Helpful Lore") || (fac.name === "Pub" && safeOrder === "Research: Rumours");
+            const isPubResearching          = fac.name === "Pub" && safeOrder === "Research: Rumours";
             const isTrophyResearching       = fac.name.includes("Trophy Room") && safeOrder.includes("Lore");
             const isTrinketTrophyResearching = fac.name.includes("Trophy Room") && safeOrder === "Research: Trinket Trophy";
             const isArchiveResearching      = fac.name.includes("Archive") && safeOrder === "Research: Helpful Lore";
@@ -1816,7 +1499,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             return {
                 id: fac.id, name: fac.isInherited ? `${fac.name} (${fac.ownerName})` : fac.name,
-                hirelings: hirelingsDisplay, defenderCount: facDefenders.count > 0 ? facDefenders.count : null,
+                hirelings: hirelingsDisplay, hirelingsArr: Array.isArray(hirelingsArr) ? hirelingsArr : [], defenderCount: facDefenders.count > 0 ? facDefenders.count : null,
                 size: facSize || (isUnderConstruction ? "Construction" : (() => { const s = fac.sourceDoc.system?.size; return s ? s.charAt(0).toUpperCase() + s.slice(1) : null; })()), subType: facSubType,
                 img: fac.sourceDoc.img, sourceDoc: fac.sourceDoc, isInherited: fac.isInherited, isFlag: fac.isFlag, memberId: fac.memberActor?.id || null,
                 itemName: fac.name,
@@ -1843,6 +1526,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 autoNextAction: autoNextAction.charAt(0).toUpperCase() + autoNextAction.slice(1),
                 tradeChoice,
                 tradeAmount,
+                storedGp,
                 storehouseLimit,
                 storehouseMarkup,
                 showArcanaItemSelect: isArcaneStudyCrafting && (craftChoice === "Magic Item (Arcana)" || isPausedProjectInQueue && storedCraftChoice === "Magic Item (Arcana)"),
@@ -1977,17 +1661,20 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 demiplaneRunesActive,
                 demiplanesFabricationUsed,
                 isSanctum,
+                isSanctumEmpowering: isSanctum && safeOrder.startsWith("Empower"),
                 sanctumCharmActive,
                 sanctumFortifyingRitesActive,
                 sanctumBeneficiaryName,
                 sanctumBeneficiaryId,
                 sanctumBeneficiaryOptions,
                 isGuildhall,
+                isGuildhallRecruiting: isGuildhall && safeOrder.startsWith("Recruit"),
                 guildhallGuildType,
                 guildhallLastAssignment,
                 guildhallAdventurersOutcome,
                 isAdventurersGuild,
                 isWarRoom,
+                isWarRoomRecruiting: isWarRoom && safeOrder === "Recruit",
                 warRoomRecruitOption,
                 warRoomLieutenants,
                 warRoomLieutenantCount: warRoomLieutenants.length,
@@ -1995,6 +1682,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 warRoomArmyGuards,
                 warRoomArmyMounted,
                 warRoomArmyLeaderName,
+                warRoomArmyDailyCost: warRoomArmyActive ? (warRoomArmyMounted ? warRoomArmyGuards * 2 : warRoomArmyGuards) : 0,
+                warRoomArmyWeeklyCost: warRoomArmyActive ? (warRoomArmyMounted ? warRoomArmyGuards * 2 : warRoomArmyGuards) * 7 : 0,
                 isArcaneStudyFac: isArcaneStudy,
                 arcaneStudyCharmActive,
                 isPub,
@@ -2008,6 +1697,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 theaterPhase,
                 theaterProgress,
                 theaterProgressPct,
+                theaterPhaseDays,
                 theaterContributors,
                 theaterAuthor,
                 theaterRoster,
@@ -2016,6 +1706,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 isWritingPhase,
                 isActingPhase,
                 theaterDieSize,
+                theaterScriptTitle,
                 visitingSpellcaster,
                 spellcasterDaysRemaining,
                 spellcasterDisplayTime,
@@ -2074,7 +1765,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 storedWorkshopItemChoice: storedWorkshopItemChoice,
                 storedRelicItemChoice: storedRelicItemChoice,
                 activeProjectChoice: activeProjectChoice,
-                isContinuingProject: safeOrder === "Continue Project"
+                isContinuingProject: safeOrder === "Continue Project",
+                hasActiveOrder: safeOrder !== "Maintain"
             };
         }));
 
@@ -2096,7 +1788,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             };
             
             // Explicitly defined utilities (Workshop tools or generic 'utilities' flag)
-            if (fac.workshopTools?.length > 0) fac.workshopTools.forEach(t => addUtil(t));
+            const facWorkshopTools = fac.isFlag ? (fac.sourceDoc.flags?.[MODULE_ID]?.workshopTools || []) : (fac.sourceDoc.getFlag?.(MODULE_ID, "workshopTools") || []);
+            if (facWorkshopTools.length > 0) facWorkshopTools.forEach(t => addUtil(t));
             
             const extraUtils = fac.isFlag ? (fac.sourceDoc.flags?.[MODULE_ID]?.utilities) : (fac.sourceDoc.getFlag(MODULE_ID, "utilities"));
             if (Array.isArray(extraUtils)) extraUtils.forEach(u => addUtil(u));
@@ -2107,16 +1800,22 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (name.includes("Scriptorium")) addUtil("Calligrapher's Supplies");
             if (name.includes("Guildhall") && subType.toLowerCase().includes("thieves")) addUtil("Thieves' Tools");
             
-            if (name.includes("Arcane Study")) addUtil("Arcane Spellcasting");
-            if (name.includes("Sanctuary") || name.includes("Sacristy") || name.includes("Sanctum") || name.includes("Reliquary")) addUtil("Sacred Spellcasting");
-            if (name.includes("Teleportation Circle")) addUtil("Expert Recruiter");
         });
 
+        const toolDescMap = {};
+        for (const entry of outIndex) {
+            if ((entry.folder?.id ?? entry.folder) === ARTISANS_TOOLS_FOLDER_ID && entry.name && entry.system?.description?.value) {
+                const plain = entry.system.description.value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+                const m = plain.match(/Utilize\s*:\s*(.*?)(?=\s+[A-Z][a-z]+\s*:|$)/i);
+                toolDescMap[entry.name] = m ? m[1].trim() : plain;
+            }
+        }
+
         utilitySources.forEach((facs, util) => {
-            if (UTILITY_DESCRIPTIONS[util]) {
+            if (toolDescMap[util]) {
                 allUtilities.push({
                     name: util,
-                    description: UTILITY_DESCRIPTIONS[util],
+                    description: toolDescMap[util],
                     sources: Array.from(facs).join(", ")
                 });
             }
@@ -2299,115 +1998,172 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         
         const allActiveQueues = facilities.filter(f => f.craftQueue?.length > 0);
 
-        // Calculate Expected Outputs for Next Turn
-        const expectedOutputs = [];
+        // Build Horizon entries — multi-turn lookahead of all active bastion work
+        const horizonEntries = [];
+        let horizonGpIncome = 0;
+        let horizonGpCosts = 0;
+
         for (const fac of facilities) {
-            if (!fac || fac.isBuilding) continue;
+            if (!fac) continue;
+
+            // Under construction (new build or enlargement): show progress, skip active orders
+            if (fac.isUnderConstruction) {
+                horizonEntries.push({
+                    facName: fac.name,
+                    label: fac.constructionLabel,
+                    category: "construct",
+                    turnsRemaining: Math.max(1, fac.upgradeTurns - fac.upgradeProgress),
+                    isRecurring: false,
+                    progressPct: fac.upgradeProgressPct,
+                    color: "#e65100",
+                    gpDelta: 0,
+                });
+                continue;
+            }
+
+            // Damaged and being repaired: show progress, skip active orders
+            if (fac.isDamaged && fac.repairTurns > 0) {
+                horizonEntries.push({
+                    facName: fac.name,
+                    label: "Repairing",
+                    category: "repair",
+                    turnsRemaining: Math.max(1, fac.repairTurns - fac.repairProgress),
+                    isRecurring: false,
+                    progressPct: fac.repairProgressPct,
+                    color: "#c62828",
+                    gpDelta: 0,
+                });
+                continue;
+            }
 
             const currentOrder = fac.orderOptions?.find(o => o.selected)?.value;
             const isCraftOrder = currentOrder?.startsWith("Craft");
-            
-            // Harvest logic
-            if (fac.isGardenHarvesting) {
-                if (fac.harvestOptions.some(o => o.selected)) {
-                    expectedOutputs.push({ facName: fac.name, label: fac.harvestOptions.find(o => o.selected).label });
-                }
-                if (fac.isVastGarden && fac.harvestOptions2.some(o => o.selected)) {
-                    expectedOutputs.push({ facName: fac.name, label: fac.harvestOptions2.find(o => o.selected).label });
-                }
-            }
 
-            // Crafting logic
-            if ((isCraftOrder || fac.isPausedProjectInQueue || currentOrder === "Continue Project") && !fac.isUnderConstruction) {
-                let outputLabel = "";
-                let progressInfo = "";
-                let color = "#2e7d32"; // Default color for active/queued
-                let progressPct = null;
-                
-                if (fac.isPausedProjectInQueue) {
-                    const pausedProject = fac.craftQueue[0];
-                    outputLabel = pausedProject.label;
-                    progressPct = pausedProject.progressPct || 0;
-                    progressInfo = ` (${progressPct}% Complete)`;
-                    color = "#666"; // Paused color (grey)
-                } else if (currentOrder === "Continue Project" && fac.activeProjectChoice) {
-                    outputLabel = fac.activeProjectChoice;
-                    if (fac.maxCraftTurns >= 1) {
-                        progressPct = Math.floor((fac.progress / fac.maxCraftTurns) * 100);
-                        const remaining = Math.max(1, fac.maxCraftTurns - fac.progress);
-                        progressInfo = ` (${remaining}${fac.progressLabel} until completion)`;
-                    }
-                } else if (fac.craftChoice) { // Active crafting project
-                    const effectiveCraftChoice = fac.craftChoice; // Use current active craft choice
-                    if (fac.name.includes("Arcane Study")) {
-                        if (effectiveCraftChoice === "Magic Item (Arcana)") {
-                            outputLabel = fac.magicItemChoice;
-                        } else {
-                            outputLabel = effectiveCraftChoice === "Arcane Focus" ? fac.focusChoice : "Blank Book";
-                        }
-                    } else if (fac.name.includes("Scriptorium")) {
-                        outputLabel = (effectiveCraftChoice === "Spell Scroll") ? fac.scrollChoice : (effectiveCraftChoice === "Book Replica" ? "Book Replica" : "Paperwork");
-                    } else if (fac.name.includes("Sacristy")) {
-                        outputLabel = (effectiveCraftChoice === "Magic Item (Relic)") ? fac.relicItemChoice : "Holy Water";
-                    } else if (fac.name.includes("Smithy")) {
-                        if (effectiveCraftChoice === "Magic Item (Armament)") {
-                            outputLabel = fac.armamentItemChoice;
-                        } else {
-                            outputLabel = fac.smithyItemChoice;
-                        }
-                    } else if (fac.name.includes("Sanctuary")) {
-                        outputLabel = fac.sacredFocusChoice;
-                    } else if (fac.name.includes("Workshop")) {
-                        outputLabel = fac.workshopItemChoice;
-                    }
-
-                        if (fac.maxCraftTurns >= 1 && fac.progressPct !== null) {
-                        progressPct = Math.floor((fac.progress / fac.maxCraftTurns) * 100);
-                        const remaining = Math.max(1, fac.maxCraftTurns - fac.progress);
-                        progressInfo = ` (${remaining}${fac.progressLabel} until completion)`;
-                    }
-                } else if (fac.craftQueue.length > 0) {
-                    const next = fac.craftQueue[0];
-                    outputLabel = next.choice || next.craftType;
-                    
-                    // If first item in queue hasn't started, it's just "Queued"
-                    progressInfo = " (Next in Queue)";
-                    progressPct = 0;
-                }
-
-                if (outputLabel) {
-                    expectedOutputs.push({ facName: fac.name, label: outputLabel, progressInfo, color, progressPct });
-                }
-            }
-            
-            // Recruitment logic
-            if (fac.itemName === "Barrack" && fac.showOrderDropdown && fac.orderOptions.find(o => o.selected)?.value === "Recruit") {
-                expectedOutputs.push({ facName: fac.name, label: "New Defenders (1d4)" });
-            }
-
-            // Stable Trade Horizon logic
-            if (fac.isStableTrade) {
-                const tType = fac.stableTradeChoice === "buy" ? "Buying" : "Selling";
-                const mName = fac.stableItemChoice;
-                if (mName) {
-                    expectedOutputs.push({ 
-                        facName: fac.name, 
-                        label: `${tType}: ${mName}`, 
-                        progressInfo: " (Will complete next turn)",
-                        color: fac.stableTradeChoice === "buy" ? "#a32a22" : "#2e7d32",
-                        progressPct: null
+            // Harvest (includes "Harvest: Healing Herbs", "Harvest: Talisman", "Harvest: SubType", etc.)
+            if (currentOrder?.startsWith("Harvest")) {
+                const harvestLabel = fac.harvestOptions?.find(o => o.selected)?.label
+                    || (currentOrder.includes(":") ? currentOrder.split(": ").slice(1).join(": ") : "Harvest");
+                horizonEntries.push({
+                    facName: fac.name, label: harvestLabel,
+                    category: "harvest",
+                    turnsRemaining: null, isRecurring: true,
+                    progressPct: null, color: "#558b2f", gpDelta: 0,
+                });
+                if (fac.isVastGarden && fac.harvestOptions2?.some(o => o.selected)) {
+                    horizonEntries.push({
+                        facName: fac.name,
+                        label: fac.harvestOptions2.find(o => o.selected).label,
+                        category: "harvest",
+                        turnsRemaining: null, isRecurring: true,
+                        progressPct: null, color: "#558b2f", gpDelta: 0,
                     });
                 }
             }
 
-            // Trade logic (Storehouse & Armory)
-            if (currentOrder === "Trade") {
+            // Crafting
+            if ((isCraftOrder || fac.isPausedProjectInQueue || currentOrder === "Continue Project") && !fac.isUnderConstruction) {
+                let label = "";
+                let progressPct = null;
+                let turnsRemaining = null;
+                let color = "#1565c0";
+
+                if (fac.isPausedProjectInQueue) {
+                    const paused = fac.craftQueue[0];
+                    label = paused.label;
+                    progressPct = paused.progressPct || 0;
+                    color = "#666";
+                    // Paused: turns remaining unknown without recalculating full queue cost
+                } else if (currentOrder === "Continue Project" && fac.activeProjectChoice) {
+                    label = fac.activeProjectChoice;
+                    if (fac.maxCraftTurns >= 1) {
+                        progressPct = Math.floor((fac.progress / fac.maxCraftTurns) * 100);
+                        turnsRemaining = Math.max(1, fac.maxCraftTurns - fac.progress);
+                    }
+                } else if (fac.craftChoice) {
+                    if (fac.name.includes("Arcane Study")) {
+                        label = fac.craftChoice === "Magic Item (Arcana)" ? fac.magicItemChoice
+                              : fac.craftChoice === "Arcane Focus" ? fac.focusChoice : "Blank Book";
+                    } else if (fac.name.includes("Scriptorium")) {
+                        label = fac.craftChoice === "Spell Scroll" ? fac.scrollChoice
+                              : fac.craftChoice === "Book Replica" ? "Book Replica" : "Paperwork";
+                    } else if (fac.name.includes("Sacristy")) {
+                        label = fac.craftChoice === "Magic Item (Relic)" ? fac.relicItemChoice : "Holy Water";
+                    } else if (fac.name.includes("Smithy")) {
+                        label = fac.craftChoice === "Magic Item (Armament)" ? fac.armamentItemChoice : fac.smithyItemChoice;
+                    } else if (fac.name.includes("Sanctuary")) {
+                        label = fac.sacredFocusChoice;
+                    } else if (fac.name.includes("Workshop")) {
+                        label = fac.workshopItemChoice;
+                    }
+                    if (fac.maxCraftTurns >= 1) {
+                        progressPct = Math.floor((fac.progress / fac.maxCraftTurns) * 100);
+                        turnsRemaining = Math.max(1, fac.maxCraftTurns - fac.progress);
+                    }
+                } else if (fac.craftQueue.length > 0) {
+                    const next = fac.craftQueue[0];
+                    label = next.choice || next.craftType;
+                    progressPct = 0;
+                    color = "#888";
+                }
+
+                if (label) {
+                    horizonEntries.push({
+                        facName: fac.name, label,
+                        category: "craft",
+                        turnsRemaining, isRecurring: false,
+                        progressPct, color, gpDelta: 0,
+                    });
+                }
+            }
+
+            // Recruitment (includes "Recruit: Merchant's Guild", "Recruit: {subType}", etc.)
+            if (currentOrder?.startsWith("Recruit")) {
+                let recruitLabel;
+                if (currentOrder.includes(":")) {
+                    // Guildhall compound string: "Recruit: Merchant's Guild"
+                    recruitLabel = currentOrder.split(": ").slice(1).join(": ") + " Recruitment";
+                } else if (fac.isMenagerie) {
+                    recruitLabel = fac.menagerieItemChoice ? `Capture: ${fac.menagerieItemChoice}` : "Capture Beast";
+                } else if (fac.isWarRoom) {
+                    recruitLabel = fac.warRoomRecruitOption === "guards" ? "Recruit Guards" : "Enlist Lieutenant";
+                } else if (fac.isTeleportationCircle) {
+                    recruitLabel = "Enlist Spellcaster";
+                } else {
+                    // Barrack default
+                    recruitLabel = "New Defenders (1d4)";
+                }
+                horizonEntries.push({
+                    facName: fac.name, label: recruitLabel,
+                    category: "recruit",
+                    turnsRemaining: null, isRecurring: true,
+                    progressPct: null, color: "#1565c0", gpDelta: 0,
+                });
+            }
+
+            // Stable Trade
+            if (fac.isStableTrade) {
+                const tType = fac.stableTradeChoice === "buy" ? "Buying" : "Selling";
+                const mName = fac.stableItemChoice;
+                if (mName) {
+                    horizonEntries.push({
+                        facName: fac.name, label: `${tType}: ${mName}`,
+                        category: "trade",
+                        turnsRemaining: 1, isRecurring: false,
+                        progressPct: null,
+                        color: fac.stableTradeChoice === "buy" ? "#a32a22" : "#2e7d32",
+                        gpDelta: 0,
+                    });
+                }
+            }
+
+            // Trade (Storehouse, Gaming Hall, "Trade: Stock Armory", etc.)
+            if (currentOrder?.startsWith("Trade")) {
                 if (fac.isStorehouse) {
                     let choice = fac.tradeChoice;
                     let amount = fac.tradeAmount;
                     if (choice === "auto") {
                         choice = fac.autoNextAction?.toLowerCase() || "procure";
-                        amount = 99999; // Assume maximum possible trade in auto-mode
+                        amount = 99999;
                     }
                     const limit = fac.storehouseLimit;
                     const markupPct = fac.storehouseMarkup;
@@ -2416,28 +2172,95 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     if (choice === "procure") {
                         const actualAmount = Math.min(amount, limit - stored);
                         if (actualAmount > 0) {
-                            expectedOutputs.push({ facName: fac.name, label: `Procure Goods: -${actualAmount} GP`, color: "#a32a22" });
+                            horizonGpCosts += actualAmount;
+                            horizonEntries.push({
+                                facName: fac.name, label: `Procure Goods`,
+                                category: "trade",
+                                turnsRemaining: null, isRecurring: true,
+                                progressPct: null, color: "#a32a22", gpDelta: -actualAmount,
+                            });
                         }
                     } else if (choice === "sell") {
                         const actualAmount = Math.min(amount, stored);
                         if (actualAmount > 0) {
                             const totalReturn = Math.floor(actualAmount * ((100 + markupPct) / 100));
-                            expectedOutputs.push({ facName: fac.name, label: `Sell Goods: +${totalReturn} GP`, color: "#2e7d32" });
+                            horizonGpIncome += totalReturn;
+                            horizonEntries.push({
+                                facName: fac.name, label: `Sell Goods`,
+                                category: "trade",
+                                turnsRemaining: null, isRecurring: true,
+                                progressPct: null, color: "#2e7d32", gpDelta: totalReturn,
+                            });
                         }
                     }
                 } else if (fac.itemName.includes("Gaming Hall")) {
-                    expectedOutputs.push({ facName: fac.name, label: "Gambling Den (1d100 Winnings)", color: "#2e7d32" });
+                    horizonEntries.push({
+                        facName: fac.name, label: "Gambling Den (1d100 Winnings)",
+                        category: "trade",
+                        turnsRemaining: null, isRecurring: true,
+                        progressPct: null, color: "#2e7d32", gpDelta: 0,
+                    });
                 } else if (fac.itemName.includes("Armory")) {
-                    let cost = 100 + (100 * totalDefenders); 
+                    let cost = 100 + (100 * totalDefenders);
                     if (facilities.some(f => f.itemName.includes("Smithy"))) cost = Math.floor(cost / 2);
-                    expectedOutputs.push({ facName: fac.name, label: `Stock Armory: -${cost} GP`, color: "#a32a22" });
+                    horizonGpCosts += cost;
+                    horizonEntries.push({
+                        facName: fac.name, label: `Stock Armory`,
+                        category: "trade",
+                        turnsRemaining: null, isRecurring: true,
+                        progressPct: null, color: "#a32a22", gpDelta: -cost,
+                    });
                 }
             }
 
-            if (fac.itemName === "Training Area" && currentOrder === "Empower") {
-                expectedOutputs.push({ facName: fac.name, label: `Training: ${fac.trainerType || "Expert Trainer"}`, color: "#4a86e8" });
+            // Empower (includes "Empower: Theatrical Event", "Empower: Arcane Resilience", "Empower: Fortifying Rites")
+            if (currentOrder?.startsWith("Empower")) {
+                let empowerLabel;
+                if (currentOrder.includes(":")) {
+                    empowerLabel = currentOrder.split(": ").slice(1).join(": ");
+                } else if (fac.name.includes("Observatory")) {
+                    empowerLabel = "Celestial Observation (1d6 Eldritch Charm)";
+                } else if (fac.isMeditationChamber) {
+                    empowerLabel = "Meditate (Bastion Event Advantage)";
+                } else if (fac.isReliquaryFac) {
+                    empowerLabel = "Grant Reliquary Charm";
+                } else {
+                    empowerLabel = `Training: ${fac.trainerType || "Expert Trainer"}`;
+                }
+                horizonEntries.push({
+                    facName: fac.name, label: empowerLabel,
+                    category: "empower",
+                    turnsRemaining: null, isRecurring: true,
+                    progressPct: null, color: "#4a86e8", gpDelta: 0,
+                });
+            }
+
+            // Research (includes "Research: Helpful Lore", "Research: Lore", "Research: Rumours", etc.)
+            if (currentOrder?.startsWith("Research")) {
+                const researchLabel = currentOrder.includes(":")
+                    ? currentOrder.split(": ").slice(1).join(": ")
+                    : "Research";
+                horizonEntries.push({
+                    facName: fac.name, label: researchLabel,
+                    category: "research",
+                    turnsRemaining: null, isRecurring: true,
+                    progressPct: null, color: "#6a1b9a", gpDelta: 0,
+                });
             }
         }
+
+        // Sort: soonest concrete completion first, then recurring every-turn work, then unknown
+        horizonEntries.sort((a, b) => {
+            const keyA = a.isRecurring ? 998 : (a.turnsRemaining ?? 999);
+            const keyB = b.isRecurring ? 998 : (b.turnsRemaining ?? 999);
+            return keyA - keyB;
+        });
+
+        const horizonGold = (horizonGpIncome > 0 || horizonGpCosts > 0) ? {
+            income: horizonGpIncome,
+            costs: horizonGpCosts,
+            net: horizonGpIncome - horizonGpCosts,
+        } : null;
 
         // Persist section states
         if (this._sectionStates === undefined) this._sectionStates = { special: true, basic: true };
@@ -2450,10 +2273,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             bastionName: this.actor.system?.bastion?.name || "",
             advanceMode: this._advanceMode || "global",
             totalDefenders, defenderNames: allDefenderNames.join(", "),
-            defendersByFacility: facilities.filter(f => f.defenderCount > 0).map(f => ({ facilityName: f.name, count: f.defenderCount, names: (() => { const d = f.sourceDoc?.getFlag?.(MODULE_ID, "defenders") || f.sourceDoc?.flags?.[MODULE_ID]?.defenders; return d?.names || []; })() })), 
+            defendersByFacility: facilities.filter(f => f.defenderCount > 0).map(f => ({ facilityName: f.name, id: f.id, isFlag: f.isFlag, count: f.defenderCount, names: (() => { const d = f.sourceDoc?.getFlag?.(MODULE_ID, "defenders") || f.sourceDoc?.flags?.[MODULE_ID]?.defenders; return d?.names || []; })() })),
             allActiveQueues,
             allUtilities,
-            expectedOutputs,
+            horizonEntries, horizonGold,
             calculationMode,
             activeTab: this._activeTab || "map",
             facilities, specialFacilitiesBuilt, basicFacilitiesBuilt, specialFacilities, basicFacilities,
@@ -2463,7 +2286,17 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             totalWallSquaresAllowed, placedWallSquares, structIds: STRUCT_IDS, readyCount, totalBastions, isReady,
             gridBackground, selectedOpening: this._selectedOpeningType || "Door", neglectWarning, neglectColor, neglectCounter, actorLevel,
             sectionStates: this._sectionStates,
-            innerPeaceActive, fortifiedSaves
+            innerPeaceActive, fortifiedSaves,
+            isGM: game.user.isGM,
+            freeMode: game.user.isGM ? game.settings.get(MODULE_ID, "freeMode") : false,
+            calendarDrivenTurns: game.settings.get(MODULE_ID, "calendarDrivenTurns"),
+            ordersIssued: (game.settings.get(MODULE_ID, "ordersIssuedAt") || 0) > 0,
+            ordersCountdown: (() => {
+                const issuedAt = game.settings.get(MODULE_ID, "ordersIssuedAt") || 0;
+                if (!issuedAt) return null;
+                const remaining = Math.max(0, (issuedAt + effectiveDaysPerTurn() * 86400) - game.time.worldTime);
+                return Math.ceil(remaining / 86400);
+            })(),
         };
         return this.context;
     }
@@ -2687,6 +2520,21 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
                 } else {
                     await this.actor.items.get(ds.itemId)?.setFlag(MODULE_ID, "paperworkQty", val);
+                }
+            });
+        });
+
+        // Theater Script Title Listener
+        this.element.querySelectorAll('.theater-script-title').forEach(input => {
+            input.addEventListener('change', async (ev) => {
+                const ds = ev.target.dataset;
+                if (ds.isFlag === "true") {
+                    const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+                    const fac = gf.find(f => f._id === ds.itemId);
+                    if (fac) foundry.utils.setProperty(fac, `flags.${MODULE_ID}.theaterScriptTitle`, ev.target.value);
+                    await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+                } else {
+                    await this.actor.items.get(ds.itemId)?.setFlag(MODULE_ID, "theaterScriptTitle", ev.target.value);
                 }
             });
         });
@@ -3771,6 +3619,224 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         this.render?.();
     }
 
+    static async onPayWarRoomArmy(event, target) {
+        const actor = this.actor;
+        const period = target.dataset.period || "daily";
+        const cost = parseInt(target.dataset.cost || "0");
+        if (!cost || cost <= 0) return ui.notifications.warn("No upkeep cost to pay.");
+
+        const currentGP = Number(actor.system.currency?.gp || 0);
+        if (currentGP < cost) {
+            return ui.notifications.warn(`Insufficient gold. Need ${cost} GP but only have ${currentGP} GP.`);
+        }
+
+        const label = period === "weekly" ? "weekly (7 days)" : "daily";
+        const confirmed = await DialogV2.confirm({
+            window: { title: "War Room: Pay Army Upkeep", icon: "fa-solid fa-coins" },
+            content: `<p>Pay <b>${cost} GP</b> ${label} army upkeep? You currently have <b>${currentGP} GP</b>.</p>`,
+            yes: { label: `Pay ${cost} GP` },
+            no: { label: "Cancel" },
+            rejectClose: false
+        });
+        if (!confirmed) return;
+
+        await actor.update({ "system.currency.gp": currentGP - cost });
+        ui.notifications.info(`Paid ${cost} GP ${label} army upkeep. Remaining GP: ${currentGP - cost}.`);
+    }
+
+    static async onAdvanceConstruction(event, target) {
+        if (!game.user.isGM) return;
+        const ds = target.dataset;
+        const isFlag = ds.isFlag === "true";
+
+        let fac;
+        if (isFlag) {
+            const gfs = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+            fac = gfs.find(f => f._id === ds.itemId);
+        } else {
+            fac = this.actor.items.get(ds.itemId);
+        }
+        if (!fac) return;
+
+        const getF = (key) => isFlag ? (fac.flags?.[MODULE_ID]?.[key]) : fac.getFlag(MODULE_ID, key);
+
+        const upgradeProgress = getF("upgradeProgress") || 0;
+        const upgradeTurns   = getF("upgradeTurns")    || 0;
+        const targetSize     = getF("targetSize")      || null;
+        const targetSubType2 = getF("targetSubType2")  || null;
+
+        if (!upgradeTurns) return ui.notifications.warn("This facility is not currently under construction.");
+
+        const remaining = upgradeTurns - upgradeProgress;
+        const turnsInput = await DialogV2.prompt({
+            window: { title: "Advance Construction", icon: "fa-solid fa-forward-fast" },
+            content: `<div class="form-group">
+                <label>Turns to advance <em style="opacity:0.7;">(${upgradeProgress} / ${upgradeTurns} done, ${remaining} remaining)</em>:</label>
+                <input type="number" name="turns" min="1" max="${remaining}" value="${remaining}" autofocus style="width:100%;">
+            </div>`,
+            ok: { label: "Advance", callback: (e, b) => parseInt(b.form.elements.turns.value) || 0 },
+            rejectClose: false
+        });
+        if (!turnsInput || turnsInput <= 0) return;
+
+        const advance = Math.min(turnsInput, remaining);
+        const newProgress = upgradeProgress + advance;
+        const isComplete = newProgress >= upgradeTurns;
+        const facName = fac.name;
+
+        if (isFlag) {
+            const gfs = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+            const gf  = gfs.find(f => f._id === ds.itemId);
+            if (!gf) return;
+            if (!gf.flags) gf.flags = {};
+            if (!gf.flags[MODULE_ID]) gf.flags[MODULE_ID] = {};
+            if (isComplete) {
+                const currentSize = gf.flags[MODULE_ID].size || null;
+                const isNewBuild = !currentSize && this.actor.type !== "group";
+                if (isNewBuild) {
+                    // Promote to a real embedded Item (mirrors _resolveOrders itemsToPromote logic)
+                    const promotedData = foundry.utils.deepClone(gf);
+                    delete promotedData._id;
+                    if (targetSize)     foundry.utils.setProperty(promotedData, `flags.${MODULE_ID}.size`,           targetSize);
+                    if (targetSubType2) foundry.utils.setProperty(promotedData, `flags.${MODULE_ID}.subType2`,       targetSubType2);
+                    foundry.utils.setProperty(promotedData, `flags.${MODULE_ID}.upgradeTurns`,    0);
+                    foundry.utils.setProperty(promotedData, `flags.${MODULE_ID}.upgradeProgress`, 0);
+                    foundry.utils.setProperty(promotedData, `flags.${MODULE_ID}.targetSize`,      null);
+                    foundry.utils.setProperty(promotedData, `flags.${MODULE_ID}.targetSubType2`,  null);
+                    await this.actor.createEmbeddedDocuments("Item", [promotedData]);
+                    await this.actor.setFlag(MODULE_ID, "groupFacilities", gfs.filter(f => f._id !== ds.itemId));
+                } else {
+                    // Enlargement: update size in place
+                    if (targetSize)     gf.flags[MODULE_ID].size       = targetSize;
+                    if (targetSubType2) gf.flags[MODULE_ID].subType2   = targetSubType2;
+                    gf.flags[MODULE_ID].upgradeProgress = 0;
+                    gf.flags[MODULE_ID].upgradeTurns    = 0;
+                    gf.flags[MODULE_ID].targetSize      = null;
+                    gf.flags[MODULE_ID].targetSubType2  = null;
+                    await this.actor.setFlag(MODULE_ID, "groupFacilities", gfs);
+                }
+            } else {
+                gf.flags[MODULE_ID].upgradeProgress = newProgress;
+                await this.actor.setFlag(MODULE_ID, "groupFacilities", gfs);
+            }
+        } else {
+            if (isComplete) {
+                const upd = {
+                    [`flags.${MODULE_ID}.upgradeProgress`]: 0,
+                    [`flags.${MODULE_ID}.upgradeTurns`]:    0,
+                    [`flags.${MODULE_ID}.targetSize`]:      null,
+                    [`flags.${MODULE_ID}.targetSubType2`]:  null,
+                };
+                if (targetSize)     upd[`flags.${MODULE_ID}.size`]     = targetSize;
+                if (targetSubType2) upd[`flags.${MODULE_ID}.subType2`] = targetSubType2;
+                await fac.update(upd);
+            } else {
+                await fac.setFlag(MODULE_ID, "upgradeProgress", newProgress);
+            }
+        }
+
+        if (isComplete) {
+            ui.notifications.info(`${facName} construction complete!`);
+        } else {
+            ui.notifications.info(`Advanced ${facName} by ${advance} turn(s). (${newProgress} / ${upgradeTurns})`);
+        }
+    }
+
+    static async onAdvanceOrder(event, target) {
+        if (!game.user.isGM) return;
+        const ds = target.dataset;
+        const isFlag = ds.isFlag === "true";
+        const itemId = ds.itemId;
+        const maxCraftTurns = parseInt(ds.maxCraftTurns) || 0;
+
+        const allFacilities = BastionManager._getActorFacilities(this.actor, true);
+        const facEntry = allFacilities.find(f => isFlag ? (f.doc._id === itemId) : (f.doc.id === itemId));
+        if (!facEntry) return;
+
+        let turnsToRun = 1;
+
+        if (maxCraftTurns > 0) {
+            const getF = (key) => isFlag ? (facEntry.doc.flags?.[MODULE_ID]?.[key]) : facEntry.doc.getFlag(MODULE_ID, key);
+            const progress = Number(getF("progress") || 0);
+            const remaining = maxCraftTurns - progress;
+
+            if (remaining <= 0) {
+                ui.notifications.info("Order is already complete.");
+                return;
+            }
+
+            turnsToRun = remaining;
+            if (remaining > 1) {
+                const turnsInput = await DialogV2.prompt({
+                    window: { title: "Advance Order Progress", icon: "fa-solid fa-forward-fast" },
+                    content: `<div class="form-group">
+                        <label>Turns to advance <em style="opacity:0.7;">(${progress} / ${maxCraftTurns} done, ${remaining} remaining)</em>:</label>
+                        <input type="number" name="turns" min="1" max="${remaining}" value="${remaining}" autofocus style="width:100%;">
+                    </div>`,
+                    ok: { label: "Advance", callback: (e, b) => parseInt(b.form.elements.turns.value) || 0 },
+                    rejectClose: false
+                });
+                if (!turnsInput || turnsInput <= 0) return;
+                turnsToRun = Math.min(turnsInput, remaining);
+            }
+        }
+
+        const globalDefenders = allFacilities.reduce((sum, fac) => sum + (fac.isFlag ? (fac.doc.flags?.[MODULE_ID]?.defenders?.count || 0) : (fac.doc.getFlag(MODULE_ID, "defenders.count") || 0)), 0);
+        const hasSmithy = allFacilities.some(fac => fac.doc.name.includes("Smithy"));
+        const actorLevel = (this.actor.type === "character" || this.actor.type === "npc") ? (this.actor.system.details?.level || 1) : 1;
+
+        const preflightAnswers = await BastionManager._gatherPreflightInputs(this.actor, [facEntry], turnsToRun);
+
+        const resolution = await BastionManager._resolveOrders(
+            this.actor, [facEntry], turnsToRun, globalDefenders, hasSmithy, actorLevel, preflightAnswers, true
+        );
+
+        if (resolution.itemUpdates.length > 0) {
+            await this.actor.updateEmbeddedDocuments("Item", resolution.itemUpdates);
+        }
+        if (resolution.itemsToPromote.length > 0) {
+            await this.actor.createEmbeddedDocuments("Item", resolution.itemsToPromote);
+        }
+        if (resolution.groupFacilities) {
+            await this.actor.setFlag(MODULE_ID, "groupFacilities", resolution.groupFacilities);
+        }
+        if (resolution.items.length > 0) {
+            await BastionManager._processInventory(this.actor, resolution.items);
+        }
+        for (const talismanName of (resolution.pendingTalismanNames || [])) {
+            const t = this.actor.items.find(i => i.name === talismanName && i.getFlag(MODULE_ID, "isReliquaryTalisman"));
+            if (t) await this.actor.setFlag(MODULE_ID, "activeReliquaryTalismanId", t.id);
+        }
+
+        const isFreeMode = game.settings.get(MODULE_ID, "freeMode");
+        if (!isFreeMode) {
+            const goldAdj = Math.floor(Number(resolution.totalGold) || 0);
+            if (goldAdj !== 0) {
+                const currentGP = Number(this.actor.system.currency?.gp || 0) || 0;
+                await this.actor.update({ "system.currency.gp": Math.max(0, currentGP + goldAdj) });
+            }
+        }
+
+        if (resolution.orderSummary) {
+            await ChatMessage.create({
+                content: `<div style="font-size: 0.9em;">
+                    <p style="margin: 0 0 4px 0;"><i class="fa-solid fa-forward-fast"></i> <b>GM: Order Advanced</b></p>
+                    <ul style="margin: 0; padding-left: 18px;">${resolution.orderSummary}</ul>
+                </div>`,
+                speaker: { alias: "Bastion Manager" },
+            });
+        }
+
+        this.render();
+    }
+
+    static async onToggleFreeMode(event, target) {
+        if (!game.user.isGM) return;
+        const current = game.settings.get(MODULE_ID, "freeMode");
+        await game.settings.set(MODULE_ID, "freeMode", !current);
+        this.render();
+    }
+
     /**
      * Called after any Long Rest. Checks which Bastion facilities the actor has and prompts
      * them to claim rest-based charm/THP effects for those facilities.
@@ -4231,6 +4297,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
     static onSwitchTab(event, target) {
         this._activeTab = target.dataset.tab;
+        localStorage.setItem("dnd-2024-bastion-manager.lastTab", this._activeTab);
         this.render();
     }
 
@@ -4326,6 +4393,64 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             } else {
                 await fac.setFlag(MODULE_ID, "menagerieCreatures", creatures);
                 await fac.setFlag(MODULE_ID, "defenders", { count: defenderNames.length, names: defenderNames });
+            }
+            this.render();
+        }
+    }
+
+    static async onRenameHireling(event, target) {
+        const ds = target.dataset;
+        const idx = parseInt(ds.index);
+        let gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+        let fac = ds.isFlag === "true" ? gf.find(f => f._id === ds.itemId) : this.actor.items.get(ds.itemId);
+        if (!fac) return;
+        let hirelings = Array.from((ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.hirelings : fac.getFlag(MODULE_ID, "hirelings")) || []);
+        if (!hirelings[idx]) return;
+        const current = hirelings[idx];
+        const newName = await DialogV2.prompt({
+            window: { title: "Rename Hireling" },
+            content: `<div class="form-group"><label>Name:</label><input type="text" name="name" value="${current}" placeholder="Hireling name..." autofocus style="width:100%;"></div>`,
+            ok: { label: "Save", callback: (ev, button) => button.form.elements.name.value.trim() },
+            rejectClose: false
+        });
+        if (typeof newName === "string" && newName) {
+            hirelings[idx] = newName;
+            if (ds.isFlag === "true") {
+                foundry.utils.setProperty(fac, `flags.${MODULE_ID}.hirelings`, hirelings);
+                await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+            } else {
+                await fac.setFlag(MODULE_ID, "hirelings", hirelings);
+            }
+            this.render();
+        }
+    }
+
+    static async onRenameDefender(event, target) {
+        const ds = target.dataset;
+        const idx = parseInt(ds.index);
+        let gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+        let fac = ds.isFlag === "true" ? gf.find(f => f._id === ds.itemId) : this.actor.items.get(ds.itemId);
+        if (!fac) return;
+        let defenders = ds.isFlag === "true"
+            ? (fac.flags?.[MODULE_ID]?.defenders || { count: 0, names: [] })
+            : (fac.getFlag(MODULE_ID, "defenders") || { count: 0, names: [] });
+        const names = Array.from(defenders.names || []);
+        if (idx >= names.length) return;
+        const current = names[idx];
+        const newName = await DialogV2.prompt({
+            window: { title: "Rename Defender" },
+            content: `<div class="form-group"><label>Name:</label><input type="text" name="name" value="${current}" placeholder="Defender name..." autofocus style="width:100%;"></div>`,
+            ok: { label: "Save", callback: (ev, button) => button.form.elements.name.value.trim() },
+            rejectClose: false
+        });
+        if (typeof newName === "string" && newName) {
+            names[idx] = newName;
+            const updated = { count: defenders.count, names };
+            if (ds.isFlag === "true") {
+                foundry.utils.setProperty(fac, `flags.${MODULE_ID}.defenders`, updated);
+                await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+            } else {
+                await fac.setFlag(MODULE_ID, "defenders", updated);
             }
             this.render();
         }
@@ -4592,7 +4717,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const index = await outPack.getIndex({fields: ["system.price", "system.rarity"]});
             const entry = index.find(i => i.name === choice);
             const calculationMode = game.settings.get(MODULE_ID, "calculationMode");
-            const daysPerTurn = game.settings.get(MODULE_ID, "daysPerTurn") || 7;
+            const daysPerTurn = effectiveDaysPerTurn();
 
             if (entry) {
                 const rarity = entry.system.rarity || "Common";
@@ -4906,7 +5031,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const basicFolderIds = basicRoot ? BastionManager._getAllSubfolderIds(pack, basicRoot.id) : [];
 
         const ignorePrereqs = game.settings.get(MODULE_ID, "ignoreFacilityPrereqs");
-        
+
+        let excludedSources = [];
+        let excludedFacilities = [];
+        try {
+            excludedSources   = game.settings.get(MODULE_ID, "excludedSourcesData")   || [];
+            excludedFacilities = game.settings.get(MODULE_ID, "excludedFacilitiesData") || [];
+        } catch(e) {}
+
         // Helper to get grouped/sorted lists
         const getFacilityOptions = (isBasicTarget) => {
             let list = [];
@@ -4914,6 +5046,15 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 const itemFolderId = d.folder?.id || d.folder;
                 const isBasic = basicFolderIds.includes(itemFolderId) || d.system?.type?.value === "basic" || d.name.toLowerCase().includes("basic");
                 if (isBasic !== isBasicTarget) return;
+
+                if (excludedFacilities.includes(d.id)) return;
+
+                let source = "Unknown Source";
+                if (typeof d.system?.source === "string") source = d.system.source;
+                else if (d.system?.source?.custom) source = d.system.source.custom;
+                else if (d.system?.source?.book)   source = d.system.source.book;
+                else if (d.system?.source?.label)  source = d.system.source.label;
+                if (excludedSources.includes(source.trim())) return;
 
                 let lvl = d.system?.prerequisites?.level || d.system?.requirements?.level || 0;
                 if (!lvl) {
@@ -4969,13 +5110,37 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
         const namingEnabled = game.settings.get(MODULE_ID, "nameHirelings");
 
+        // Load garden type options from compendium for the founding dialog
+        const outPackInit = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+        let gardenTypeOptions = "";
+        if (outPackInit?.folders) {
+            const gardenRoot = outPackInit.folders.get(GARDEN_ROOT_ID)
+                || outPackInit.folders.find(f => f.name.toLowerCase().trim() === "garden");
+            if (gardenRoot) {
+                gardenTypeOptions = outPackInit.folders
+                    .filter(f => String(f.folder?.id || f.folder || f.parentId) === String(gardenRoot.id))
+                    .map(f => `<option value="${f.name}">${f.name}</option>`)
+                    .join("");
+            }
+        }
+
         const initContent = `
             <p style="margin-bottom: 10px;">Establish your Bastion <b>instantly and for free</b>. Select two Special Facilities and two Basic Facilities.</p>
             <div class="form-group"><label>Special Facility 1</label><select name="spec1" class="spec-init" data-slot="1" style="flex: 2;">${spec1Options}</select></div>
-            <div id="names-slot-1" style="margin-bottom: 10px; padding-left: 20px;"></div>
-            
+            <div id="names-slot-1" style="margin-bottom: 5px; padding-left: 20px;"></div>
+            <div id="garden-type-container-1" style="display: none; margin-bottom: 10px; padding-left: 20px;">
+                <div class="form-group" style="margin: 0;"><label style="font-size: 0.85em; color: #2e7d32;"><i class="fa-solid fa-seedling"></i> Plant Type:</label>
+                    <select name="gardenType1" style="flex: 2;">${gardenTypeOptions}</select>
+                </div>
+            </div>
+
             <div class="form-group"><label>Special Facility 2</label><select name="spec2" class="spec-init" data-slot="2" style="flex: 2;">${spec1Options}</select></div>
-            <div id="names-slot-2" style="margin-bottom: 10px; padding-left: 20px;"></div>
+            <div id="names-slot-2" style="margin-bottom: 5px; padding-left: 20px;"></div>
+            <div id="garden-type-container-2" style="display: none; margin-bottom: 10px; padding-left: 20px;">
+                <div class="form-group" style="margin: 0;"><label style="font-size: 0.85em; color: #2e7d32;"><i class="fa-solid fa-seedling"></i> Plant Type:</label>
+                    <select name="gardenType2" style="flex: 2;">${gardenTypeOptions}</select>
+                </div>
+            </div>
 
             <div id="workshop-tools-container" style="display: none; background: rgba(0,0,0,0.05); padding: 8px; border-radius: 4px; border: 1px solid #ccc; margin-bottom: 10px;">
                 <p style="margin: 0 0 5px 0; font-weight: bold; color: #a32a22;">Workshop Detected: Select exactly 6 tools:</p>
@@ -4986,7 +5151,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 <select name="basic1" style="flex: 2;">${generateGroupedOptions(basicGroups)}</select>
                 <select name="size1" style="flex: 1;"><option value="Cramped">Cramped</option><option value="Roomy" selected>Roomy</option></select>
             </div>
-            <div class="form-group"><label>Basic Facility 2</label> 
+            <div class="form-group"><label>Basic Facility 2</label>
                 <select name="basic2" style="flex: 2;">${generateGroupedOptions(basicGroups)}</select>
                 <select name="size2" style="flex: 1;"><option value="Cramped" selected>Cramped</option><option value="Roomy">Roomy</option></select>
             </div>
@@ -5008,11 +5173,15 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             render: function(event) {
                 const html = event.target.element;
                 const updateNames = (select) => {
-                    const isWorkshop = allDocs.find(d => d.id === select.value)?.name.includes("Workshop");
+                    const selectedDoc = allDocs.find(d => d.id === select.value);
+                    const isGarden = selectedDoc?.name.includes("Garden") && !selectedDoc?.name.includes("Greenhouse");
                     html.querySelector('#workshop-tools-container').style.display = Array.from(html.querySelectorAll('.spec-init')).some(s => allDocs.find(d => d.id === s.value)?.name.includes("Workshop")) ? "block" : "none";
 
-                    if (!namingEnabled) return;
                     const slot = select.dataset.slot;
+                    const gardenContainer = html.querySelector(`#garden-type-container-${slot}`);
+                    if (gardenContainer) gardenContainer.style.display = isGarden ? "block" : "none";
+
+                    if (!namingEnabled) return;
                     const count = getHCountFromId(select.value);
                     const container = html.querySelector('#names-slot-' + slot);
                     if (!container) return;
@@ -5022,10 +5191,21 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     }
                     container.innerHTML = inputs;
                 };
+                const avoidDuplicate = (changed) => {
+                    const otherName = changed.name === 'spec1' ? 'spec2' : 'spec1';
+                    const other = html.querySelector(`.spec-init[name="${otherName}"]`);
+                    if (other && other.value === changed.value) {
+                        const nextOpt = Array.from(other.options).find(o => o.value !== changed.value);
+                        if (nextOpt) { other.value = nextOpt.value; updateNames(other); }
+                    }
+                };
                 html.querySelectorAll('.spec-init').forEach(s => {
-                    s.addEventListener('change', e => updateNames(e.target));
+                    s.addEventListener('change', e => { updateNames(e.target); avoidDuplicate(e.target); });
                     updateNames(s);
                 });
+                // Ensure spec2 doesn't open on the same facility as spec1
+                const spec1El = html.querySelector('select[name="spec1"]');
+                if (spec1El) avoidDuplicate(spec1El);
             },
             rejectClose: false
         });
@@ -5038,8 +5218,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (!doc) return console.error(`Bastion Manager | Facility ID ${id} not found in compendium.`);
             const data = doc.toObject();
             foundry.utils.setProperty(data, `flags.${MODULE_ID}.size`, size);
+            foundry.utils.setProperty(data, `flags.${MODULE_ID}.order`, "Maintain");
 
             const hCount = getHCountFromId(id);
+            let pendingInitNames = [];
+            let pendingInitProf = null;
             if (slotNum && hCount > 0 && game.settings.get(MODULE_ID, "nameHirelings")) {
                 const autoGen = game.settings.get(MODULE_ID, "autoNameHirelings");
                 let names = [];
@@ -5052,20 +5235,31 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
                 if (names.length > 0) {
                     foundry.utils.setProperty(data, `flags.${MODULE_ID}.hirelings`, names);
-                    let prof = BastionManager._getHirelingProfession(doc.name, null);
-                    names.forEach(n => BastionManager._createHirelingActor(n, prof, this.actor.name, doc.name, false));
+                    pendingInitNames = names;
+                    pendingInitProf = BastionManager._getHirelingProfession(doc.name, null);
                 }
             }
-            
+
             if (doc.name.includes("Workshop") && selections.workshopTools) foundry.utils.setProperty(data, `flags.${MODULE_ID}.workshopTools`, selections.workshopTools);
-            
+            if (doc.name.includes("Garden") && !doc.name.includes("Greenhouse") && slotNum) {
+                const gardenType = selections[`gardenType${slotNum}`];
+                if (gardenType) foundry.utils.setProperty(data, `flags.${MODULE_ID}.subType`, gardenType);
+            }
+
+            let initFacilityId = null;
             if (this.actor.type === "group") {
                 const gf = this.actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
                 data._id = foundry.utils.randomID();
+                initFacilityId = data._id;
                 gf.push(data);
                 await this.actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", gf);
             } else {
-                await Item.create(data, { parent: this.actor });
+                const createdItem = await Item.create(data, { parent: this.actor });
+                initFacilityId = createdItem?.id;
+            }
+
+            if (pendingInitNames.length > 0 && initFacilityId) {
+                for (const n of pendingInitNames) await BastionManager._createHirelingActor(n, pendingInitProf, this.actor.name, doc.name, false, initFacilityId);
             }
         };
 
@@ -5246,6 +5440,60 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             promptContent += `<ul><li><b>To:</b> ${upgradeData.to}</li><li><b>Cost:</b> ${upgradeData.cost} GP</li><li><b>Time:</b> ${upgradeData.turns} Turns</li></ul>`;
         }
 
+        const getFacilityUpgradeDesc = (targetSize) => {
+            if (name.includes("Archive"))   return `A Vast Archive holds <b>3 Reference Books</b> (up from 1), granting access to three separate research disciplines.`;
+            if (name.includes("Barrack"))   return `A Vast Barrack can house up to <b>25 Bastion Defenders</b> (up from 12).`;
+            if (name.includes("Garden"))    return targetSize === "Vast"
+                ? `A Vast Garden functions as <b>two independent Roomy Gardens</b>, each growing a different plant type with a separate Harvest each turn.`
+                : `A Roomy Garden produces one type of plant per Harvest order.`;
+            if (name.includes("Pub"))       return `A Vast Pub maintains <b>two taps simultaneously</b>, each stocked with a different magical special.`;
+            if (name.includes("Stable"))    return `A Vast Stable can house up to <b>6 mounts</b> (up from 3).`;
+            if (name.includes("Workshop"))  return `A Vast Workshop supports a wider selection of <b>Artisan's Tools</b> and additional hirelings to use them.`;
+            if (name.includes("Smithy"))    return targetSize === "Vast"
+                ? `A Vast Smithy supports three hirelings, enabling faster crafting throughput.`
+                : `A Roomy Smithy supports two hirelings.`;
+            if (name.includes("Scriptorium")) return targetSize === "Vast"
+                ? `A Vast Scriptorium supports three scribes, enabling faster copying and research.`
+                : `A Roomy Scriptorium supports two scribes.`;
+            if (name.includes("Laboratory") || name.includes("Lab")) return targetSize === "Vast"
+                ? `A Vast Laboratory supports three alchemists, enabling faster potion crafting.`
+                : `A Roomy Laboratory supports two alchemists.`;
+            if (name.includes("Gaming Hall")) return targetSize === "Vast"
+                ? `A Vast Gaming Hall attracts wealthier patrons, improving Trade income.`
+                : `A Roomy Gaming Hall supports standard Trade operations.`;
+            if (name.includes("Theater"))   return targetSize === "Vast"
+                ? `A Vast Theater draws larger crowds and supports a full troupe of performers.`
+                : `A Roomy Theater supports standard productions.`;
+            if (name.includes("Guildhall")) return targetSize === "Vast"
+                ? `A Vast Guildhall commands greater influence, improving the quality of Guild missions.`
+                : `A Roomy Guildhall supports standard Guild operations.`;
+            if (name.includes("Sanctuary")) return targetSize === "Vast"
+                ? `A Vast Sanctuary supports three sacred attendants and improved healing capabilities.`
+                : `A Roomy Sanctuary supports two sacred attendants.`;
+            if (name.includes("Sacristy"))  return targetSize === "Vast"
+                ? `A Vast Sacristy supports three ordained clergy and expanded sacred services.`
+                : `A Roomy Sacristy supports two ordained clergy.`;
+            if (name.includes("Demiplane")) return targetSize === "Vast"
+                ? `A Vast Demiplane is larger and more complex, allowing a greater number of features and occupants.`
+                : `A Roomy Demiplane supports standard extradimensional features.`;
+            if (name.includes("Teleportation Circle")) return `A Vast Teleportation Circle supports additional traffic and a resident spellcaster of greater power.`;
+            if (name.includes("Training Area")) return targetSize === "Vast"
+                ? `A Vast Training Area supports three trainers, enabling multiple simultaneous Empower orders.`
+                : `A Roomy Training Area supports two trainers.`;
+            if (name.includes("Trophy Room")) return targetSize === "Vast"
+                ? `A Vast Trophy Room displays more trophies and impresses more visitors.`
+                : `A Roomy Trophy Room supports standard trophy display.`;
+            return targetSize === "Vast"
+                ? `A Vast facility operates at full capacity with three Hireling slots.`
+                : `A Roomy facility provides standard capacity with two Hireling slots.`;
+        };
+
+        if (showSizeSelect) {
+            promptContent += `<p id="facility-upgrade-desc" style="font-style: italic; font-size: 0.9em; color: #555; margin: 4px 0 8px 0;">${getFacilityUpgradeDesc("Roomy")}</p>`;
+        } else {
+            promptContent += `<p style="font-style: italic; font-size: 0.9em; color: #555; margin: 4px 0 8px 0;">${getFacilityUpgradeDesc(upgradeData.to)}</p>`;
+        }
+
         let subType2SelectionNeeded = false;
         if (name.includes("Garden") && (upgradeData.to === "Vast" || showSizeSelect)) {
             const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
@@ -5270,7 +5518,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const index = await outPack.getIndex({fields: ["folder"]});
             const allBooks = index.filter(i => (i.folder?.id || i.folder) === booksFolderId);
             
-            const existingBooks = facFlags.archiveBooks || [];
+            const existingBooks = ds.isFlag === "true"
+                ? (fac.flags?.[MODULE_ID]?.archiveBooks || [])
+                : (fac.getFlag(MODULE_ID, "archiveBooks") || []);
             const availableBooks = allBooks.filter(b => !existingBooks.includes(b.name));
             const bookOptions = availableBooks.map(b => `<option value="${b.name}">${b.name}</option>`).join("");
             
@@ -5279,9 +5529,6 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                                 <div class="form-group"><label>Book 2:</label><select name="archiveBook2" style="width: 100%;">${bookOptions}</select></div>
                                 <div class="form-group"><label>Book 3:</label><select name="archiveBook3" style="width: 100%;">${bookOptions}</select></div>
                               </div>`;
-            html.querySelector('.enlarge-size-select')?.addEventListener('change', (ev) => {
-                html.querySelector('#archive-upgrade-container').style.display = ev.target.value === "Vast" ? "block" : "none";
-            });
         }
 
         promptContent += `</div>`;
@@ -5295,6 +5542,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 html.querySelector('.enlarge-size-select')?.addEventListener('change', (ev) => {
                     const container = html.querySelector('#subType2-container');
                     if (container) container.style.display = ev.target.value === "Vast" ? "block" : "none";
+                    const archiveContainer = html.querySelector('#archive-upgrade-container');
+                    if (archiveContainer) archiveContainer.style.display = ev.target.value === "Vast" ? "block" : "none";
+                    const descEl = html.querySelector('#facility-upgrade-desc');
+                    if (descEl) descEl.innerHTML = getFacilityUpgradeDesc(ev.target.value);
                 });
             },
             rejectClose: false
@@ -5336,7 +5587,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             };
 
             if (confirmData.archiveBook2 && confirmData.archiveBook3) {
-                const books = Array.from(facFlags.archiveBooks || []);
+                const currentArchiveBooks = ds.isFlag === "true"
+                    ? (fac.flags?.[MODULE_ID]?.archiveBooks || [])
+                    : (fac.getFlag(MODULE_ID, "archiveBooks") || []);
+                const books = Array.from(currentArchiveBooks);
                 books.push(confirmData.archiveBook2, confirmData.archiveBook3);
                 updateObj.archiveBooks = books;
             }
@@ -5466,14 +5720,24 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             ${ctx.basicFacilities.map(f => `<option value="${f._id}">${f.name}</option>`).join("")}
         </optgroup>` : "";
 
+        // Custom facility types registered by external modules
+        const customSpecList = showSpecial ? BastionManager._customFacilityTypes.filter(f => f.type === "special") : [];
+        const customBasicList = showBasic ? BastionManager._customFacilityTypes.filter(f => f.type === "basic") : [];
+        const customSpecGroup = customSpecList.length
+            ? `<optgroup label="Custom: Special Facilities">${customSpecList.map(f => `<option value="custom:${f.id}">${f.name}${f.level ? ` (Lvl ${f.level}+)` : ""}</option>`).join("")}</optgroup>`
+            : "";
+        const customBasicGroup = customBasicList.length
+            ? `<optgroup label="Custom: Basic Facilities">${customBasicList.map(f => `<option value="custom:${f.id}">${f.name}</option>`).join("")}</optgroup>`
+            : "";
+
         const content = `
             <div class="bastion-app">
                 <p>Select a ${typeLabel} to establish in your Bastion:</p>
                 <div class="form-group">
                     <select name="selectedFacility" style="width: 100%;">
                         <option value="">-- Choose ${typeLabel} --</option>
-                        ${specOptions}
-                        ${basicOptions}
+                        ${specOptions}${customSpecGroup}
+                        ${basicOptions}${customBasicGroup}
                     </select>
                 </div>
             </div>`;
@@ -5495,9 +5759,25 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const facilityId = target?.value || this.element?.querySelector('select[name="compendium-facility"]')?.value;
         if (!facilityId) return ui.notifications.warn("Select a facility first!");
 
-        const pack = game.packs.get("dnd-2024-bastion-manager.bastion-facilities");
-        const itemDoc = await pack.getDocument(facilityId);
+        // Resolve the item: custom-registered types use a UUID; built-in types use the module pack.
+        let itemDoc;
+        if (facilityId.startsWith("custom:")) {
+            const customId = facilityId.slice(7);
+            const customConfig = BastionManager._customFacilityTypes.find(f => f.id === customId);
+            if (!customConfig) return ui.notifications.error(`Bastion Manager | Custom facility type "${customId}" is not registered.`);
+            itemDoc = await fromUuid(customConfig.itemUuid);
+            if (!itemDoc) return ui.notifications.error(`Bastion Manager | Could not load item for "${customConfig.name}". Check the itemUuid passed to registerFacilityType.`);
+        } else {
+            const pack = game.packs.get("dnd-2024-bastion-manager.bastion-facilities");
+            itemDoc = await pack.getDocument(facilityId);
+        }
+        if (!itemDoc) return ui.notifications.warn("Could not load facility data.");
+
+        // Allow external modules to cancel the build (return false from the hook listener to cancel).
+        if (Hooks.call("dnd-bastion.preBuildFacility", this.actor, itemDoc) === false) return;
+
         let newFacData = itemDoc.toObject();
+        foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.order`, "Maintain");
 
         // Identify Basic vs Special
         const isBasic = itemDoc.system?.type?.value === "basic";
@@ -5583,7 +5863,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             `;
          } else if (itemDoc.name.includes("Workshop")) {
             const tools = ["Carpenter's Tools", "Cobbler's Tools", "Glassblower's Tools", "Jeweler's Tools", "Leatherworker's Tools", 
-                    "Mason's Tools", "Painter's Tools", "Potter's Tools", "Tinker's Tools", "Weaver's Tools", "Woodcarver's Tools"];
+                    "Mason's Tools", "Painter's Supplies", "Potter's Tools", "Tinker's Tools", "Weaver's Tools", "Woodcarver's Tools"];
             const checkboxes = tools.map(t => `
                 <label style="display: block; margin-bottom: 4px;">
                     <input type="checkbox" name="workshopTools" value="${t}"> ${t}
@@ -5707,10 +5987,13 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             // Apply selections
             if (formData.subType) foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.subType`, formData.subType);
             if (formData.workshopTools) foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.workshopTools`, formData.workshopTools);
+            // Collect hireling data now but defer actor creation until after the facility item exists
+            let pendingHirelings = null;
+            let pendingHirelingProf = null;
             if (formData.hirelings) {
                 foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.hirelings`, formData.hirelings);
-                let prof = BastionManager._getHirelingProfession(itemDoc.name, formData.subType);
-                formData.hirelings.forEach(h => BastionManager._createHirelingActor(h, prof, this.actor.name, itemDoc.name, false));
+                pendingHirelings = formData.hirelings;
+                pendingHirelingProf = BastionManager._getHirelingProfession(itemDoc.name, formData.subType);
             }
 
             if (isStable) {
@@ -5723,13 +6006,15 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.archiveBooks`, books);
             }
 
+            let createdFacilityId = null;
             if (turns > 0) {
                 foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.upgradeTurns`, turns);
                 foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.upgradeProgress`, 0);
                 foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.targetSize`, size);
                 foundry.utils.setProperty(newFacData, `flags.${MODULE_ID}.size`, null);
-                
+
                 newFacData._id = foundry.utils.randomID();
+                createdFacilityId = newFacData._id;
                 const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
                 gf.push(newFacData);
                 await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
@@ -5738,17 +6023,23 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 if (this.actor.type === "group") {
                     const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
                     newFacData._id = foundry.utils.randomID();
+                    createdFacilityId = newFacData._id;
                     gf.push(newFacData);
                     await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
                 } else {
-                    await Item.create(newFacData, { parent: this.actor });
+                    const createdItem = await Item.create(newFacData, { parent: this.actor });
+                    createdFacilityId = createdItem?.id;
                 }
+            }
+            if (pendingHirelings && createdFacilityId) {
+                for (const h of pendingHirelings) await BastionManager._createHirelingActor(h, pendingHirelingProf, this.actor.name, itemDoc.name, false, createdFacilityId);
             }
         } else {
             // No prompt needed, instant build (happens if all options disabled and build times off)
             await Item.create(newFacData, { parent: this.actor });
         }
-        this.render(); 
+        Hooks.callAll("dnd-bastion.facilityBuilt", this.actor, newFacData);
+        this.render();
     }
 
     static async onViewBastionMap(event, target) {
@@ -5823,6 +6114,100 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         }
     }
 
+    // --- CALENDAR-DRIVEN TURN ADVANCEMENT ---
+
+    static async onIssueOrders(event, target) {
+        const actor = this.actor;
+        if (!actor) return console.error("Bastion Manager | Issue Orders triggered without Actor context.");
+
+        const activeNonGMs = game.users.filter(u => u.active && !u.isGM);
+        const bastionActors = game.actors.filter(a => {
+            const isAllowed = a.type === "character" || a.type === "npc";
+            const hasFac = a.items.some(i => i.type === "facility") || a.getFlag(MODULE_ID, "groupFacilities")?.length > 0;
+            return isAllowed && hasFac && activeNonGMs.some(u => a.testUserPermission(u, "OWNER"));
+        });
+        if (!bastionActors.some(a => a.id === actor.id)) {
+            const hasFac = actor.items.some(i => i.type === "facility") || actor.getFlag(MODULE_ID, "groupFacilities")?.length > 0;
+            if (hasFac) bastionActors.push(actor);
+        }
+
+        let allMissing = [];
+        for (let a of bastionActors) allMissing.push(...await BastionManager._validateFacilities(a));
+        if (allMissing.length > 0) {
+            const list = allMissing.map(m => `<li>${m}</li>`).join("");
+            const proceed = await DialogV2.confirm({
+                window: { title: "Incomplete Selections" },
+                content: `<p>The following facilities have active orders but are missing required selections:</p><ul>${list}</ul><p>Facilities with missing selections will be issued the Maintain order. Proceed anyway?</p>`,
+                rejectClose: false, modal: true
+            });
+            if (!proceed) return;
+        }
+
+        const daysPerTurn = effectiveDaysPerTurn();
+        const confirm = (allMissing.length > 0) || await DialogV2.confirm({
+            window: { title: "Issue Bastion Orders" },
+            content: `<p>Issue orders to all active Bastions?</p><p>The turn will resolve automatically once <b>${daysPerTurn} days</b> of in-game time pass.</p>`,
+            rejectClose: false, modal: true
+        });
+        if (!confirm) return;
+
+        if (Hooks.call("dnd-bastion.preAdvanceTurn", bastionActors, 1) === false) return;
+
+        await game.settings.set(MODULE_ID, "ordersIssuedAt", game.time.worldTime);
+        ui.notifications.info(`Bastion Manager | Orders issued. Turn resolves in ${daysPerTurn} days.`);
+        for (const app of foundry.applications.instances.values()) if (app instanceof BastionManager) app.render();
+    }
+
+    static async onCancelOrders(event, target) {
+        const confirm = await DialogV2.confirm({
+            window: { title: "Cancel Pending Orders" },
+            content: `<p>Cancel the pending Bastion orders? The turn will not resolve automatically.</p>`,
+            rejectClose: false, modal: true
+        });
+        if (!confirm) return;
+        await game.settings.set(MODULE_ID, "ordersIssuedAt", 0);
+        for (const app of foundry.applications.instances.values()) if (app instanceof BastionManager) app.render();
+    }
+
+    static async resolveCalendarDrivenTurn() {
+        if (!game.user.isGM) return;
+
+        // Do not filter by active non-GM ownership — players may be offline when the calendar
+        // triggers auto-resolution. Process all actors that have facilities.
+        const bastionActors = game.actors.filter(a =>
+            (a.type === "character" || a.type === "npc") &&
+            (a.items.some(i => i.type === "facility") || a.getFlag(MODULE_ID, "groupFacilities")?.length > 0)
+        );
+
+        // Clear immediately to prevent double-firing if worldTime advances again before we finish
+        await game.settings.set(MODULE_ID, "ordersIssuedAt", 0);
+
+        const currentGlobalTurns = game.settings.get(MODULE_ID, "globalTurnCount") || 0;
+        await game.settings.set(MODULE_ID, "globalTurnCount", currentGlobalTurns + 1);
+
+        let reports = [];
+        const processedGroups = new Set();
+        const rolledEvents = new Map();
+        const unify = game.settings.get(MODULE_ID, "unifyCombinedTurns");
+
+        for (let actor of bastionActors) {
+            const combinedId = actor.getFlag(MODULE_ID, "combinedGroupId");
+            if (unify && combinedId && !processedGroups.has(combinedId)) {
+                const group = game.actors.get(combinedId);
+                if (group) await group.setFlag(MODULE_ID, "turnCount", (group.getFlag(MODULE_ID, "turnCount") || 0) + 1);
+                processedGroups.add(combinedId);
+            }
+            const r = await BastionManager.executeBastionTurn(actor, 1, rolledEvents);
+            if (r) reports.push(r);
+        }
+
+        if (reports.length > 0) await BastionManager._dispatchReports(reports, 1);
+        Hooks.callAll("dnd-bastion.turnAdvanced", bastionActors, 1, reports);
+        ui.notifications.info("Bastion Manager | Calendar turn resolved.");
+        game.socket.emit("module.dnd-2024-bastion-manager", { action: "globalAdvance" });
+        for (const app of foundry.applications.instances.values()) if (app instanceof BastionManager) app.render();
+    }
+
     // --- UI ACTION ---
     static async onAdvanceGlobalTurn(event, target) {
         const actor = this.actor;
@@ -5870,14 +6255,17 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         });
 
         if (confirm) {
+            // Allow external modules to cancel the advance (return false to cancel).
+            if (Hooks.call("dnd-bastion.preAdvanceTurn", bastionActors, turnsToAdvance) === false) return;
+
             const currentGlobalTurns = game.settings.get(MODULE_ID, "globalTurnCount") || 0;
             await game.settings.set(MODULE_ID, "globalTurnCount", currentGlobalTurns + turnsToAdvance);
- 
+
             let reports = [];
             const processedGroups = new Set();
             const rolledEvents = new Map(); // Shared map for group deduplication
             const unify = game.settings.get(MODULE_ID, "unifyCombinedTurns");
- 
+
             for (let actor of bastionActors) {
                 const combinedId = actor.getFlag(MODULE_ID, "combinedGroupId");
                 if (unify && combinedId && !processedGroups.has(combinedId)) {
@@ -5895,6 +6283,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
  
             if (reports.length > 0) {
                 await BastionManager._dispatchReports(reports, turnsToAdvance);
+            }
+            Hooks.callAll("dnd-bastion.turnAdvanced", bastionActors, turnsToAdvance, reports);
+            if (game.settings.get(MODULE_ID, "advanceWorldTime")) {
+                await game.time.advance(turnsToAdvance * effectiveDaysPerTurn() * 86400);
             }
             ui.notifications.info(`Bastion Manager | Global turns advanced by ${turnsToAdvance}.`);
             game.socket.emit("module.dnd-2024-bastion-manager", { action: "globalAdvance" });
@@ -5951,6 +6343,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             if (reports.length > 0) {
                 await BastionManager._dispatchReports(reports, turnsToAdvance);
+            }
+            if (game.settings.get(MODULE_ID, "advanceWorldTime")) {
+                await game.time.advance(turnsToAdvance * effectiveDaysPerTurn() * 86400);
             }
             ui.notifications.info(`Bastion Manager | ${actor.name}'s Bastion advanced by ${turnsToAdvance}.`);
             // Refresh any open manager windows for this actor
@@ -6210,9 +6605,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const currentModuleTurn = actor.getFlag(MODULE_ID, "turnCount") || 0;
 
         // Ensure we are working with clean integers to avoid DataModel validation errors
+        const isFreeMode = game.settings.get(MODULE_ID, "freeMode");
         const currentGP = Number(actor.system.currency?.gp || 0) || 0;
         const totalGoldAdjustment = Math.floor(Number(resolution.totalGold) || 0);
-        const finalGP = Math.max(0, currentGP + totalGoldAdjustment);
+        const finalGP = isFreeMode ? currentGP : Math.max(0, currentGP + totalGoldAdjustment);
 
         // Batch all updates for the Actor
         const actorUpdate = {
@@ -6416,6 +6812,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     static async _gatherPreflightInputs(actor, facilities, turns = 1) {
         const recruitMode = game.settings.get(MODULE_ID, "recruitMode");
         const nameHirelings = game.settings.get(MODULE_ID, "nameHirelings");
+        const nameDefenders = game.settings.get(MODULE_ID, "nameDefenders");
         const answers = {};
         const sections = [];
 
@@ -6449,13 +6846,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     } else {
                         let rolledTotal = 0;
                         for (let t = 0; t < turns; t++) {
-                            const roll = await new Roll("1d4").evaluate();
-                            rolledTotal += roll.total;
+                            rolledTotal += BastionManager._silentRoll("1d4").total;
                         }
                         recruited = Math.min(rolledTotal, maxDefs - defCount);
                     }
-                    answers[facId] = { recruited };
-                    if (nameHirelings && promptNames && recruited > 0) {
+                    answers[facId] = { recruited, turns };
+                    if (nameDefenders && nameHirelings && promptNames && recruited > 0) {
                         sections.push({ type: "barrack-names", facId, facName, count: recruited, turns });
                     }
                 }
@@ -6463,8 +6859,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             // --- Observatory Empower ---
             else if (order === "Empower" && facName.includes("Observatory")) {
-                const roll = await new Roll("1d6").evaluate();
-                await roll.toMessage({ flavor: "<b>Observatory:</b> Surveying the eldritch mysteries of the stars…", rollMode: "publicroll" });
+                const roll = BastionManager._silentRoll("1d6");
                 answers[facId] = { rollTotal: roll.total };
 
                 if (roll.total % 2 !== 0) { // odd = success
@@ -6566,21 +6961,24 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         return answers;
     }
 
-    static async _resolveOrders(actor, facilities, turns, defenders, hasSmithy, level, preflightAnswers = {}) {
+    static async _resolveOrders(actor, facilities, turns, defenders, hasSmithy, level, preflightAnswers = {}, skipGlobalCleanup = false) {
         let orderSummary = "";
         let constructionSummary = "";
         let totalGold = 0;
         let items = [];
         let itemUpdates = [];
         const calculationMode = game.settings.get(MODULE_ID, "calculationMode");
-        const daysPerTurn = game.settings.get(MODULE_ID, "daysPerTurn") || 7;
+        const daysPerTurn = effectiveDaysPerTurn();
         const progIncrement = calculationMode === "days" ? daysPerTurn : 1;
-        
+        const freeMode = game.settings.get(MODULE_ID, "freeMode");
+
         let groupFacilities = actor.getFlag(MODULE_ID, "groupFacilities") || [];
         let itemsToPromote = [];
         let flagsToRemove = [];
 
-        let effectivelyAllMaintaining = true; 
+        let effectivelyAllMaintaining = true;
+
+        if (!skipGlobalCleanup) {
         // Handle structural path completion
         const combinedGroupId = actor.getFlag(MODULE_ID, "combinedGroupId");
         const combinedGroup = combinedGroupId ? game.actors.get(combinedGroupId) : null;
@@ -6595,7 +6993,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             }
         }
         if (layoutChanged) await layoutActor.setFlag(MODULE_ID, "layout", layout);
+        } // end !skipGlobalCleanup (layout)
 
+        if (!skipGlobalCleanup) {
         // --- Meditation Item Cleanup ---
         const meditationItemIds = actor.getFlag(MODULE_ID, "activeMeditationItems") || [];
         if (meditationItemIds.length > 0) {
@@ -6694,6 +7094,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 </li>`;
             }
         }
+        } // end !skipGlobalCleanup (meditation/charms/pub/walls)
 
         // Armory-relevant defenders: exclude Menagerie creature-defenders when menagerieArmoryBonus is off
         const menagerieArmoryBonusOrders = game.settings.get(MODULE_ID, "menagerieArmoryBonus");
@@ -6899,12 +7300,13 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
                         if (choice === "procure") {
                             const currentActorGP = Number(actor.system.currency?.gp || 0) || 0;
+                            const effectiveGold = freeMode ? 9999999 : (currentActorGP + totalGold + localGold);
                             // Clamp actualAmount to available funds (including turn-to-date changes) and storage limit
-                            const actualAmount = Math.floor(Math.max(0, Math.min(amount, currentActorGP + totalGold + localGold, limit - storedGp)));
+                            const actualAmount = Math.floor(Math.max(0, Math.min(amount, effectiveGold, limit - storedGp)));
                             if (actualAmount <= 0) {
                                 currentResultText = `${getH()} reports that procurement failed due to insufficient funds or storage capacity.`;
                             } else {
-                                localGold -= actualAmount;
+                                if (!freeMode) localGold -= actualAmount;
                                 storedGp += actualAmount;
                                 currentResultText = `${getH()} successfully procured <b>${actualAmount} GP</b> worth of goods for the storehouse. (Stock: ${storedGp}/${limit} GP)`;
                             }
@@ -6933,15 +7335,15 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                             let cost = (!isStocked ? 100 : 0) + (gap * 100);
                             if (hasSmithy) cost = Math.floor(cost / 2);
                             const currentActorGP = Number(actor.system.currency?.gp || 0) || 0;
-                            if (currentActorGP + totalGold + localGold < cost) {
+                            if (!freeMode && currentActorGP + totalGold + localGold < cost) {
                                 currentResultText = `${getH()} was unable to restock the armory due to insufficient gold (${cost} GP required).`;
                             } else {
-                                localGold -= cost;
+                                if (!freeMode) localGold -= cost;
                                 isStocked = true;
                                 facEntry.isStocked = true;
                                 facEntry.stockedCount = armoryTargetDefenders;
                                 currentResultText = `${getH()} has finished stocking superior equipment for your ${armoryTargetDefenders} defenders. Defense rolls will now use <b>d8s</b>.`;
-                                order = "Maintain";
+                                if (!freeMode) order = "Maintain";
                             }
                         }
                     } else if (facDoc.name.includes("Stable")) {
@@ -6971,14 +7373,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                                     usedSlots += BastionManager._getMountSlotCost(await BastionManager._extractSize(e));
                                 }
 
-                                if (currentActorGP + totalGold + localGold < price) {
+                                if (!freeMode && currentActorGP + totalGold + localGold < price) {
                                     currentResultText = `${getH()} was unable to purchase the <b>${mountName}</b> (${price} GP required).`;
                                 } else if (usedSlots + costInSlots > maxSlots) {
                                     currentResultText = `${getH()} reports the stable is too full to house a <b>${mountName}</b>.`;
                                 } else if (costInSlots > 3) {
                                     currentResultText = `${getH()} notes that <b>${mountName}</b> is too large to fit in this stable.`;
                                 } else {
-                                    localGold -= price;
+                                    if (!freeMode) localGold -= price;
                                     stableAnimals.push({ species: mountName, nickname: "" });
                                     currentResultText = `${getH()} successfully purchased a <b>${mountName}</b>.`;
                                 }
@@ -7201,13 +7603,13 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                                 i.name.toLowerCase() === baseItemName.toLowerCase() && i.type !== "facility"
                             );
 
-                            if (actorBaseItem) {
+                            if (!freeMode && actorBaseItem) {
                                 // Consume one from inventory
                                 const qty = actorBaseItem.system?.quantity ?? 1;
                                 if (qty > 1) await actorBaseItem.update({ "system.quantity": qty - 1 });
                                 else await actorBaseItem.delete();
                                 baseItemProvidedNote = ` <em style="color:#2e7d32;">(Base item provided: 1x <b>${baseItemName}</b> consumed from inventory.)</em>`;
-                            } else {
+                            } else if (!freeMode) {
                                 baseItemCost = basePrice;
                                 baseItemProvidedNote = ` <em style="color:#a32a22;">(Base item cost: <b>${basePrice} GP</b> for ${baseItemName}.)</em>`;
                             }
@@ -7216,7 +7618,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
                     // 2. Initial Turn: Check and Deduct Gold
                     if (progress === 0) {
-                        if (craftChoice === "Book Replica") {
+                        if (!freeMode && craftChoice === "Book Replica") {
                             const book = actor.items.find(i => i.name.toLowerCase().includes("blank book") || (i.name.toLowerCase() === "book" && i.type !== "facility"));
                             if (!book) {
                                 currentResultText = `${getH()} had to pause work; a <b>Blank Book</b> is missing from inventory.`;
@@ -7227,18 +7629,24 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                             currentResultText = `${getH()} consumes a blank book and begins the replication. `;
                         }
 
-                        const currentGP = actor.system.currency?.gp || 0;
-                        if ((currentGP + totalGold + localGold) < materialCost + baseItemCost) {
-                            currentResultText = `${getH()} had to pause work on <b>${projectLabel}</b> due to lack of funds for materials.`;
-                            break;
+                        if (!freeMode) {
+                            const currentGP = actor.system.currency?.gp || 0;
+                            if ((currentGP + totalGold + localGold) < materialCost + baseItemCost) {
+                                currentResultText = `${getH()} had to pause work on <b>${projectLabel}</b> due to lack of funds for materials.`;
+                                break;
+                            }
+                            localGold -= materialCost;
+                            if (baseItemCost > 0) localGold -= baseItemCost;
                         }
-                        localGold -= materialCost;
-                        if (baseItemCost > 0) localGold -= baseItemCost;
                         if (baseItemProvidedNote) currentResultText = (currentResultText || "") + baseItemProvidedNote;
                     }
 
                     // 3. Advance Progress
-                    progress += progIncrement;
+                    if (freeMode) {
+                        progress = turnsNeeded; // Complete instantly
+                    } else {
+                        progress += progIncrement;
+                    }
 
                     // 4. Completion Handler
                     if (progress >= turnsNeeded) {
@@ -7246,14 +7654,18 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         if (craftRes.item) items.push(craftRes.item);
                         currentResultText = currentResultText ? `${currentResultText} | ${craftRes.text}` : craftRes.text;
 
+                        const savedCraftChoice = craftChoice;
                         progress = 0;
-                        craftChoice = ""; // Clear the local craftChoice variable to allow queue advancement or default to Maintain
+                        craftChoice = ""; // Clear to allow queue advancement or default to Maintain
                         activeProjectChoice = "";
 
                         if (!craftQueue.length) {
                             if (isGreenhouse || (isReliquary && order === "Harvest")) {
                                 order = "Harvest";
                                 currentResultText += `<br><span style="color: #2e7d32; font-weight: bold;"><i class="fa-solid fa-seedling"></i> Harvest complete. ${getH()} continues to tend the plants for the next cycle.</span>`;
+                            } else if (freeMode) {
+                                craftChoice = savedCraftChoice; // Keep same order and selection in Free Mode
+                                currentResultText += `<br><span style="color: #7b1fa2; font-weight: bold;"><i class="fa-solid fa-wand-magic-sparkles"></i> Work is complete. (Free Mode: order retained)</span>`;
                             } else {
                                 order = "Maintain";
                                 craftChoice = "";
@@ -7269,7 +7681,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     }
                 } else if (order === "Change Type") {
                     let pending = getFacFlag("pendingSubType");
-                    progress += progIncrement;
+                    if (freeMode) {
+                        const _needed = facName.includes("Garden")
+                            ? (calculationMode === "days" ? BastionManager._getEffectiveDays(21) : 3)
+                            : (upgradeTurns || 0);
+                        progress = _needed;
+                    } else {
+                        progress += progIncrement;
+                    }
                     
                     const totalNeeded = facName.includes("Garden") 
                         ? (calculationMode === "days" ? BastionManager._getEffectiveDays(21) : 3)
@@ -7301,12 +7720,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                             const currentActorGP = Number(actor.system.currency?.gp || 0) || 0;
                             let creatures = Array.from(getFacFlag("menagerieCreatures") || []);
                             const usedSlots = creatures.reduce((s, c) => s + (c.slots ?? 0.25), 0);
-                            if (currentActorGP + totalGold + localGold < cost) {
+                            if (!freeMode && currentActorGP + totalGold + localGold < cost) {
                                 currentResultText = `${getH()} was unable to acquire the <b>${choice}</b> (${cost} GP required).`;
                             } else if (usedSlots + slotCost > 4) {
                                 currentResultText = `${getH()} reports the Menagerie is too full to house another <b>${choice}</b>.`;
                             } else {
-                                localGold -= cost;
+                                if (!freeMode) localGold -= cost;
                                 creatures.push({ species: choice, nickname: "", slots: slotCost, isDefender: true });
                                 facEntry.menagerieCreatures = creatures;
                                 // Sync to defenders flag so attack events see them
@@ -7319,7 +7738,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         if (visitingSpellcaster) {
                             currentResultText = "Recruitment skipped: A spellcaster is already visiting.";
                         } else {
-                            const roll = (await new Roll("1d2").evaluate()).total;
+                            const roll = BastionManager._silentRoll("1d2").total;
                             if (roll === 2) {
                                 visitingSpellcaster = true;
                                     spellcasterDaysRemaining = BastionManager._getEffectiveDays(14);
@@ -7533,43 +7952,74 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             .map(f => f._pendingTalismanName)
             .filter(Boolean);
 
-        return { 
-            orderSummary, constructionSummary, totalGold, items, itemUpdates, 
+        // War Room army upkeep reminder
+        const armyActive = actor.getFlag(MODULE_ID, "warRoomArmyActive");
+        if (armyActive) {
+            const armyGuards = actor.getFlag(MODULE_ID, "warRoomArmyGuards") || 0;
+            const armyMounted = !!(actor.getFlag(MODULE_ID, "warRoomArmyMounted"));
+            const armyLeader = actor.getFlag(MODULE_ID, "warRoomArmyLeaderName") || "Unknown";
+            const dailyCost = armyMounted ? armyGuards * 2 : armyGuards;
+            const weeklyCost = dailyCost * 7;
+            orderSummary += `<li style="margin-bottom: 6px; padding: 4px; background: rgba(183,28,28,0.07); border-radius: 3px; border-left: 3px solid #b71c1c;">
+                <i class="fa-solid fa-shield-halved" style="color:#ef5350;"></i> <b>War Room — Army Upkeep</b>
+                <br><span style="font-size: 0.9em; padding-left: 22px; display: block; color: #444; line-height: 1.5;">
+                    ${armyGuards} Guards${armyMounted ? " (mounted)" : ""} under <b>${armyLeader}</b>.
+                    Upkeep: <b>${dailyCost} GP/day</b> · <b>${weeklyCost} GP/week</b>
+                    <br>
+                    <button type="button" class="bastion-pay-army-btn" data-actor-id="${actor.id}" data-period="daily" data-cost="${dailyCost}"
+                            style="margin-top:4px; margin-right:4px; padding: 2px 8px; font-size: 0.82em; height: 24px; background: rgba(30,60,20,0.5); color: #a5d6a7; border: 1px solid #388e3c; border-radius: 3px; cursor: pointer;">
+                        <i class="fa-solid fa-coins"></i> Pay Daily (${dailyCost} GP)
+                    </button>
+                    <button type="button" class="bastion-pay-army-btn" data-actor-id="${actor.id}" data-period="weekly" data-cost="${weeklyCost}"
+                            style="margin-top:4px; padding: 2px 8px; font-size: 0.82em; height: 24px; background: rgba(30,60,20,0.5); color: #a5d6a7; border: 1px solid #388e3c; border-radius: 3px; cursor: pointer;">
+                        <i class="fa-solid fa-coins"></i> Pay Weekly (${weeklyCost} GP)
+                    </button>
+                </span>
+            </li>`;
+        }
+
+        return {
+            orderSummary, constructionSummary, totalGold, items, itemUpdates,
             itemsToPromote: promotedData, groupFacilities: finalGroupFacilities,
             effectivelyAllMaintaining, pendingTalismanNames,
             updatedFacilities: facilities // Return the updated facilities array
         };
     }
 
-    static async _createHirelingActor(name, role, ownerName, facilityName, isDefender = false) {
-        if (!game.settings.get("dnd-2024-bastion-manager", "createActorsForHirelings")) return;
-        
+    static async _createHirelingActor(name, role, ownerName, facilityName, isDefender = false, facilityItemId = null) {
+        const settingKey = isDefender ? "createActorsForDefenders" : "createActorsForHirelings";
+        if (!game.settings.get(MODULE_ID, settingKey)) return;
+
+        // Resolve which template actor to use (facility-specific or generic fallback)
+        let templateName = isDefender ? "Defender" : "Hireling";
+        if (!isDefender) {
+            const templates = JSON.parse(game.settings.get(MODULE_ID, "hirelingActorTemplates") || "{}");
+            const match = Object.entries(templates).find(([key]) => facilityName.includes(key));
+            if (match) templateName = match[1];
+        }
+        const pack = game.packs.get(`${MODULE_ID}.bastion-facility-actors`);
+        await pack?.getIndex();
+        const entry = pack?.index.find(e => e.name === templateName && e.folder === STAFF_FOLDER_ID);
+        const template = entry ? await pack.getDocument(entry._id) : null;
+
         let folderName = isDefender ? "Bastion Defenders" : "Bastion Hirelings";
         let folder = game.folders.find(f => f.name === folderName && f.type === "Actor");
-        
-        // Wait for the folder to be created and indexed before proceeding
         if (!folder) {
             folder = await Folder.create({ name: folderName, type: "Actor" });
             // Small delay to ensure the database indices catch up before the loop fires again
             await new Promise(resolve => setTimeout(resolve, 50));
         }
-
-        const actorData = {
-            name: name,
-            type: "npc",
-            folder: folder.id,
-            system: {
-                details: {
-                    biography: { value: `<p>A ${isDefender ? 'Bastion Defender' : 'Bastion Hireling'} (${role}) working at the <b>${facilityName}</b> for ${ownerName}.</p>` }
-                }
-            }
-        };
-
-        // Try to assign a generic token if possible based on role
-        if (isDefender) {
-            actorData.img = "icons/weapons/swords/sword-guard-flanged-steel.webp";
-        } else {
-            actorData.img = "icons/skills/trades/smithing-anvil-silver-red.webp";
+        // deepClone prevents shared prototypeToken references when multiple actors are created concurrently
+        const actorData = foundry.utils.deepClone(template ? template.toObject() : { type: "npc" });
+        delete actorData._id;
+        actorData.name = name;
+        actorData.folder = folder.id;
+        actorData.prototypeToken = { ...(actorData.prototypeToken ?? {}), name };
+        foundry.utils.setProperty(actorData, "system.details.biography.value",
+            `<p>A ${isDefender ? "Bastion Defender" : "Bastion Hireling"} (${role}) working at the <b>${facilityName}</b> for ${ownerName}.</p>`
+        );
+        if (facilityItemId) {
+            actorData.flags = foundry.utils.mergeObject(actorData.flags ?? {}, { [MODULE_ID]: { facilityItemId } });
         }
 
         await Actor.create(actorData);
@@ -7820,10 +8270,31 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         return { text: `Executed Craft order.` };
     }
 
+    // --- SILENT ROLL HELPER ---
+    // Uses Math.random() to avoid triggering Foundry's Roll API (and Dice So Nice animations/chat posts).
+    // Returns { total, tip, tipHtml } where tipHtml is a span with a hover tooltip showing the roll breakdown.
+    static _silentRoll(formula) {
+        const match = formula.replace(/\s+/g, "").match(/^(\d+)d(\d+)(?:([+\-*])(\d+))?$/i);
+        if (!match) return { total: 1, tip: `Rolled ${formula}: 1`, tipHtml: `<span title="Rolled ${formula}: 1" style="cursor:help; border-bottom: 1px dotted currentColor;">1</span>` };
+        const n = parseInt(match[1]), sides = parseInt(match[2]);
+        const op = match[3] || null, mod = match[4] ? parseInt(match[4]) : 0;
+        const dice = Array.from({ length: n }, () => Math.floor(Math.random() * sides) + 1);
+        const sum = dice.reduce((a, b) => a + b, 0);
+        let total = sum;
+        if (op === "+") total = sum + mod;
+        else if (op === "-") total = sum - mod;
+        else if (op === "*") total = sum * mod;
+        const diceStr = dice.length > 1 ? `[${dice.join(" + ")}]` : `${dice[0]}`;
+        const modStr = op ? ` ${op} ${mod}` : "";
+        const tip = `Rolled ${formula}: ${total} (${diceStr}${modStr})`;
+        const tipHtml = `<span title="${tip}" style="cursor:help; border-bottom: 1px dotted currentColor;">${total}</span>`;
+        return { total, tip, tipHtml };
+    }
+
     // --- HELPER: EMPOWER ---
     static async _handleEmpower(baseName, fac, actor, theaterPhase = "Idle", theaterProgress = 0, hString = "The hireling", psString = "The hirelings", preflightData = null) {
         const getFacFlag = (key) => fac.isFlag ? (fac.doc.flags?.[MODULE_ID]?.[key]) : (fac.doc.getFlag(MODULE_ID, key));
-        const daysPerTurn = game.settings.get(MODULE_ID, "daysPerTurn") || 7;
+        const daysPerTurn = effectiveDaysPerTurn();
 
         if (baseName.includes("Theater")) {
             let phase = theaterPhase;
@@ -7843,19 +8314,32 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             if (phase === "Writing" && progress >= BastionManager._getEffectiveDays(14)) {
                 const contributors = getFacFlag("theaterContributors") || [];
-                const writers = contributors.filter(c => c.role === "Composer/Writer").map(c => c.name);
-                const authorName = writers.length > 0 ? writers.join(", ") : "Theater Hirelings";
-                
+                const writers = contributors.filter(c => c.role === "Composer/Writer");
+                const authorName = writers.length > 0 ? writers.map(c => c.name).join(", ") : "Theater Hirelings";
+
                 phase = "Rehearsing";
                 progress = 0;
 
                 // Persist the Author and clear the contributors roster for the acting phase
-                const updates = { 
+                const updates = {
                     [`flags.${MODULE_ID}.theaterAuthor`]: authorName,
                     [`flags.${MODULE_ID}.theaterContributors`]: []
                 };
                 if (fac.isFlag) Object.assign(fac.doc.flags[MODULE_ID], updates);
                 else await fac.doc.update(updates);
+
+                // Grant a Script item to each writer's character
+                const scriptTitle = getFacFlag("theaterScriptTitle") || "";
+                const scriptItemData = {
+                    name: scriptTitle ? `${scriptTitle} (Script)` : `${authorName}'s Script`,
+                    type: "loot",
+                    img: "icons/sundries/books/book-red-exclamation.webp",
+                    system: { description: { value: `A script written by ${authorName} for a theatrical production.` }, quantity: 1 }
+                };
+                for (const writer of writers) {
+                    const writerActor = (writer.actorId ? game.actors.get(writer.actorId) : null) || actor;
+                    await writerActor.createEmbeddedDocuments("Item", [scriptItemData]);
+                }
 
                 resultText += "Writing is complete; rehearsals have now begun.";
             } else if (phase === "Rehearsing" && progress >= BastionManager._getEffectiveDays(14)) {
@@ -7907,12 +8391,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (preflightData?.rollTotal !== undefined) {
                 rollTotal = preflightData.rollTotal;
             } else {
-                const surveyRoll = await new Roll("1d6").evaluate();
-                await surveyRoll.toMessage({ flavor: "<b>Observatory:</b> Surveying the eldritch mysteries of the stars…", rollMode: "publicroll" });
-                rollTotal = surveyRoll.total;
+                rollTotal = BastionManager._silentRoll("1d6").total;
             }
+            const rollTipHtml = `<span title="Rolled 1d6: ${rollTotal}" style="cursor:help; border-bottom: 1px dotted currentColor;">${rollTotal}</span>`;
             if (rollTotal % 2 === 0) {
-                return { text: `<i class="fa-solid fa-star"></i> <b>Observatory (Empower):</b> Rolled a <b>${rollTotal}</b> — the stars remain inscrutable. No Eldritch Discovery is granted this turn.` };
+                return { text: `<i class="fa-solid fa-star"></i> <b>Observatory (Empower):</b> Rolled a <b>${rollTipHtml}</b> — the stars remain inscrutable. No Eldritch Discovery is granted this turn.` };
             }
 
             const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
@@ -7983,7 +8466,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             await targetActor.setFlag(MODULE_ID, "activeObservatoryEldritchCharmNames", created.map(i => i.name));
 
             const recipientLabel = targetActor.id === actor.id ? "you" : `<b>${targetActor.name}</b>`;
-            return { text: `<i class="fa-solid fa-star"></i> <b>Eldritch Discovery (rolled ${rollTotal}):</b> The eldritch mysteries of the stars have bestowed <b>${charmDoc.name}</b> upon ${recipientLabel}.` };
+            return { text: `<i class="fa-solid fa-star"></i> <b>Eldritch Discovery (rolled ${rollTipHtml}):</b> The eldritch mysteries of the stars have bestowed <b>${charmDoc.name}</b> upon ${recipientLabel}.` };
         } else if (baseName.includes("Reliquary")) {
             // Empower: grant the Reliquary Charm (expires next turn via isBastionCharm cleanup)
             const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
@@ -8125,7 +8608,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 if (!confirm) return;
             }
 
-            const updates = { [`flags.${MODULE_ID}.theaterPhase`]: "Idle", [`flags.${MODULE_ID}.theaterProgress`]: 0, [`flags.${MODULE_ID}.theaterAuthor`]: "", [`flags.${MODULE_ID}.theaterContributors`]: [] };
+            const updates = { [`flags.${MODULE_ID}.theaterPhase`]: "Idle", [`flags.${MODULE_ID}.theaterProgress`]: 0, [`flags.${MODULE_ID}.theaterAuthor`]: "", [`flags.${MODULE_ID}.theaterContributors`]: [], [`flags.${MODULE_ID}.theaterScriptTitle`]: "" };
             if (ds.isFlag === "true") {
                 for (let [k, v] of Object.entries(updates)) foundry.utils.setProperty(fac, k, v);
                 await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
@@ -8288,9 +8771,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         } else if (baseName === "Trophy Room") {
             const researchChoice = getFacFlag("craftChoice") || "Lore";
             if (researchChoice === "Trinket Trophy") {
-                const rollResult = await new Roll("1d6").evaluate();
+                const rollResult = BastionManager._silentRoll("1d6");
                 const roll = rollResult.total;
-                await rollResult.toMessage({ flavor: `${baseName} — Trinket Trophy Search (even = success)`, rollMode: "publicroll" });
+                const rollHtml = rollResult.tipHtml;
                 if (roll % 2 === 0) { // Even = success
                     const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
                     const index = await outPack?.getIndex({fields: ["folder", "system.rarity"]});
@@ -8305,12 +8788,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                             const chosen = possible[Math.floor(Math.random() * possible.length)];
                             const doc = await outPack.getDocument(chosen._id);
                             const item = doc.toObject();
-                            return { text: `${hString} searched the trophies and found a useful magic implement: <b>${item.name}</b>! (Roll: ${roll} — even)`, item };
+                            return { text: `${hString} searched the trophies and found a useful magic implement: <b>${item.name}</b>! (Roll: ${rollHtml} — even)`, item };
                         }
                     }
-                    return { text: `${hString} found a valuable implement among the trophies, but no specific item data was found in the compendium. (Roll: ${roll} — even)` };
+                    return { text: `${hString} found a valuable implement among the trophies, but no specific item data was found in the compendium. (Roll: ${rollHtml} — even)` };
                 }
-                return { text: `${hString} spent the week searching the trophies but found nothing of immediate use. (Roll: ${roll} — odd)` };
+                return { text: `${hString} spent the week searching the trophies but found nothing of immediate use. (Roll: ${rollHtml} — odd)` };
             }
             const topic = getFacFlag("libraryTopic");
             return { text: `${hString} studied the trophies to research <b>${topic || "a significant topic"}</b>, discovering up to 3 accurate pieces of information.` };
@@ -8361,7 +8844,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             }
         } else {
             // Use pre-rolled count from preflight if available (avoids duplicate rolls)
-            newlyRecruited = preflightData?.recruited ?? Math.min((await new Roll("1d4").evaluate()).total, maxDefenders - facDefendersCount);
+            newlyRecruited = preflightData?.recruited ?? Math.min(BastionManager._silentRoll("1d4").total, maxDefenders - facDefendersCount);
         }
 
         if (newlyRecruited > 0) {
@@ -8378,7 +8861,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 return `${first} ${last}`;
             };
 
-            if (game.settings.get(MODULE_ID, "nameHirelings") && promptNames) {
+            if (!game.settings.get(MODULE_ID, "nameDefenders")) {
+                // Defender names disabled — track count only
+            } else if (game.settings.get(MODULE_ID, "nameHirelings") && promptNames) {
                 if (preflightData?.names) {
                     // Use names gathered in consolidated preflight dialog
                     for (let d = 0; d < newlyRecruited; d++) {
@@ -8405,7 +8890,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     }
                 }
             } else {
-                // Background auto-generation if prompting is off but names are enabled globally
+                // Background auto-generation if prompting is off
                 const autoName = game.settings.get(MODULE_ID, "autoNameDefenders");
                 for (let d = 0; d < newlyRecruited; d++) {
                     newNames.push(autoName ? generateFullName() : `Defender ${facDefendersCount + d + 1}`);
@@ -8416,13 +8901,16 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (newNames.length > 0) {
                 for (const dName of newNames) {
                     if (dName) {
-                        BastionManager._createHirelingActor(dName, "Defender", actor.name, fac.name, true);
+                        await BastionManager._createHirelingActor(dName, "Defender", actor.name, fac.name, true, fac.isFlag ? fac.doc._id : fac.doc.id);
                     }
                 }
             }
             if (newNames.length > 0) facDefenderNames.push(...newNames);
             
-            let resultText = `${hString} has successfully recruited <b>${newlyRecruited}</b> Bastion Defender(s).`;
+            const turnsRolled = preflightData?.turns || 1;
+            const rollDesc = turnsRolled > 1 ? `Rolled ${turnsRolled}d4` : "Rolled 1d4";
+            const recruitedHtml = `<span title="${rollDesc}: ${newlyRecruited}" style="cursor:help; border-bottom: 1px dotted currentColor;">${newlyRecruited}</span>`;
+            let resultText = `${hString} has successfully recruited <b>${recruitedHtml}</b> Bastion Defender(s).`;
             if (newNames.length > 0) resultText += ` <em style="color:#555;">(${newNames.join(", ")})</em>`;
             return { text: resultText, newCount: facDefendersCount, newNames: facDefenderNames };
         } else {
@@ -8465,9 +8953,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (guild.includes("adventurer")) {
             const choice = adventurersOutcome;
 
-            const roll = await new Roll("1d6 + 1").evaluate();
-            await roll.toMessage({ flavor: "<b>Adventurers' Guild:</b> Days until mission complete", rollMode: "publicroll" });
-            const days = roll.total;
+            const rollData = BastionManager._silentRoll("1d6+1");
+            const days = rollData.total;
+            const daysHtml = rollData.tipHtml;
 
             const allFacs = [...actor.items.filter(i => i.type === "facility"), ...(actor.getFlag(MODULE_ID, "groupFacilities") || [])];
             const hasTrophyRoom = allFacs.some(f => (f.name || "").includes("Trophy Room"));
@@ -8477,7 +8965,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (choice === "capture" && hasMenagerie)  bonusText = " The creature can be added to your <b>Menagerie</b> (if space allows) when the mission is complete.";
 
             return withSubType({
-                text: `<i class="fa-solid fa-torch"></i> <b>Adventurers' Guild:</b> ${hString} dispatched adventurers to <b>${choice}</b> a CR 2 or lower Beast within 50 miles. Mission completes in <b>${days} day${days !== 1 ? "s" : ""}</b>.${bonusText}`,
+                text: `<i class="fa-solid fa-torch"></i> <b>Adventurers' Guild:</b> ${hString} dispatched adventurers to <b>${choice}</b> a CR 2 or lower Beast within 50 miles. Mission completes in <b>${daysHtml} day${days !== 1 ? "s" : ""}</b>.${bonusText}`,
                 gold: 0,
                 lastAssignment: `${choice === "slay" ? "Slay" : "Capture"} mission — ${days} day${days !== 1 ? "s" : ""}.`
             });
@@ -8574,11 +9062,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             });
             if (!details) return withSubType({ text: `${hString} awaits theft instructions.`, gold: 0 });
 
-            const roll = await new Roll("1d6 + 1").evaluate();
-            await roll.toMessage({ flavor: "<b>Thieves' Guild:</b> Days until delivery", rollMode: "publicroll" });
-            const days = roll.total;
+            const rollData = BastionManager._silentRoll("1d6+1");
+            const days = rollData.total;
+            const daysHtml = rollData.tipHtml;
             return withSubType({
-                text: `<i class="fa-solid fa-key"></i> <b>Thieves' Guild:</b> ${hString} dispatched thieves to infiltrate <b>${details.location}</b> and steal <b>${details.object}</b>. Delivery in <b>${days} day${days !== 1 ? "s" : ""}</b>. <span style="color:#e57373;"><i class="fa-solid fa-triangle-exclamation"></i> This may attract retaliation from law enforcement or the victim.</span>`,
+                text: `<i class="fa-solid fa-key"></i> <b>Thieves' Guild:</b> ${hString} dispatched thieves to infiltrate <b>${details.location}</b> and steal <b>${details.object}</b>. Delivery in <b>${daysHtml} day${days !== 1 ? "s" : ""}</b>. <span style="color:#e57373;"><i class="fa-solid fa-triangle-exclamation"></i> This may attract retaliation from law enforcement or the victim.</span>`,
                 gold: 0,
                 lastAssignment: `Stealing "${details.object}" — ${days} day${days !== 1 ? "s" : ""}.`
             });
@@ -8687,17 +9175,19 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let limit = level >= 13 ? 5000 : (level >= 9 ? 2000 : 500); let markup = level >= 17 ? 100 : (level >= 13 ? 50 : (level >= 9 ? 20 : 10));
             return { gold: 0, text: `Procure up to <b>${limit} GP</b> in goods, OR sell at a <b>+${markup}%</b> profit.` };
         } else if (baseName.includes("Gaming Hall")) {
-            const roll100 = (await new Roll("1d100").evaluate()).total;
-            let formula = "1d6 * 10";
-            if (roll100 > 95) formula = "10d6 * 10";
-            else if (roll100 > 85) formula = "4d6 * 10";
-            else if (roll100 > 50) formula = "2d6 * 10";
+            const d100Data = BastionManager._silentRoll("1d100");
+            const roll100 = d100Data.total;
+            let formula = "1d6*10";
+            if (roll100 > 95) formula = "10d6*10";
+            else if (roll100 > 85) formula = "4d6*10";
+            else if (roll100 > 50) formula = "2d6*10";
 
-            const goldRoll = await new Roll(formula).evaluate();
-            return { gold: goldRoll.total, text: `The hirelings turn the hall into a gambling den, and after 7 days, your share of the house winnings is <b title="Roll Calculation: ${formula}">${goldRoll.total} GP</b> (Roll: ${roll100}).` };
+            const goldData = BastionManager._silentRoll(formula);
+            const gpHtml = `<span title="${goldData.tip} (luck roll: ${d100Data.tip})" style="cursor:help; border-bottom: 1px dotted currentColor;">${goldData.total} GP</span>`;
+            return { gold: goldData.total, text: `The hirelings turn the hall into a gambling den, and after 7 days, your share of the house winnings is <b>${gpHtml}</b>.` };
         } else {
-            const roll = await new Roll("1d6 * 10").evaluate();
-            return { gold: roll.total, text: `Generated ${roll.total} GP.` };
+            const rollData = BastionManager._silentRoll("1d6*10");
+            return { gold: rollData.total, text: `Generated ${rollData.total} GP.` };
         }
     }
 
@@ -8714,8 +9204,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const rootFolder = rootId ? (outPack.folders.get(rootId) || outPack.folders.find(f => f.id === rootId)) : null;
 
         if (!rootFolder) {
-            const roll = await new Roll("1d4 + 1").evaluate();
-            return { item: { name: `Harvested Materials (${baseName})`, type: "loot", system: { quantity: roll.total } }, text: `Harvested ${roll.total} generic materials.` };
+            const rollData = BastionManager._silentRoll("1d4+1");
+            return { item: { name: `Harvested Materials (${baseName})`, type: "loot", system: { quantity: rollData.total } }, text: `Harvested ${rollData.tipHtml} generic materials.` };
         }
         
         let possible = [];
@@ -8816,41 +9306,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (toUpdate.length > 0) await actor.updateEmbeddedDocuments("Item", toUpdate);
     }
 
-    static _generateSpellcasterName() {
-        const titles = ["the Magnificent", "the Conjurer", "the Wise", "the Eternal", "the Architect", "the Weaver", "the Gazer", "the Archmage", "the Adept", "the Radiant", "the Shadow", "the Timeless", "the Resplendent", "the Unfettered"];
-        const title = titles[Math.floor(Math.random() * titles.length)];
-        return `${this._generateRandomName()} ${title}`;
-    }
-
-    static _generateRandomName() {
-        const names = ["Adrik", "Alberich", "Baern", "Barendd", "Brottor", "Bruenor", "Dain", "Darrak", "Delg", "Eberk", "Einkil", "Fargrim", "Flint", "Gardain", "Harbek", "Kildrak", "Oskar", "Rangrim", "Rurik", "Thoradin", "Thorin", "Tordek", "Traubon", "Travok", "Ulfgar", "Veit", "Vondal", "Amber", "Artin", "Audhild", "Bardryn", "Dagnal", "Diesa", "Eldeth", "Falkrunn", "Finellen", "Gunnloda", "Gurdis", "Helja", "Hlin", "Kathra", "Kristryd", "Ilde", "Liftrasa", "Mardred", "Riswynn", "Sannl", "Torbera", "Torgga", "Vistra", "Aseir", "Bardeid", "Haseid", "Khemed", "Mehmen", "Sudeiman", "Zasheir", "Atala", "Ceidil", "Hama", "Jasmal", "Meilil", "Seipora", "Yasheira", "Zasheida", "Bor", "Fodel", "Glar", "Grigor", "Igan", "Ivor", "Kosef", "Mival", "Orel", "Pavel", "Sergor", "Alethra", "Kara", "Katernin", "Mara", "Natali", "Olma", "Tana", "Zora", "Ander", "Blath", "Bran", "Frath", "Geth", "Lander", "Luth", "Lucan", "Murn", "Muth", "Stedd", "Amafrey", "Betha", "Catelyn", "Ethani", "Ilda", "Lisvet", "Lura", "Madel", "Miri", "Nala", "Quara", "Selise", "Viana", "Anton", "Diero", "Falcone", "Federico", "Geno", "Luigi", "Marcello", "Nico", "Piero", "Tommaso", "Arveene", "Esvele", "Jhessail", "Kerri", "Lureene", "Miri", "Rowan", "Shandri", "Tessele", "Aoth", "Barakas", "Damakos", "Iados", "Kairon", "Leucis", "Melech", "Mordai", "Morthos", "Pelaios", "Skamos", "Therai", "Akta", "Anakis", "Bryseis", "Criella", "Damaia", "Ea", "Kallista", "Lerissa", "Makaria", "Nemeia", "Orianna", "Phelia", "Rieta"];
-        return names[Math.floor(Math.random() * names.length)];
-    }
+    static _generateRandomName      = generateRandomName;
+    static _generateSpellcasterName = generateSpellcasterName;
 
     static _getHirelingProfession(facName, subType) {
-        if (!this._professionsMap) return "(Hireling)";
-        const name = facName.trim();
-        const sub = subType?.trim();
-
-        // 1. Check for specialization match first: "Garden (Herb)"
-        if (sub) {
-            const specKey = `${name} (${sub})`;
-            if (this._professionsMap[specKey]) return `the ${this._professionsMap[specKey]}`;
-        }
-
-        // 2. Check for exact name match: "Library"
-        if (this._professionsMap[name]) return `the ${this._professionsMap[name]}`;
-
-        // 3. Robust partial match fallback
-        const lowerName = name.toLowerCase();
-        const entry = Object.entries(this._professionsMap).find(([k]) => {
-            const lowerK = k.toLowerCase();
-            return lowerName.includes(lowerK) || lowerK.includes(lowerName);
-        });
-
-        if (entry) return `the ${entry[1]}`;
-
-        return "(Hireling)";
+        return getHirelingProfession(BastionManager._professionsMap, facName, subType);
     }
 
     // --- HELPER: CHAT ---
@@ -8899,7 +9359,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     h1 ? `Some practical joker has been putting rotten eggs in ${h1.name}'s boots.` : "Some practical joker has been putting rotten eggs in people's boots.",
                     h1 ? `${h1.name} thought they saw a ghost.` : "Someone thought they saw a ghost."
                 ];
-                const fRoll = (await new Roll("1d8").evaluate()).total;
+                const fRoll = BastionManager._silentRoll("1d8").total;
                 auto = flavor[fRoll - 1];
             }
         } else if (roll <= 55) { 
@@ -8935,9 +9395,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             cat = "Guest"; desc = "A Friendly guest comes to stay at your Bastion. Determine the guest by rolling on the following table, and work with your DM to flesh out the details.";
             if (promptAll) auto = mkRes(mkAutoBtn('guest'));
             else {
-                const gRoll = (await new Roll("1d4").evaluate()).total;
+                const gRoll = BastionManager._silentRoll("1d4").total;
                 if (gRoll === 1) auto = "The guest is of great renown. Stays 7 days, then gives you a <b>Letter of Recommendation</b>.";
-                else if (gRoll === 2) { const offer = (await new Roll("1d6 * 100").evaluate()).total; if(actor) await actor.update({"system.currency.gp": (actor.system.currency?.gp || 0) + offer}); auto = `The guest requests sanctuary for 7 days, offering a gift of <b>${offer} GP</b>.`; }
+                else if (gRoll === 2) { const offer = BastionManager._silentRoll("1d6*100").total; if(actor) await actor.update({"system.currency.gp": (actor.system.currency?.gp || 0) + offer}); auto = `The guest requests sanctuary for 7 days, offering a gift of <b>${offer} GP</b>.`; }
                 else if (gRoll === 3) auto = "The guest is a mercenary. You gain <b>1 additional Bastion Defender</b> until sent away or killed.";
                 else auto = "The guest is a Friendly monster (e.g., brass dragon). It defends against the next attack so you lose 0 Defenders, then leaves.";
             }
@@ -8972,7 +9432,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             cat = "Treasure"; desc = "Your Bastion acquires an art object or a magic item. How the Bastion acquires this treasure is up to you. It might represent an inheritance, a gift from a guest or an admirer, a theft, or a fortunate discovery. If you're in the Bastion, you can claim the treasure immediately; otherwise, it is placed in storage until you can claim it."; 
             if (promptAll) auto = mkRes(mkAutoBtn('treasure'));
             else {
-                const tRoll = (await new Roll("1d100").evaluate()).total;
+                const tRoll = BastionManager._silentRoll("1d100").total;
                 if (tRoll <= 40) auto = "Gain a <b>25 GP</b> Art Object.";
                 else if (tRoll <= 63) auto = "Gain a <b>250 GP</b> Art Object.";
                 else if (tRoll <= 73) auto = "Gain a <b>750 GP</b> Art Object.";
@@ -9016,25 +9476,20 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 } else {
                     const isManual = game.settings.get(MODULE_ID, "manualEventSelection");
                     
-                    if (hasInnerPeace && !innerPeaceUsedThisTurn) {
-                        const r1 = (await new Roll("1d100").evaluate()).total;
-                        const r2 = (await new Roll("1d100").evaluate()).total;
+                    if (isManual && game.user.isGM) {
+                        rollTotal = await BastionManager._promptEventSelection(actor, t + 1);
+                        if (combinedId) res.rolledEvents.set(turnKey, rollTotal);
+                    } else if (hasInnerPeace && !innerPeaceUsedThisTurn) {
+                        const r1 = BastionManager._silentRoll("1d100").total;
+                        const r2 = BastionManager._silentRoll("1d100").total;
                         rollTotal = r1;
                         roll2 = r2;
                         innerPeaceUsedThisTurn = true;
                         if (combinedId) res.rolledEvents.set(turnKey, { r1, r2 });
                     } else {
-                        rollTotal = (await new Roll("1d100").evaluate()).total;
+                        rollTotal = BastionManager._silentRoll("1d100").total;
                         if (combinedId) res.rolledEvents.set(turnKey, rollTotal);
                     }
-
-                    if (isManual && game.user.isGM) {
-                        rollTotal = await BastionManager._promptEventSelection(actor, t + 1);
-                    } else {
-                        const eventRoll = await new Roll("1d100").evaluate();
-                        rollTotal = eventRoll.total;
-                    }
-                    if (combinedId) res.rolledEvents.set(turnKey, rollTotal);
                 }
 
                 // Only report the full event details for the "primary" actor in a group
@@ -9285,8 +9740,15 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 diceParts.push(`1${finalDie}`);
             });
             formula = diceParts.join(" + ") || "6d6";
-            atkRoll = await new Roll(formula).evaluate();
-            ones = atkRoll.dice.flatMap(d => d.results).filter(r => r.result === 1).length;
+            const allAtkDice = [];
+            for (const part of (diceParts.length ? diceParts : ["6d6"])) {
+                const m = part.match(/^(\d+)d(\d+)$/i);
+                if (m) {
+                    const n = parseInt(m[1]), s = parseInt(m[2]);
+                    for (let i = 0; i < n; i++) allAtkDice.push(Math.floor(Math.random() * s) + 1);
+                }
+            }
+            ones = allAtkDice.filter(r => r === 1).length;
         }
 
         const deaths = Math.min(totalDefenders, ones);
@@ -9469,7 +9931,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             if (specialFacs.length > 0) {
                 const target = specialFacs[Math.floor(Math.random() * specialFacs.length)];
-                const progIncrement = (game.settings.get(MODULE_ID, "calculationMode") === "days") ? (game.settings.get(MODULE_ID, "daysPerTurn") || 7) : 1;
+                const progIncrement = (game.settings.get(MODULE_ID, "calculationMode") === "days") ? effectiveDaysPerTurn() : 1;
                 const updates = { [`flags.${MODULE_ID}.isDamaged`]: true, [`flags.${MODULE_ID}.repairProgress`]: 0, [`flags.${MODULE_ID}.repairTurns`]: progIncrement };
                 
                 if (target.isFlag) {
@@ -9649,7 +10111,7 @@ class EventResolverApp extends ApplicationV2 {
                             hName ? `Some practical joker has been putting rotten eggs in ${hName}'s boots.` : "Some practical joker has been putting rotten eggs in people's boots.",
                             hName ? `${hName} thought they saw a ghost.` : "Someone thought they saw a ghost."
                         ];
-                        const fRoll = (await new Roll("1d8").evaluate()).total;
+                        const fRoll = BastionManager._silentRoll("1d8").total;
                         resultText = `<b>Result:</b> ${flavor[fRoll - 1]}`;
                     } else resultText = `<b>Resolved Manually.</b>`;
                 } else if (eventType === "attack") {
@@ -9662,34 +10124,34 @@ class EventResolverApp extends ApplicationV2 {
                     } else resultText = `<b>Resolved Manually.</b>`;
                 } else if (eventType === "criminal") {
                     if (choice === "pay") {
-                        const bribe = (await new Roll("1d6 * 100").evaluate()).total;
+                        const bribe = BastionManager._silentRoll("1d6*100").total;
                         resultText = `You paid the <b>${bribe} GP</b> bribe.`;
                     } else resultText = `You let them be arrested. (If this leaves a facility with 0 hirelings, it is unusable next turn).`; 
                 } else if (eventType === "opportunity") {
                     if (choice === "pay") {
-                        let bonusRoll = (await new Roll("1d100").evaluate()).total;
-                        while (bonusRoll >= 59 && bonusRoll <= 63) bonusRoll = (await new Roll("1d100").evaluate()).total;
+                        let bonusRoll = BastionManager._silentRoll("1d100").total;
+                        while (bonusRoll >= 59 && bonusRoll <= 63) bonusRoll = BastionManager._silentRoll("1d100").total;
                         const extra = await BastionManager._processEventRoll(bonusRoll, a, true);
                         resultText = `Paid <b>500 GP</b> to seize this opportunity.<br><div style="margin-top:8px; padding: 8px; background: rgba(0,0,0,0.2); border-left: 3px solid #ccc;"><em>Bonus Event (Roll ${bonusRoll}):</em> <b style="color: var(--color-text-light-heading);">${extra.cat}</b><br><div style="margin-top: 4px;">${extra.auto}</div></div>`;
                     } else resultText = `You declined the opportunity. Nothing happens.`;
                 } else if (eventType === "visitors") {
                     if (choice === "accept") {
-                        const offer = (await new Roll("1d6 * 100").evaluate()).total;
+                        const offer = BastionManager._silentRoll("1d6*100").total;
                         if(a) await a.update({"system.currency.gp": Math.floor((a.system.currency?.gp || 0) + offer)});
                         resultText = `You accepted. They paid <b>${offer} GP</b> for brief use of the facility.`; 
                     } else resultText = `You declined the visitors.`;
                 } else if (eventType === "guest") {
                     if (choice === "auto") {
-                        const gRoll = (await new Roll("1d4").evaluate()).total;
+                        const gRoll = BastionManager._silentRoll("1d4").total;
                         if (gRoll === 1) resultText = "The guest is of great renown. Stays 7 days, then gives you a <b>Letter of Recommendation</b>.";
-                        else if (gRoll === 2) { const offer = (await new Roll("1d6 * 100").evaluate()).total; if(a) await a.update({"system.currency.gp": Math.floor((a.system.currency?.gp || 0) + offer)}); resultText = `The guest requests sanctuary for 7 days, offering a gift of <b>${offer} GP</b>.`; }
+                        else if (gRoll === 2) { const offer = BastionManager._silentRoll("1d6*100").total; if(a) await a.update({"system.currency.gp": Math.floor((a.system.currency?.gp || 0) + offer)}); resultText = `The guest requests sanctuary for 7 days, offering a gift of <b>${offer} GP</b>.`; }
                         else if (gRoll === 3) resultText = "The guest is a mercenary. You gain <b>1 additional Bastion Defender</b> until sent away or killed.";
                         else resultText = "The guest is a Friendly monster. It defends against the next attack so you lose 0 Defenders, then leaves.";
                     } else resultText = `<b>Resolved Manually.</b>`;
                 } else if (eventType === "refugees") {
                     if (choice === "accept") {
-                        const ref = (await new Roll("2d4").evaluate()).total;
-                        const offer = (await new Roll("1d6 * 100").evaluate()).total;
+                        const ref = BastionManager._silentRoll("2d4").total;
+                        const offer = BastionManager._silentRoll("1d6*100").total;
                         if(a) await a.update({"system.currency.gp": Math.floor((a.system.currency?.gp || 0) + offer)});
                         resultText = `You took in <b>${ref}</b> refugees. They paid <b>${offer} GP</b>. They stay until relocated or the Bastion is attacked.`; 
                     } else resultText = `You turned the refugees away.`;
@@ -9701,15 +10163,15 @@ class EventResolverApp extends ApplicationV2 {
                         // Clamp the count between 1 and the available defenders
                         count = Math.max(1, Math.min(count, maxDefenders));
                         
-                        const aidRoll = await new Roll(`${count}d6`).evaluate();
-                        const dTotal = aidRoll.total;
-                        const diceHtml = aidRoll.dice.flatMap(d => d.results.map(r => {
-                            return `<span style="display: inline-block; width: 28px; height: 28px; line-height: 28px; text-align: center; background-image: url('icons/svg/d${d.faces}-grey.svg'); background-size: contain; background-repeat: no-repeat; color: white; font-weight: bold; font-size: 0.9em; margin: 0 2px; filter: drop-shadow(0 0 1px black);">${r.result}</span>`;
-                        })).join("");
+                        const aidResults = Array.from({ length: count }, () => Math.floor(Math.random() * 6) + 1);
+                        const dTotal = aidResults.reduce((a, b) => a + b, 0);
+                        const diceHtml = aidResults.map(r =>
+                            `<span style="display: inline-block; width: 28px; height: 28px; line-height: 28px; text-align: center; background-image: url('icons/svg/d6-grey.svg'); background-size: contain; background-repeat: no-repeat; color: white; font-weight: bold; font-size: 0.9em; margin: 0 2px; filter: drop-shadow(0 0 1px black);">${r}</span>`
+                        ).join("");
 
                         let defenderUpdates = {};
                         if (dTotal >= 10) {
-                            const reward = (await new Roll("1d6 * 100").evaluate()).total;
+                            const reward = BastionManager._silentRoll("1d6*100").total;
                             if(a) await a.update({"system.currency.gp": Math.floor((a.system.currency?.gp || 0) + reward)});
                             resultText = `
                                 <h3 style="border-bottom: 2px solid #99c1f1; padding-bottom: 3px; margin-bottom: 8px;"><i class="fa-solid fa-handshake-angle"></i> Request for Aid</h3>
@@ -9717,7 +10179,7 @@ class EventResolverApp extends ApplicationV2 {
                                 <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-top: 5px;">${diceHtml}</div>
                             `;
                         } else {
-                            const reward = Math.floor((await new Roll("1d6 * 100").evaluate()).total / 2);
+                            const reward = Math.floor(BastionManager._silentRoll("1d6*100").total / 2);
                             if(a) await a.update({"system.currency.gp": Math.floor((a.system.currency?.gp || 0) + reward)});
                             // Deduct 1 defender from a random facility
                             const facs = BastionManager._getActorFacilities(a, true);
@@ -9774,7 +10236,7 @@ class EventResolverApp extends ApplicationV2 {
                     } else resultText = `You declined to send aid.`;
                 } else if (eventType === "treasure") {
                     if (choice === "auto") {
-                        const tRoll = (await new Roll("1d100").evaluate()).total;
+                        const tRoll = BastionManager._silentRoll("1d100").total;
                         if (tRoll <= 40) resultText = "Gain a <b>25 GP</b> Art Object.";
                         else if (tRoll <= 63) resultText = "Gain a <b>250 GP</b> Art Object.";
                         else if (tRoll <= 73) resultText = "Gain a <b>750 GP</b> Art Object.";
