@@ -61,7 +61,15 @@
                 <div class="form-fields">
                     <input type="checkbox" name="specialFacilitiesBuildTime" {{#if specialFacilitiesBuildTime}}checked{{/if}}>
                 </div>
-                <p class="hint">When disabled, Special facilities are completed instantly with no construction turns required.</p>
+                <p class="hint">When disabled, Special facilities are completed instantly with no construction turns required. Any in-progress constructions will complete immediately.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Special Facilities Have Gold Costs</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="specialFacilitiesGoldCost" {{#if specialFacilitiesGoldCost}}checked{{/if}}>
+                </div>
+                <p class="hint">When disabled, Special facilities require no gold to build.</p>
             </div>
 
             <div style="font-size:0.75em; font-weight:bold; text-transform:uppercase; color:#888; letter-spacing:0.08em; margin: 14px 0 8px; border-bottom: 1px solid #3a3a3a; padding-bottom: 4px;">Limits</div>

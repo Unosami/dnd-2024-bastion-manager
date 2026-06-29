@@ -12,7 +12,6 @@ OUTLINE to COMPLETION:
 
 
 GENERAL
-- MAKING GUARD AND HIRELING TOKENS FOR USE IN ACTORS
 - Give players a "Mark Ready" button on the scene tool where the Dm gets "Run Global Turn"
 - The DM should be able to "advance progress" on facility orders in addition to the existing construction advancement. The buttons should have hover-over info explaining what they do.
 - "Unify Combined Bastion Turns" might be a defunct option.
@@ -38,6 +37,8 @@ ARMORY
 TELEPORTATION CIRCLE 
 - A cool way to display the glyphs of the specific bastion's teleportation circle? (So Extra)
 
+THEATER
+- Allow the player to choose which play to perform from the list of already-composed scripts. The writer of the script should receive the Theater Die after the first performance, regardless of when the script was written.
 
 GRID CHANGES
 - Change the grid layout of combined bastions to have each player be a color and their facilities be different shades of that color. (Or some way to distinguish who owns what without text) (Might be done already?)

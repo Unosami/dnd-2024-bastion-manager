@@ -5782,6 +5782,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         // Identify Basic vs Special
         const isBasic = itemDoc.system?.type?.value === "basic";
         const buildTimeEnabled = !isBasic && game.settings.get(MODULE_ID, "specialFacilitiesBuildTime");
+        const goldCostEnabled  = !isBasic && game.settings.get(MODULE_ID, "specialFacilitiesGoldCost");
 
         // Canonical size for fixed-size special facilities (DMG 2024)
         const CANONICAL_VAST    = ["Demiplane", "Gaming Hall", "Guildhall", "Menagerie", "Theater", "Training Area", "War Room"];
@@ -5811,11 +5812,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         // Prepare Prompt Content
         let promptContent = "";
 
-        if (buildTimeEnabled) {
+        if (buildTimeEnabled || goldCostEnabled) {
             const canonical = sizeCosts[canonicalSize];
+            const costParts = [];
+            if (goldCostEnabled) costParts.push(`<b>${canonical.cost} GP</b>`);
+            if (buildTimeEnabled) costParts.push(`<b>${canonical.turns} Turns</b>`);
             promptContent += `<div style="background: rgba(0,0,0,0.05); padding: 8px; border-radius: 4px; border: 1px solid #ccc; margin-bottom: 10px;">
                 <p style="margin:0;"><b>Construction Plan:</b> ${canonicalSize} ${itemDoc.name}</p>
-                <p style="margin:0; font-size: 0.9em; color: #555;">Requires <b>${canonical.cost} GP</b> and <b>${canonical.turns} Turns</b>.</p>
+                <p style="margin:0; font-size: 0.9em; color: #555;">Requires ${costParts.join(" and ")}.</p>
             </div>`;
         }
 
@@ -5921,9 +5925,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             }
         }
 
-        if (!promptContent && buildTimeEnabled) {
+        if (!promptContent && (buildTimeEnabled || goldCostEnabled)) {
             const canonical = sizeCosts[canonicalSize];
-            promptContent = `<p>Establish a ${canonicalSize} <b>${itemDoc.name}</b>? This requires <b>${canonical.cost} GP</b> and <b>${canonical.turns} Turns</b>.</p>`;
+            const fallbackParts = [];
+            if (goldCostEnabled) fallbackParts.push(`<b>${canonical.cost} GP</b>`);
+            if (buildTimeEnabled) fallbackParts.push(`<b>${canonical.turns} Turns</b>`);
+            promptContent = `<p>Establish a ${canonicalSize} <b>${itemDoc.name}</b>? This requires ${fallbackParts.join(" and ")}.</p>`;
         }
 
         if (promptContent) {
@@ -5977,7 +5984,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (!formData || formData === "cancel") return;
 
             const size = isBasic ? formData.size : canonicalSize;
-            const cost = sizeCosts[size].cost;
+            const cost = (!isBasic && !goldCostEnabled) ? 0 : sizeCosts[size].cost;
             const turns = isBasic ? sizeCosts[size].turns : (buildTimeEnabled ? sizeCosts[canonicalSize].turns : 0);
             const currentGP = this.actor.system.currency?.gp || 0;
 
@@ -7984,6 +7991,71 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             effectivelyAllMaintaining, pendingTalismanNames,
             updatedFacilities: facilities // Return the updated facilities array
         };
+    }
+
+    static async _completeAllSpecialConstruction() {
+        for (const actor of game.actors.contents) {
+            const gfs = actor.getFlag(MODULE_ID, "groupFacilities") || [];
+            const toPromote = [];
+            const toRemoveIds = new Set();
+            let gfsModified = false;
+
+            for (const gf of gfs) {
+                const fFlags = gf.flags?.[MODULE_ID] || {};
+                const isSpecial = !gf.system?.type?.value || gf.system?.type?.value === "special";
+                if (!isSpecial || !(fFlags.upgradeTurns > 0)) continue;
+
+                const targetSize = fFlags.targetSize || null;
+                const targetSubType2 = fFlags.targetSubType2 || null;
+                const isNewBuild = !fFlags.size && actor.type !== "group";
+
+                if (isNewBuild) {
+                    const promoted = foundry.utils.deepClone(gf);
+                    delete promoted._id;
+                    foundry.utils.setProperty(promoted, `flags.${MODULE_ID}.size`, targetSize ?? "Roomy");
+                    if (targetSubType2) foundry.utils.setProperty(promoted, `flags.${MODULE_ID}.subType2`, targetSubType2);
+                    foundry.utils.setProperty(promoted, `flags.${MODULE_ID}.upgradeTurns`, 0);
+                    foundry.utils.setProperty(promoted, `flags.${MODULE_ID}.upgradeProgress`, 0);
+                    foundry.utils.setProperty(promoted, `flags.${MODULE_ID}.targetSize`, null);
+                    foundry.utils.setProperty(promoted, `flags.${MODULE_ID}.targetSubType2`, null);
+                    toPromote.push(promoted);
+                    toRemoveIds.add(gf._id);
+                } else {
+                    // Enlargement or group actor: complete in place
+                    if (targetSize) gf.flags[MODULE_ID].size = targetSize;
+                    if (targetSubType2) gf.flags[MODULE_ID].subType2 = targetSubType2;
+                    gf.flags[MODULE_ID].upgradeTurns = 0;
+                    gf.flags[MODULE_ID].upgradeProgress = 0;
+                    gf.flags[MODULE_ID].targetSize = null;
+                    gf.flags[MODULE_ID].targetSubType2 = null;
+                    gfsModified = true;
+                }
+            }
+
+            if (toPromote.length > 0) await actor.createEmbeddedDocuments("Item", toPromote);
+            if (toPromote.length > 0 || gfsModified) {
+                await actor.setFlag(MODULE_ID, "groupFacilities", gfs.filter(f => !toRemoveIds.has(f._id)));
+            }
+
+            // Complete item-based special enlargements
+            for (const fac of actor.items) {
+                if (fac.type !== "facility") continue;
+                if (!(fac.getFlag(MODULE_ID, "upgradeTurns") > 0)) continue;
+                const isSpecial = !fac.system?.type?.value || fac.system?.type?.value === "special";
+                if (!isSpecial) continue;
+                const targetSize = fac.getFlag(MODULE_ID, "targetSize") || null;
+                const targetSubType2 = fac.getFlag(MODULE_ID, "targetSubType2") || null;
+                const upd = {
+                    [`flags.${MODULE_ID}.upgradeProgress`]: 0,
+                    [`flags.${MODULE_ID}.upgradeTurns`]: 0,
+                    [`flags.${MODULE_ID}.targetSize`]: null,
+                    [`flags.${MODULE_ID}.targetSubType2`]: null,
+                };
+                if (targetSize) upd[`flags.${MODULE_ID}.size`] = targetSize;
+                if (targetSubType2) upd[`flags.${MODULE_ID}.subType2`] = targetSubType2;
+                await fac.update(upd);
+            }
+        }
     }
 
     static async _createHirelingActor(name, role, ownerName, facilityName, isDefender = false, facilityItemId = null) {

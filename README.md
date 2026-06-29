@@ -42,9 +42,12 @@ The manager window shows all of a character's bastion facilities. For each facil
 
 When the GM is ready to resolve a bastion turn, they use the "Advance Bastion Turn" button in the manager or scene controls. This processes all assigned orders and updates facility states. If a bastion has all facilities set to "Maintain" a bastion event roll is also prompted at this stage.
 
+There is also an option that allows you to hook the bastion turn directly to the Dungeons & Dragons 5e calendar. The *Simple Calendar Reborn* module also works with the Bastion Manager and will be prioritized over the native calendar.
+
 ### Hirelings and Defenders
 
 Facilities that employ hirelings (such as the Barracks, War Room, and Pub) can create actual Foundry actors in your world when staff are recruited. These actors are drawn from the *Bastion Facility Actors* compendium included with the module. You can customize which actor template is used for each facility type in the module settings under **Configure Hireling Templates**.
+![staff_actor_compendium.png](./Resources/staff_actor_compendium.png)
 
 ### Group Overview
 
@@ -58,17 +61,24 @@ Some bastion rules required interpretation. Here are the decisions made that are
 
 **General**
 
-- **Orders for facilities under construction.** The rules describe assigning orders at the start of a bastion turn but don't address facilities that are still being built. This module restricts founded (in-progress) facilities to the Maintain order only, on the interpretation that you cannot use a facility that doesn't fully exist yet.
-- **Hirelings as Foundry actors.** The rules describe hirelings abstractly. This module creates actual actor entries in your world when hirelings are recruited, so the GM has stat blocks to reference in encounters or skill checks. When a facility is demolished, its associated hireling actors are removed from the world.
-- **War Room staff.** The War Room's special staff member is treated as a Lieutenant (using a distinct actor template) rather than a generic Hireling, on the interpretation that the War Room's command role implies a more capable staff member than a standard hireling.
+- **Facility Construction.** The Bastion rules specifically describe that the founding of a Bastion at level 5 happens instantly and for free:
+      "It's fair to assume that work has been going on behind the scenes of the campaign during a character's early adventuring career, so the Bastion is ready when the character reaches level 5." *DMG 2024 pg.334*
+  But that same consideration is not described for special facilities added at higher levels. I added a setting for the DM to choose whether new Special Facilities get built using the rules for building Basic Facilities, or if they are always added instantly and for free. By default, Special Facilities take time to construct and have a gold cost.
 
 **Armory**
 
-- **Partially-stocked armory.** There are no rules for a partially-stocked Armory (for example, after a Trade order restocks it following a period of use). In this case, a number of the defense dice are d8s proportional to the current stock level relative to the total number of defenders, with the remainder being the normal die type.
+- **Partially-stocked armory.** There are no rules for a partially-stocked Armory (for example, after the Armory is stocked another Recruitment occurs). In this case, a number of the defense dice are d8s proportional to the current stock level relative to the total number of defenders, with the remainder being the default d6s.
+
+**Menagerie**
+
+- **Menagerie Defenders.** By default Menagerie defenders are no better than Barrack defenders, despite costing gold and having differing CRs. I have added options in the module settings for scaling defender dice with creature CR.
+
+**Theater**
+- **Writing and Production.** The Theater facility states that a composer or writer "can compose music or write a script for a concert or production that hasn't started rehearsals yet. This effort takes 14 days." So I gave the Theater a button to allow a player to begin a "Writing Phase" that lasts for 14 days (or two bastion turns) and if a production happens at any point after that then the writer gets the Theater Die reward.
 
 ---
 
 ## Feedback & Issues
 
-This module is developed and maintained by Willy D. Report issues or suggestions at:
+This module is developed and maintained by Unosami. Report issues or suggestions at:
 [https://github.com/Unosami/dnd-2024-bastion-manager/issues](https://github.com/Unosami/dnd-2024-bastion-manager/issues)

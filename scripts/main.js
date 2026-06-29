@@ -462,15 +462,19 @@ const integrateBastionDashboard = (bastionTab) => {
     const specCap = BastionManager._getSpecialFacilityCap(actorLevel);
     const atSpecCap = currentSpecialsCount >= specCap;
 
+    // Count special facilities currently under construction so we can hide the build button while one is in progress
+    const buildingSpecialsCount = groupFacilities.filter(f => !isBasicFac(f) && (f.flags?.[MODULE_ID]?.upgradeTurns || 0) > 0).length
+        + actor.items.filter(i => i.type === "facility" && !isBasicFac(i) && (i.getFlag(MODULE_ID, "upgradeTurns") || 0) > 0).length;
+
     const nativeBuildButtons = bastionTab.querySelectorAll('[data-action="createChild"][data-type="facility"], [data-action="findItem"][data-item-type="facility"]');
     nativeBuildButtons.forEach(btn => {
         if (btn.classList.contains("bastion-replaced")) return;
-        
+
         // Check if this is a "Special" slot specifically for capacity checks
         const isSpecialSlot = btn.dataset.facilityType === "special";
 
-        // If this is a special facility slot and we are at the cap, hide it entirely
-        if (isSpecialSlot && atSpecCap) {
+        // Hide special slot if at cap or construction already in progress
+        if (isSpecialSlot && (atSpecCap || buildingSpecialsCount > 0)) {
             btn.style.setProperty("display", "none", "important");
             btn.classList.add("bastion-replaced");
             return;
@@ -486,7 +490,7 @@ const integrateBastionDashboard = (bastionTab) => {
         newBtn.className = btn.className.replace("bastion-replaced", "") + " bastion-build-injected";
         newBtn.innerHTML = btn.innerHTML.replace("Add Facility", "Build Facility");
         newBtn.title = "Establish Facility (Bastion Manager)";
-        
+
         if (btn.tagName === "BUTTON") newBtn.type = "button";
         if (isPlaceholder) newBtn.style.cursor = "pointer";
 
@@ -505,6 +509,11 @@ const integrateBastionDashboard = (bastionTab) => {
         if (a.dataset.bastionReplaced) return;
         a.dataset.bastionReplaced = "true";
         const facType = a.closest('.facilities.special') ? "special" : a.closest('.facilities.basic') ? "basic" : null;
+        // Hide special slot if at cap or construction already in progress
+        if (facType === "special" && (atSpecCap || buildingSpecialsCount > 0)) {
+            a.closest('.facility.empty')?.style.setProperty('display', 'none', 'important');
+            return;
+        }
         a.addEventListener('click', (ev) => {
             ev.preventDefault();
             ev.stopImmediatePropagation();
@@ -2075,6 +2084,7 @@ Hooks.once("init", () => {
     game.settings.register(MODULE_ID, "ignoreConstructionCosts", { scope: "world", config: false, type: Boolean, default: false });
     game.settings.register(MODULE_ID, "ignoreFacilityPrereqs",   { scope: "world", config: false, type: Boolean, default: false });
     game.settings.register(MODULE_ID, "specialFacilitiesBuildTime", { scope: "world", config: false, type: Boolean, default: true });
+    game.settings.register(MODULE_ID, "specialFacilitiesGoldCost",  { scope: "world", config: false, type: Boolean, default: true });
     game.settings.register(MODULE_ID, "disableNeglect",          { scope: "world", config: false, type: Boolean, default: false });
     game.settings.register(MODULE_ID, "disableSpecialCap",       { scope: "world", config: false, type: Boolean, default: false });
     game.settings.register(MODULE_ID, "disableDuplicateLimit",   { scope: "world", config: false, type: Boolean, default: false });
@@ -2366,6 +2376,7 @@ class BastionSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
             ignoreConstructionCosts: g("ignoreConstructionCosts"),
             ignoreFacilityPrereqs:   g("ignoreFacilityPrereqs"),
             specialFacilitiesBuildTime: g("specialFacilitiesBuildTime"),
+            specialFacilitiesGoldCost:  g("specialFacilitiesGoldCost"),
             disableNeglect:          g("disableNeglect"),
             disableSpecialCap:       g("disableSpecialCap"),
             disableDuplicateLimit:   g("disableDuplicateLimit"),
@@ -2426,7 +2437,7 @@ class BastionSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
         el.querySelector("[data-action='reset-defaults']")?.addEventListener("click", async () => {
             const confirmed = await DialogV2.confirm({ window: { title: "Reset Settings" }, content: "<p>Reset all Bastion Manager settings to their defaults?</p>" });
             if (!confirmed) return;
-            const keys = ["ignoreConstructionCosts","ignoreFacilityPrereqs","specialFacilitiesBuildTime","disableNeglect","disableSpecialCap","disableDuplicateLimit","advancePermission","groupInheritsFacilities","unifyCombinedTurns","globalTurnCount","calculationMode","daysPerTurn","syncDaysPerTurn","scaleWeekToTurnLength","advanceWorldTime","calendarDrivenTurns","recruitMode","promptAllEvents","manualEventSelection","nameHirelings","autoNameHirelings","nameDefenders","autoNameDefenders","createActorsForHirelings","createActorsForDefenders","hirelingActorTemplates","menagerieArmoryBonus","menagerieDiceMode","menagerieCrDiceTable","reliquaryOneTalismanLimit"];
+            const keys = ["ignoreConstructionCosts","ignoreFacilityPrereqs","specialFacilitiesBuildTime","specialFacilitiesGoldCost","disableNeglect","disableSpecialCap","disableDuplicateLimit","advancePermission","groupInheritsFacilities","unifyCombinedTurns","globalTurnCount","calculationMode","daysPerTurn","syncDaysPerTurn","scaleWeekToTurnLength","advanceWorldTime","calendarDrivenTurns","recruitMode","promptAllEvents","manualEventSelection","nameHirelings","autoNameHirelings","nameDefenders","autoNameDefenders","createActorsForHirelings","createActorsForDefenders","hirelingActorTemplates","menagerieArmoryBonus","menagerieDiceMode","menagerieCrDiceTable","reliquaryOneTalismanLimit"];
             await Promise.all(keys.map(k => game.settings.set(MODULE_ID, k, game.settings.settings.get(`${MODULE_ID}.${k}`)?.default)));
             this.render();
         });
@@ -2438,6 +2449,7 @@ class BastionSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
     static async processForm(event, form, formData) {
         const d = formData.object;
         const s = (k, v) => game.settings.set(MODULE_ID, k, v);
+        const prevBuildTime = game.settings.get(MODULE_ID, "specialFacilitiesBuildTime");
         await Promise.all([
             s("ignoreConstructionCosts",  d.ignoreConstructionCosts  ?? false),
             s("ignoreFacilityPrereqs",    d.ignoreFacilityPrereqs    ?? false),
@@ -2468,7 +2480,11 @@ class BastionSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
             s("menagerieDiceMode",        d.menagerieDiceMode),
             s("menagerieCrDiceTable",     d.menagerieCrDiceTable),
             s("reliquaryOneTalismanLimit", d.reliquaryOneTalismanLimit ?? false),
+            s("specialFacilitiesGoldCost",  d.specialFacilitiesGoldCost  ?? true),
         ]);
+        if (prevBuildTime && !(d.specialFacilitiesBuildTime ?? false)) {
+            await BastionManager._completeAllSpecialConstruction();
+        }
         ui.notifications.info("Bastion Manager | Settings saved.");
     }
 }
