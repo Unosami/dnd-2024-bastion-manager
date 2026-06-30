@@ -3,6 +3,13 @@ import { MODULE_ID, ORDER_SVG_MAP, ORDER_ICON_MAP, PASSIVE_INFO, GARDEN_ROOT_ID,
 import { getActiveCalendarName, getCalendarWeekLength, effectiveDaysPerTurn } from "./bastion-calculations.js";
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
+function _isBastionEligible(actor) {
+    if (!actor) return false;
+    if (actor.type === "group") return true;
+    const allowed = game.settings.get(MODULE_ID, "allowedActorTypes") || ["character"];
+    return allowed.includes(actor.type);
+}
+
 /**
  * FLOATING TURN CONTROL
  * A small UI that appears when the Bastion Advancement tool is selected in the sidebar.
@@ -34,7 +41,7 @@ class BastionTurnControl extends HandlebarsApplicationMixin(ApplicationV2) {
     async _prepareContext(options) {
         const activeNonGMs = game.users.filter(u => u.active && !u.isGM);
         const bastionActors = game.actors.filter(a => {
-            const isAllowedType = a.type === "character" || a.type === "npc";
+            const isAllowedType = _isBastionEligible(a) && a.type !== "group";
             const hasFacilities = a.items.some(i => i.type === "facility") || a.getFlag(MODULE_ID, "groupFacilities")?.length > 0;
             const ownedByActivePlayer = activeNonGMs.some(u => a.testUserPermission(u, "OWNER"));
             return isAllowedType && hasFacilities && ownedByActivePlayer;
@@ -321,7 +328,7 @@ const integrateBastionDashboard = (bastionTab) => {
     // as app references can be stale during asynchronous render cycles.
     const actor = game.actors.get((app?.document || app?.actor)?.id);
     if (!actor || actor.documentName !== "Actor") return;
-    if (!["character", "npc", "group"].includes(actor.type)) return;
+    if (!_isBastionEligible(actor)) return;
     // Group overview sections are rendered by renderGroupBastionContent — skip native augmentation
     if (bastionTab.dataset.bastionGroupOverview === "true") return;
 
@@ -2006,7 +2013,7 @@ const integrateBastionDashboard = (bastionTab) => {
             const ownerLevel = actor.system?.details?.level || 1;
 
             const sanctumActors = game.actors.filter(a =>
-                (a.type === "character" || a.type === "npc") && (a.hasPlayerOwner || a.id === actor.id)
+                _isBastionEligible(a) && a.type !== "group" && (a.hasPlayerOwner || a.id === actor.id)
             );
             const benefOpts = sanctumActors.map(a =>
                 `<option value="${a.id}"${a.id === benefId ? " selected" : ""}>${a.name}</option>`
@@ -2429,7 +2436,9 @@ Hooks.once("init", () => {
 
     // ── Hirelings & Staff (hidden) ────────────────────────────────────
     game.settings.register(MODULE_ID, "nameHirelings",           { scope: "world",  config: false, type: Boolean, default: true });
-    game.settings.register(MODULE_ID, "autoNameHirelings",       { scope: "world",  config: false, type: Boolean, default: true });
+    game.settings.register(MODULE_ID, "promptHirelingNames",     { scope: "client", config: false, type: Boolean, default: true });
+    game.settings.register(MODULE_ID, "promptDefenderNames",     { scope: "client", config: false, type: Boolean, default: true });
+    game.settings.register(MODULE_ID, "autoNameHirelings",       { scope: "client", config: false, type: Boolean, default: true });
     game.settings.register(MODULE_ID, "nameDefenders",           { scope: "world",  config: false, type: Boolean, default: true });
     game.settings.register(MODULE_ID, "autoNameDefenders",       { scope: "client", config: false, type: Boolean, default: true });
     game.settings.register(MODULE_ID, "createActorsForHirelings",  { scope: "world", config: false, type: Boolean, default: false });
@@ -2442,9 +2451,11 @@ Hooks.once("init", () => {
     game.settings.register(MODULE_ID, "menagerieCrDiceTable",    { scope: "world", config: false, type: String,  default: '{"0":"d6","1":"d8","4":"d10","9":"d12"}' });
     game.settings.register(MODULE_ID, "reliquaryOneTalismanLimit",{ scope: "world", config: false, type: Boolean, default: true });
     game.settings.register(MODULE_ID, "freeMode",                { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "allowedActorTypes",       { scope: "world", config: false, type: Array,   default: ["character"] });
 
     // ── Root Menu Buttons ─────────────────────────────────────────────
     game.settings.registerMenu(MODULE_ID, "bastionConfigBtn",         { name: "Bastion Manager Configuration",   label: "Configure Bastion Manager",      icon: "fas fa-chess-rook",       type: BastionSettingsApp,     restricted: true });
+    game.settings.registerMenu(MODULE_ID, "bastionPlayerConfigBtn",   { name: "Bastion Manager — My Preferences", label: "My Bastion Preferences",         icon: "fas fa-user-gear",        type: BastionPlayerSettingsApp, restricted: false });
     game.settings.registerMenu(MODULE_ID, "resetAllTurnsBtn",         { name: "Reset All Bastion Turns",         label: "Reset Global Turns",             icon: "fas fa-rotate-left",      type: ResetBastionsApp,       restricted: true });
     game.settings.registerMenu(MODULE_ID, "hirelingTemplatesBtn",     { name: "Hireling Actor Templates",        label: "Configure Hireling Templates",   icon: "fas fa-masks-theater",    type: HirelingTemplatesApp,   restricted: true });
     game.settings.registerMenu(MODULE_ID, "constructionConfigBtn",    { name: "Facility Construction Costs",     label: "Configure Construction Costs",   icon: "fas fa-hammer",           type: ConstructionConfigApp,  restricted: true });
@@ -2696,6 +2707,7 @@ class BastionSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
     async _prepareContext() {
         const g = (k) => game.settings.get(MODULE_ID, k);
+        const allowedActorTypes = g("allowedActorTypes") || ["character"];
         return {
             ignoreConstructionCosts: g("ignoreConstructionCosts"),
             ignoreFacilityPrereqs:   g("ignoreFacilityPrereqs"),
@@ -2719,15 +2731,16 @@ class BastionSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
             manualEventSelection:    g("manualEventSelection"),
             aidUsesDefenderRules:    g("aidUsesDefenderRules"),
             nameHirelings:           g("nameHirelings"),
-            autoNameHirelings:       g("autoNameHirelings"),
             nameDefenders:           g("nameDefenders"),
-            autoNameDefenders:       g("autoNameDefenders"),
             createActorsForHirelings: g("createActorsForHirelings"),
             createActorsForDefenders: g("createActorsForDefenders"),
             menagerieArmoryBonus:    g("menagerieArmoryBonus"),
             menagerieDiceMode:       g("menagerieDiceMode"),
             menagerieCrDiceTable:    g("menagerieCrDiceTable"),
             reliquaryOneTalismanLimit: g("reliquaryOneTalismanLimit"),
+            allowNpc:       allowedActorTypes.includes("npc"),
+            allowVehicle:   allowedActorTypes.includes("vehicle"),
+            allowContainer: allowedActorTypes.includes("container"),
         };
     }
 
@@ -2762,7 +2775,7 @@ class BastionSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
         el.querySelector("[data-action='reset-defaults']")?.addEventListener("click", async () => {
             const confirmed = await DialogV2.confirm({ window: { title: "Reset Settings" }, content: "<p>Reset all Bastion Manager settings to their defaults?</p>" });
             if (!confirmed) return;
-            const keys = ["ignoreConstructionCosts","ignoreFacilityPrereqs","specialFacilitiesBuildTime","specialFacilitiesGoldCost","disableNeglect","disableSpecialCap","disableDuplicateLimit","advancePermission","groupInheritsFacilities","unifyCombinedTurns","globalTurnCount","calculationMode","daysPerTurn","syncDaysPerTurn","scaleWeekToTurnLength","advanceWorldTime","calendarDrivenTurns","recruitMode","promptAllEvents","manualEventSelection","aidUsesDefenderRules","nameHirelings","autoNameHirelings","nameDefenders","autoNameDefenders","createActorsForHirelings","createActorsForDefenders","hirelingActorTemplates","menagerieArmoryBonus","menagerieDiceMode","menagerieCrDiceTable","reliquaryOneTalismanLimit"];
+            const keys = ["ignoreConstructionCosts","ignoreFacilityPrereqs","specialFacilitiesBuildTime","specialFacilitiesGoldCost","disableNeglect","disableSpecialCap","disableDuplicateLimit","advancePermission","groupInheritsFacilities","unifyCombinedTurns","globalTurnCount","calculationMode","daysPerTurn","syncDaysPerTurn","scaleWeekToTurnLength","advanceWorldTime","calendarDrivenTurns","recruitMode","promptAllEvents","manualEventSelection","aidUsesDefenderRules","nameHirelings","nameDefenders","createActorsForHirelings","createActorsForDefenders","hirelingActorTemplates","menagerieArmoryBonus","menagerieDiceMode","menagerieCrDiceTable","reliquaryOneTalismanLimit","allowedActorTypes"];
             await Promise.all(keys.map(k => game.settings.set(MODULE_ID, k, game.settings.settings.get(`${MODULE_ID}.${k}`)?.default)));
             this.render();
         });
@@ -2775,6 +2788,10 @@ class BastionSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
         const d = formData.object;
         const s = (k, v) => game.settings.set(MODULE_ID, k, v);
         const prevBuildTime = game.settings.get(MODULE_ID, "specialFacilitiesBuildTime");
+        const allowedActorTypes = ["character"];
+        if (d.allowNpc)       allowedActorTypes.push("npc");
+        if (d.allowVehicle)   allowedActorTypes.push("vehicle");
+        if (d.allowContainer) allowedActorTypes.push("container");
         await Promise.all([
             s("ignoreConstructionCosts",  d.ignoreConstructionCosts  ?? false),
             s("ignoreFacilityPrereqs",    d.ignoreFacilityPrereqs    ?? false),
@@ -2796,10 +2813,8 @@ class BastionSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
             s("promptAllEvents",          d.promptAllEvents          ?? false),
             s("manualEventSelection",     d.manualEventSelection     ?? false),
             s("aidUsesDefenderRules",     d.aidUsesDefenderRules     ?? false),
-            s("nameHirelings",            d.nameHirelings            ?? false),
-            s("autoNameHirelings",        d.autoNameHirelings        ?? false),
+            s("nameHirelings",            d.nameHirelings            ?? true),
             s("nameDefenders",            d.nameDefenders            ?? true),
-            s("autoNameDefenders",        d.autoNameDefenders        ?? true),
             s("createActorsForHirelings", d.createActorsForHirelings ?? false),
             s("createActorsForDefenders", d.createActorsForDefenders ?? false),
             s("menagerieArmoryBonus",     d.menagerieArmoryBonus     ?? false),
@@ -2807,11 +2822,50 @@ class BastionSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
             s("menagerieCrDiceTable",     d.menagerieCrDiceTable),
             s("reliquaryOneTalismanLimit", d.reliquaryOneTalismanLimit ?? false),
             s("specialFacilitiesGoldCost",  d.specialFacilitiesGoldCost  ?? true),
+            s("allowedActorTypes",          allowedActorTypes),
         ]);
         if (prevBuildTime && !(d.specialFacilitiesBuildTime ?? false)) {
             await BastionManager._completeAllSpecialConstruction();
         }
         ui.notifications.info("Bastion Manager | Settings saved.");
+    }
+}
+
+class BastionPlayerSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
+    static DEFAULT_OPTIONS = {
+        id: "bastion-player-settings-app", tag: "form",
+        window: { title: "Bastion Manager — My Preferences", resizable: false },
+        position: { width: 420, height: "auto" }, classes: ["bastion-app"],
+        form: { handler: BastionPlayerSettingsApp.processForm, closeOnSubmit: true }
+    };
+    static PARTS = { main: { template: "modules/dnd-2024-bastion-manager/templates/bastion-player-settings.hbs" } };
+
+    async _prepareContext() {
+        const g = (k) => game.settings.get(MODULE_ID, k);
+        const hirelingNamesRequired = g("nameHirelings");
+        const defenderNamesRequired = g("nameDefenders");
+        return {
+            promptHirelingNames:    g("promptHirelingNames"),
+            promptDefenderNames:    g("promptDefenderNames"),
+            autoNameHirelings:      hirelingNamesRequired ? true : g("autoNameHirelings"),
+            autoNameDefenders:      defenderNamesRequired ? true : g("autoNameDefenders"),
+            hirelingNamesRequired,
+            defenderNamesRequired,
+        };
+    }
+
+    static async processForm(event, form, formData) {
+        const d = formData.object;
+        const s = (k, v) => game.settings.set(MODULE_ID, k, v);
+        const hirelingNamesRequired = game.settings.get(MODULE_ID, "nameHirelings");
+        const defenderNamesRequired = game.settings.get(MODULE_ID, "nameDefenders");
+        await Promise.all([
+            s("promptHirelingNames", d.promptHirelingNames ?? true),
+            s("promptDefenderNames", d.promptDefenderNames ?? true),
+            s("autoNameHirelings", hirelingNamesRequired ? true : (d.autoNameHirelings ?? true)),
+            s("autoNameDefenders", defenderNamesRequired ? true : (d.autoNameDefenders ?? true)),
+        ]);
+        ui.notifications.info("Bastion Manager | Preferences saved.");
     }
 }
 
@@ -3251,7 +3305,7 @@ Hooks.on("renderChatMessageHTML", (message, html) => {
 // Re-render the group bastion overview when a member actor's facility flags change
 Hooks.on("updateActor", (actor, changes) => {
     if (!foundry.utils.hasProperty(changes, `flags.${MODULE_ID}`)) return;
-    if (actor.type === "character" || actor.type === "npc") {
+    if (_isBastionEligible(actor) && actor.type !== "group") {
         for (const app of foundry.applications.instances.values()) {
             if (app.constructor.name !== "GroupActorSheet") continue;
             if (!app.document?.system?.members?.some(m => (m.actor?.id || m.id) === actor.id)) continue;
@@ -3300,7 +3354,7 @@ Hooks.on("deleteActor", async (actor) => {
  */
 Hooks.on("getHeaderControlsApplicationV2", (app, controls) => {
     const actor = app.document;
-    if (!(actor instanceof Actor) || !["character", "npc", "group"].includes(actor.type)) return;
+    if (!(actor instanceof Actor) || !_isBastionEligible(actor)) return;
     controls.unshift({ label: "Bastion Manager", icon: "fa-solid fa-chess-rook", action: "openBastionManager" });
     if (!app.options.actions) app.options.actions = {};
     app.options.actions.openBastionManager = () => _openBastionManager(actor, app.element);
@@ -3390,7 +3444,7 @@ function _actorIdFromEntry(li) {
 function _bastionFacilitiesNamed(namePart) {
     const results = [];
     for (const actor of game.actors) {
-        if (!["character", "npc", "group"].includes(actor.type)) continue;
+        if (!_isBastionEligible(actor)) continue;
         for (const item of actor.items) {
             if (item.type !== "facility" || !item.name.includes(namePart)) continue;
             results.push({ actor, facility: item, isFlag: false });

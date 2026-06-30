@@ -1,0 +1,69 @@
+<div style="display: flex; flex-direction: column; font-size: 0.9em;">
+<style>
+    #bastion-player-settings-app .window-content {
+        background: rgba(32,35,42,0.95);
+    }
+    #bastion-player-settings-app .hint {
+        background: rgba(0,0,0,0.3);
+        border-left: 2px solid #555;
+        border-radius: 2px;
+        padding: 4px 8px;
+        margin: 2px 0 4px;
+    }
+</style>
+
+    <div style="padding: 12px 14px;">
+
+        <div style="font-size:0.75em; font-weight:bold; text-transform:uppercase; color:#888; letter-spacing:0.08em; margin: 4px 0 8px; border-bottom: 1px solid #3a3a3a; padding-bottom: 4px;">Hirelings</div>
+
+        <div class="form-group">
+            <label>Prompt for Hireling Names</label>
+            <div class="form-fields">
+                <input type="checkbox" name="promptHirelingNames" {{#if promptHirelingNames}}checked{{/if}}>
+            </div>
+            <p class="hint">Show a name prompt when hirelings are recruited.</p>
+        </div>
+
+        <div class="form-group">
+            <label>Auto-Generate Hireling Names</label>
+            <div class="form-fields">
+                <input type="checkbox" name="autoNameHirelings" {{#if autoNameHirelings}}checked{{/if}} {{#if hirelingNamesRequired}}disabled{{/if}}>
+            </div>
+            {{#if hirelingNamesRequired}}
+            <p class="hint">Locked on — hireling names are required by the GM, so names must be prompted for or auto-generated.</p>
+            {{else}}
+            <p class="hint">Automatically fill in random names for new hirelings. Works alongside the name prompt.</p>
+            {{/if}}
+        </div>
+
+        <div style="font-size:0.75em; font-weight:bold; text-transform:uppercase; color:#888; letter-spacing:0.08em; margin: 14px 0 8px; border-bottom: 1px solid #3a3a3a; padding-bottom: 4px;">Defenders</div>
+
+        <div class="form-group">
+            <label>Prompt for Defender Names</label>
+            <div class="form-fields">
+                <input type="checkbox" name="promptDefenderNames" {{#if promptDefenderNames}}checked{{/if}}>
+            </div>
+            <p class="hint">Show a name prompt when defenders are recruited.</p>
+        </div>
+
+        <div class="form-group">
+            <label>Auto-Generate Defender Names</label>
+            <div class="form-fields">
+                <input type="checkbox" name="autoNameDefenders" {{#if autoNameDefenders}}checked{{/if}} {{#if defenderNamesRequired}}disabled{{/if}}>
+            </div>
+            {{#if defenderNamesRequired}}
+            <p class="hint">Locked on — defender names are required by the GM, so names must be prompted for or auto-generated.</p>
+            {{else}}
+            <p class="hint">Automatically generate random names for newly recruited defenders. Has no effect when defender names are disabled by the GM.</p>
+            {{/if}}
+        </div>
+
+    </div>
+
+    <footer style="display: flex; justify-content: flex-end; gap: 8px; padding: 8px 12px; border-top: 1px solid #444; background: rgba(0,0,0,0.15);">
+        <button type="submit" style="padding: 5px 18px; font-weight: bold; cursor: pointer; background: rgba(163,42,34,0.3); border-color: #a32a22;">
+            <i class="fas fa-save"></i> Save
+        </button>
+    </footer>
+
+</div>

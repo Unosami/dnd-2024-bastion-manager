@@ -6112,7 +6112,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         else if (typeof hData === "string") expectedHirelings = parseInt(hData) || 0;
         else if (typeof hData === "object" && hData !== null) expectedHirelings = parseInt(hData.max) || parseInt(hData.value) || 0;
 
-        if (expectedHirelings > 0 && game.settings.get("dnd-2024-bastion-manager", "nameHirelings")) {
+        if (expectedHirelings > 0 && game.settings.get(MODULE_ID, "promptHirelingNames")) {
             promptContent += `<p>Name your <b>${expectedHirelings}</b> hireling(s):</p>`;
             for (let i = 0; i < expectedHirelings; i++) {
                 promptContent += `<div style="margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
@@ -7023,7 +7023,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
      */
     static async _gatherPreflightInputs(actor, facilities, turns = 1) {
         const recruitMode = game.settings.get(MODULE_ID, "recruitMode");
-        const nameHirelings = game.settings.get(MODULE_ID, "nameHirelings");
+        const promptDefenderNames = game.settings.get(MODULE_ID, "promptDefenderNames");
         const nameDefenders = game.settings.get(MODULE_ID, "nameDefenders");
         const answers = {};
         const sections = [];
@@ -7063,7 +7063,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         recruited = Math.min(rolledTotal, maxDefs - defCount);
                     }
                     answers[facId] = { recruited, turns };
-                    if (nameDefenders && nameHirelings && promptNames && recruited > 0) {
+                    if (nameDefenders && promptDefenderNames && promptNames && recruited > 0) {
                         sections.push({ type: "barrack-names", facId, facName, count: recruited, turns });
                     }
                 }
@@ -7156,7 +7156,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     answers[sec.facId] = { ...(answers[sec.facId] || {}), names };
                 } else if (sec.type === "barrack-manual") {
                     const count = parseInt(formData[`${sec.facId}_manual_count`]) || 0;
-                    // For manual mode we still need to ask for names if nameHirelings is on.
+                    // For manual mode we still need to ask for names if promptDefenderNames is on.
                     // Store manualCount; the handler will prompt names if needed (no recursive dialog).
                     answers[sec.facId] = { manualCount: count };
                 } else if (sec.type === "observatory") {
@@ -9377,7 +9377,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             if (!game.settings.get(MODULE_ID, "nameDefenders")) {
                 // Defender names disabled — track count only
-            } else if (game.settings.get(MODULE_ID, "nameHirelings") && promptNames) {
+            } else if (game.settings.get(MODULE_ID, "promptDefenderNames") && promptNames) {
                 if (preflightData?.names) {
                     // Use names gathered in consolidated preflight dialog
                     for (let d = 0; d < newlyRecruited; d++) {
@@ -10005,6 +10005,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             if (!res.rolledEvents) res.rolledEvents = new Map();
 
+            let allDuplicates = !!combinedId;
+
             for (let t = 0; t < turns; t++) {
                 const turnKey = `${combinedId}_${t}`;
                 let rollTotal;
@@ -10020,7 +10022,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     isDuplicate = true;
                 } else {
                     const isManual = game.settings.get(MODULE_ID, "manualEventSelection");
-                    
+
                     if (isManual && game.user.isGM) {
                         rollTotal = await BastionManager._promptEventSelection(actor, t + 1);
                         if (combinedId) res.rolledEvents.set(turnKey, rollTotal);
@@ -10037,8 +10039,19 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     }
                 }
 
-                // Only report the full event details for the "primary" actor in a group
-                if (isDuplicate) continue;
+                if (isDuplicate) {
+                    // Secondary actor in a combined group — share the already-rolled event.
+                    // Don't repeat full DM HTML, but do populate the public summary so it's accurate.
+                    const sharedEv = await BastionManager._processEventRoll(rollTotal, actor, false, null);
+                    if (sharedEv.cat !== "All Is Well") {
+                        let existing = publicSummaryEvents.find(e => e.cat === sharedEv.cat);
+                        if (existing) existing.count++;
+                        else publicSummaryEvents.push({ cat: sharedEv.cat, count: 1 });
+                    }
+                    if (roll2) publicSummaryEvents.push({ cat: "Choice of Two Events", count: 1 });
+                    continue;
+                }
+                allDuplicates = false;
 
                 let turnLabel = turns > 1 ? `<b>Turn ${t + 1}:</b> ` : "";
                 
@@ -10075,8 +10088,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 }
             }
 
+            if (allDuplicates && turns > 0) {
+                dmHtml += `<p style="font-style: italic; color: #888; font-size: 0.9em; margin: 5px 0;">Bastion event shared with combined group (see above).</p>`;
+            }
             dmHtml += `</div>`;
-            
+
             if (innerPeaceUsedThisTurn) await actor.setFlag(MODULE_ID, "innerPeaceActive", false);
 
 
