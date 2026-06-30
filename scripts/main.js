@@ -1128,6 +1128,56 @@ const integrateBastionDashboard = (bastionTab) => {
                 })();
             }
 
+            // Storehouse trade sub-selectors
+            if (facName.includes("Storehouse") && safeOrder === "Trade") {
+                const tradeChoice = fFlags.tradeChoice || "procure";
+                const tradeAmount = fFlags.tradeAmount ?? 0;
+                const autoNextAction = fFlags.autoNextAction || "procure";
+                const isAuto = tradeChoice === "auto";
+
+                const tradeRow = document.createElement("div");
+                tradeRow.style.cssText = "display:flex; gap:4px; align-items:center;";
+
+                const tradeSel = document.createElement("select");
+                tradeSel.style.cssText = "height:22px; font-size:0.85em; flex:1;";
+                [["procure", "Procure Goods"], ["sell", "Sell Goods"], ["auto", "Auto"]].forEach(([v, label]) => {
+                    const opt = document.createElement("option");
+                    opt.value = v; opt.textContent = label; opt.selected = v === tradeChoice;
+                    tradeSel.appendChild(opt);
+                });
+                tradeSel.addEventListener("mousedown", ev => ev.stopPropagation());
+                tradeSel.addEventListener("change", async (ev) => {
+                    await item.setFlag(MODULE_ID, "tradeChoice", ev.target.value);
+                });
+
+                const amtInput = document.createElement("input");
+                amtInput.type = "number"; amtInput.value = tradeAmount; amtInput.min = "0";
+                amtInput.style.cssText = "width:50px; height:22px; font-size:0.85em;";
+                amtInput.title = "GP amount to trade";
+                amtInput.addEventListener("mousedown", ev => ev.stopPropagation());
+                amtInput.addEventListener("change", async (ev) => {
+                    await item.setFlag(MODULE_ID, "tradeAmount", Math.max(0, parseInt(ev.target.value) || 0));
+                });
+
+                const gpLabel = document.createElement("span");
+                gpLabel.style.cssText = "font-size:0.8em;";
+                gpLabel.textContent = "GP";
+
+                tradeRow.appendChild(tradeSel);
+                tradeRow.appendChild(amtInput);
+                tradeRow.appendChild(gpLabel);
+
+                if (isAuto) {
+                    const nextLabel = document.createElement("span");
+                    nextLabel.style.cssText = "font-size:0.75em; color:#00897b; font-weight:bold; white-space:nowrap; flex-shrink:0;";
+                    nextLabel.textContent = `[Next: ${autoNextAction.charAt(0).toUpperCase() + autoNextAction.slice(1)}]`;
+                    tradeRow.appendChild(nextLabel);
+                }
+
+                choiceContainer.appendChild(tradeRow);
+                if (!choiceContainer.parentElement) orderBlock.appendChild(choiceContainer);
+            }
+
             // Stable trade sub-selectors
             if (facName.includes("Stable") && safeOrder === "Trade") {
                 (async () => {
@@ -1138,31 +1188,28 @@ const integrateBastionDashboard = (bastionTab) => {
                     if (!stableFolder) return;
                     const { calculationMode, daysPerTurn } = _craftSettings();
                     const tradeChoice = fFlags.stableTradeChoice || "buy";
-                    const currentItemChoice = fFlags.stableItemChoice || "";
-                    const stableAnimals = fFlags.stableAnimals || [];
+                    const stableItemChoice = fFlags.stableItemChoice || "";
+                    const stableAnimals = (fFlags.stableAnimals || []).map(a => typeof a === "string" ? { species: a, nickname: "" } : a);
+                    const stableBuyOrders = fFlags.stableBuyOrders || {};
+                    const stableSellOrders = fFlags.stableSellOrders || {};
+                    const stableAutoNextAction = fFlags.stableAutoNextAction || "buy";
+                    const actorLvl = actor.system?.details?.level || 1;
+                    const profitMult = actorLvl >= 17 ? 2.0 : (actorLvl >= 13 ? 1.5 : 1.2);
 
                     const allOptions = await BastionManager._getNestedCompendiumOptions(
-                        outPack, stableFolder.id, currentItemChoice, calculationMode, daysPerTurn, "t", false);
+                        outPack, stableFolder.id, stableItemChoice, calculationMode, daysPerTurn, "t", false);
+                    const flatOptions = allOptions.flatMap(o => o.groupOptions ? o.groupOptions : [o]);
+                    const mountPriceMap = {};
+                    for (const o of flatOptions) mountPriceMap[o.value] = Number(o.price) || 0;
+                    const priceLookup = (species) => mountPriceMap[species] ?? mountPriceMap[Object.keys(mountPriceMap).find(k => k.toLowerCase() === species.toLowerCase())] ?? 0;
 
-                    let options = allOptions;
-                    if (tradeChoice === "sell") {
-                        options = [];
-                        for (const o of allOptions) {
-                            if (o.groupOptions) {
-                                const filtered = o.groupOptions.filter(s => stableAnimals.some(a => a.species === s.value));
-                                if (filtered.length) options.push({ ...o, groupOptions: filtered });
-                            } else if (stableAnimals.some(a => a.species === o.value)) {
-                                options.push(o);
-                            }
-                        }
-                    }
-
+                    // Mode selector row (Buy / Sell / Auto)
                     const tradeRow = document.createElement("div");
                     tradeRow.style.cssText = "display:flex; gap:4px; align-items:center;";
 
                     const tradeSel = document.createElement("select");
                     tradeSel.style.cssText = "height:22px; font-size:0.85em; flex:0 0 55px;";
-                    ["buy", "sell"].forEach(v => {
+                    ["buy", "sell", "auto"].forEach(v => {
                         const opt = document.createElement("option");
                         opt.value = v; opt.textContent = v.charAt(0).toUpperCase() + v.slice(1);
                         opt.selected = v === tradeChoice;
@@ -1172,12 +1219,97 @@ const integrateBastionDashboard = (bastionTab) => {
                     tradeSel.addEventListener("change", async (ev) => {
                         await item.setFlag(MODULE_ID, "stableTradeChoice", ev.target.value);
                     });
+                    tradeRow.appendChild(tradeSel);
 
-                    const itemSel = _buildSelect(options, currentItemChoice, "stableItemChoice", "— Select Mount —");
-                    itemSel.style.flex = "1";
+                    if (tradeChoice === "auto") {
+                        const nextLabel = document.createElement("span");
+                        nextLabel.style.cssText = "font-size:0.75em; color:#00897b; font-weight:bold; white-space:nowrap; flex-shrink:0;";
+                        nextLabel.textContent = `[Next: ${stableAutoNextAction.charAt(0).toUpperCase() + stableAutoNextAction.slice(1)}]`;
+                        tradeRow.appendChild(nextLabel);
+                    }
 
-                    tradeRow.appendChild(tradeSel); tradeRow.appendChild(itemSel);
                     choiceContainer.appendChild(tradeRow);
+
+                    if (tradeChoice === "buy") {
+                        const grid = document.createElement("div");
+                        grid.style.cssText = "display:flex; flex-direction:column; gap:2px; max-height:100px; overflow-y:auto; background:rgba(0,0,0,0.15); border-radius:4px; padding:3px;";
+                        let buyTotal = 0;
+                        for (const o of flatOptions) {
+                            const qty = Number(stableBuyOrders[o.value] || 0);
+                            buyTotal += qty * (Number(o.price) || 0);
+                            const row = document.createElement("div");
+                            row.style.cssText = `display:flex; align-items:center; gap:4px; font-size:0.78em; ${o.style || ""}`;
+                            const labelSpan = document.createElement("span");
+                            labelSpan.style.cssText = "flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;";
+                            labelSpan.textContent = o.label; labelSpan.title = o.label;
+                            const qtyInput = document.createElement("input");
+                            qtyInput.type = "number"; qtyInput.min = "0"; qtyInput.value = qty;
+                            qtyInput.style.cssText = "width:38px; height:18px; font-size:0.85em;"; qtyInput.title = "Quantity to buy";
+                            qtyInput.addEventListener("mousedown", ev => ev.stopPropagation());
+                            qtyInput.addEventListener("change", async (ev) => {
+                                const newQty = Math.max(0, parseInt(ev.target.value) || 0);
+                                const orders = { ...(item.getFlag(MODULE_ID, "stableBuyOrders") || {}) };
+                                if (newQty === 0) delete orders[o.value]; else orders[o.value] = newQty;
+                                await item.setFlag(MODULE_ID, "stableBuyOrders", orders);
+                            });
+                            row.appendChild(labelSpan); row.appendChild(qtyInput);
+                            grid.appendChild(row);
+                        }
+                        choiceContainer.appendChild(grid);
+                        if (buyTotal > 0) {
+                            const totalDiv = document.createElement("div");
+                            totalDiv.style.cssText = "font-size:0.78em; color:#a32a22; font-weight:bold; padding:1px 3px;";
+                            totalDiv.innerHTML = `<i class="fa-solid fa-coins"></i> Total Cost: ${buyTotal} GP`;
+                            choiceContainer.appendChild(totalDiv);
+                        }
+                    }
+
+                    if (tradeChoice === "sell") {
+                        const speciesCounts = {};
+                        for (const a of stableAnimals) speciesCounts[a.species] = (speciesCounts[a.species] || 0) + 1;
+                        const grid = document.createElement("div");
+                        grid.style.cssText = "display:flex; flex-direction:column; gap:2px; max-height:100px; overflow-y:auto; background:rgba(0,0,0,0.15); border-radius:4px; padding:3px;";
+                        let sellGross = 0;
+                        let sellBaseCost = 0;
+                        for (const [species, count] of Object.entries(speciesCounts)) {
+                            const qty = Math.min(Number(stableSellOrders[species] || 0), count);
+                            const basePrice = priceLookup(species);
+                            const profitPer = Math.floor(basePrice * profitMult);
+                            sellGross += profitPer * qty;
+                            sellBaseCost += basePrice * qty;
+                            const row = document.createElement("div");
+                            row.style.cssText = "display:flex; align-items:center; gap:4px; font-size:0.78em;";
+                            const labelSpan = document.createElement("span");
+                            labelSpan.style.cssText = "flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;";
+                            labelSpan.textContent = profitPer > 0 ? `${species} (${count} owned · ${profitPer} GP ea.)` : `${species} (${count} owned)`;
+                            const qtyInput = document.createElement("input");
+                            qtyInput.type = "number"; qtyInput.min = "0"; qtyInput.max = count; qtyInput.value = qty;
+                            qtyInput.style.cssText = "width:38px; height:18px; font-size:0.85em;"; qtyInput.title = "Quantity to sell";
+                            qtyInput.addEventListener("mousedown", ev => ev.stopPropagation());
+                            qtyInput.addEventListener("change", async (ev) => {
+                                const newQty = Math.max(0, Math.min(count, parseInt(ev.target.value) || 0));
+                                const orders = { ...(item.getFlag(MODULE_ID, "stableSellOrders") || {}) };
+                                if (newQty === 0) delete orders[species]; else orders[species] = newQty;
+                                await item.setFlag(MODULE_ID, "stableSellOrders", orders);
+                            });
+                            row.appendChild(labelSpan); row.appendChild(qtyInput);
+                            grid.appendChild(row);
+                        }
+                        if (Object.keys(speciesCounts).length === 0) {
+                            const emptyMsg = document.createElement("span");
+                            emptyMsg.style.cssText = "font-style:italic; font-size:0.78em; opacity:0.7;";
+                            emptyMsg.textContent = "No mounts in stock to sell.";
+                            grid.appendChild(emptyMsg);
+                        }
+                        choiceContainer.appendChild(grid);
+                        if (sellGross > 0) {
+                            const grossDiv = document.createElement("div");
+                            grossDiv.style.cssText = "font-size:0.78em; color:#2e7d32; font-weight:bold; padding:1px 3px;";
+                            grossDiv.innerHTML = `<i class="fa-solid fa-coins"></i> Gross Earnings: ${sellGross} GP (${sellGross - sellBaseCost} GP profit)`;
+                            choiceContainer.appendChild(grossDiv);
+                        }
+                    }
+
                     if (!choiceContainer.parentElement) orderBlock.appendChild(choiceContainer);
                 })();
             }
@@ -1350,22 +1482,201 @@ const integrateBastionDashboard = (bastionTab) => {
             rows.push(`<div data-tooltip="${tooltip}" style="cursor:default;"><i class="fa-solid fa-paw" style="color:#c8a45e; width:12px;"></i> <b>Menagerie:</b> ${names.length} creature(s) &mdash; ${parseFloat(usedSlots.toFixed(2))}/4 slots${defCount > 0 ? ` &mdash; ${defCount} defending` : ""}</div>`);
         }
 
-        // D4. Theater
+        // D4. Theater — full Production Status box mirroring the BastionManager window
         if (facName.includes("Theater")) {
             const phase = fFlags.theaterPhase || "Idle";
             const tProg = Number(fFlags.theaterProgress || 0);
-            const tPct = Math.round((Math.min(tProg, 14) / 14) * 100);
+            const theaterPhaseDays = BastionManager._getEffectiveDays(14);
+            const tPct = Math.round((Math.min(tProg, theaterPhaseDays) / theaterPhaseDays) * 100);
             const phaseColor = phase === "Writing" ? "#82cfff" : (phase === "Rehearsing" ? "#ff9800" : (phase === "Performing" ? "#4caf50" : "#777"));
             const contributors = fFlags.theaterContributors || [];
             const author = fFlags.theaterAuthor || "";
-            rows.push(`<div>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1px;">
-                    <span><i class="fa-solid fa-masks-theater" style="opacity:0.6; width:12px;"></i> <b>Phase:</b> <span style="color:${phaseColor}; font-weight:bold;">${phase}</span>${author ? ` — ${author}` : ""}</span>
-                    <span style="opacity:0.7;">${tProg} / 14 turns</span>
-                </div>
-                <div style="height:6px; background:rgba(0,0,0,0.1); border-radius:3px; overflow:hidden;"><div style="width:${tPct}%; height:100%; background:${phaseColor};"></div></div>
-                ${contributors.length > 0 ? `<div style="opacity:0.75; margin-top:1px;"><i class="fa-solid fa-people-group" style="width:12px;"></i> ${contributors.map(c => `${c.name} (${c.role})`).join(", ")}</div>` : ""}
-            </div>`);
+            const scriptTitle = fFlags.theaterScriptTitle || "";
+            const writer = contributors.find(c => c.role === "Composer/Writer");
+            const director = contributors.find(c => c.role === "Conductor/Director");
+            const performers = contributors.filter(c => c.role === "Performer");
+            const isIdle = phase === "Idle";
+            const isWriting = phase === "Writing";
+            const isActing = phase === "Rehearsing" || phase === "Performing";
+            const isPerforming = phase === "Performing";
+            const isJoined = contributors.some(c => c.actorId === (game.user.character?.id || null));
+            const actorLvl = actor.system?.details?.level || 1;
+            const dieSize = actorLvl >= 17 ? "d10" : (actorLvl >= 13 ? "d8" : "d6");
+
+            postInjectFns.push(() => {
+                const makeBtn = (label, subAction, title, extraStyle = "") => {
+                    const btn = document.createElement("button");
+                    btn.type = "button";
+                    btn.textContent = label;
+                    btn.title = title;
+                    btn.style.cssText = `height:24px; font-size:0.78em; padding:2px 8px; white-space:nowrap; border:1px solid rgba(255,255,255,0.25); border-radius:3px; ${extraStyle}`;
+                    btn.dataset.subAction = subAction;
+                    btn.dataset.itemId = itemId;
+                    btn.dataset.isFlag = "false";
+                    btn.addEventListener("mousedown", ev => ev.stopPropagation());
+                    btn.addEventListener("click", ev => {
+                        ev.stopPropagation();
+                        BastionManager.onTheaterAction.call({ actor, render: () => {} }, ev, btn);
+                    });
+                    return btn;
+                };
+
+                const box = document.createElement("div");
+                box.style.cssText = `border: 2px solid ${phaseColor}; border-radius: 5px; padding: 6px; background: rgba(0,0,0,0.15); margin-top: 3px;`;
+
+                // Header line
+                const header = document.createElement("div");
+                header.style.cssText = "display:flex; flex-direction:column; gap:4px; margin-bottom:6px;";
+                const statusLine = document.createElement("span");
+                statusLine.innerHTML = `<i class="fa-solid fa-masks-theater"></i> <b>Production Status:</b> <span style="color:${phaseColor};">${phase}</span>`;
+                header.appendChild(statusLine);
+
+                // Button row
+                const btnRow = document.createElement("div");
+                btnRow.style.cssText = "display:flex; gap:4px; flex-wrap:nowrap;";
+                if (!isIdle) {
+                    if (isJoined) btnRow.appendChild(makeBtn("Leave Role", "leave", "Leave your current role", "color:#f44336; border-color:rgba(244,67,54,0.4);"));
+                    else          btnRow.appendChild(makeBtn("Join Roles", "join", "Join this production in a role"));
+                }
+                if (isIdle) {
+                    btnRow.appendChild(makeBtn("Start Writing", "start-writing", "Begin the writing phase"));
+                    btnRow.appendChild(makeBtn("Invite Writer", "invite-writer", "Post a call for a Composer/Writer to chat"));
+                } else {
+                    btnRow.appendChild(makeBtn("Send Invite", "invite", "Post a production invitation to chat"));
+                    btnRow.appendChild(makeBtn("↺", "reset", "Cancel and reset the production"));
+                }
+                header.appendChild(btnRow);
+
+                // Composition dropdown (Idle only)
+                if (isIdle) {
+                    const compositions = [];
+                    for (const it of game.items) {
+                        if (it.getFlag(MODULE_ID, "isProductionComposition")) {
+                            compositions.push(it);
+                        }
+                    }
+                    if (compositions.length > 0) {
+                        const divider = document.createElement("div");
+                        divider.style.cssText = "text-align:center; font-size:0.78em; opacity:0.6; margin:4px 0 2px;";
+                        divider.textContent = "— or use an existing composition —";
+                        header.appendChild(divider);
+
+                        const compRow = document.createElement("div");
+                        compRow.style.cssText = "display:flex; gap:4px; align-items:center;";
+
+                        const select = document.createElement("select");
+                        select.style.cssText = "flex:1; font-size:0.78em; height:24px; background:rgba(0,0,0,0.3); color:#e8e4d9; border:1px solid rgba(255,255,255,0.25); border-radius:3px;";
+                        select.addEventListener("mousedown", ev => ev.stopPropagation());
+
+                        const defaultOpt = document.createElement("option");
+                        defaultOpt.value = "";
+                        defaultOpt.textContent = "— Select a composition —";
+                        select.appendChild(defaultOpt);
+
+                        for (const it of compositions) {
+                            const opt = document.createElement("option");
+                            opt.value = it.id;
+                            const writerName = it.getFlag(MODULE_ID, "writerName") || "Unknown";
+                            opt.textContent = `${it.name} (by ${writerName})`;
+                            select.appendChild(opt);
+                        }
+
+                        const useBtn = document.createElement("button");
+                        useBtn.type = "button";
+                        useBtn.textContent = "Use";
+                        useBtn.style.cssText = `height:24px; font-size:0.78em; padding:2px 8px; white-space:nowrap; border:1px solid rgba(255,255,255,0.25); border-radius:3px; opacity:0.4;`;
+                        useBtn.disabled = true;
+                        useBtn.addEventListener("mousedown", ev => ev.stopPropagation());
+
+                        select.addEventListener("change", () => {
+                            const hasVal = !!select.value;
+                            useBtn.disabled = !hasVal;
+                            useBtn.style.opacity = hasVal ? "1" : "0.4";
+                        });
+
+                        useBtn.addEventListener("click", ev => {
+                            ev.stopPropagation();
+                            if (!select.value) return;
+                            const proxyBtn = document.createElement("button");
+                            proxyBtn.dataset.subAction = "use-composition";
+                            proxyBtn.dataset.itemId = itemId;
+                            proxyBtn.dataset.isFlag = "false";
+                            proxyBtn.dataset.compositionItemId = select.value;
+                            BastionManager.onTheaterAction.call({ actor, render: () => {} }, ev, proxyBtn);
+                        });
+
+                        compRow.appendChild(select);
+                        compRow.appendChild(useBtn);
+                        header.appendChild(compRow);
+                    }
+                }
+
+                box.appendChild(header);
+
+                // Progress bar (Writing or Rehearsing)
+                if (isWriting || phase === "Rehearsing") {
+                    const bar = document.createElement("div");
+                    bar.title = `${tProg} / ${theaterPhaseDays} turns`;
+                    bar.style.cssText = "height:8px; background:rgba(0,0,0,0.2); border:1px solid #555; border-radius:4px; overflow:hidden; margin-bottom:5px;";
+                    const fill = document.createElement("div");
+                    fill.style.cssText = `width:${tPct}%; height:100%; background:${phaseColor};`;
+                    bar.appendChild(fill);
+                    box.appendChild(bar);
+                }
+
+                // Roster
+                const roster = document.createElement("div");
+                roster.style.cssText = "display:flex; flex-direction:column; gap:2px; margin-top:4px;";
+
+                const rosterRow = (label, value, color = "#82cfff", italic = false) => {
+                    const row = document.createElement("div");
+                    row.style.cssText = "display:flex; justify-content:space-between;";
+                    row.innerHTML = `<span><b>${label}:</b></span><span style="color:${value ? color : "#777"}; font-style:${italic || !value ? "italic" : "normal"};">${value || "None"}</span>`;
+                    return row;
+                };
+
+                if (isIdle || isWriting) {
+                    roster.appendChild(rosterRow("Writer", writer?.name));
+                    if (isWriting) {
+                        const titleRow = document.createElement("div");
+                        titleRow.style.cssText = "display:flex; justify-content:space-between; align-items:center;";
+                        titleRow.innerHTML = `<span><b>Script:</b></span>`;
+                        const titleInput = document.createElement("input");
+                        titleInput.type = "text";
+                        titleInput.value = scriptTitle;
+                        titleInput.placeholder = "Untitled Script";
+                        titleInput.style.cssText = "width:60%; font-size:0.9em; height:18px; padding:0 4px; border:1px solid #555; background:rgba(0,0,0,0.3); color:#e8e4d9; border-radius:3px;";
+                        titleInput.addEventListener("mousedown", ev => ev.stopPropagation());
+                        titleInput.addEventListener("change", async ev => {
+                            await item.setFlag(MODULE_ID, "theaterScriptTitle", ev.target.value);
+                        });
+                        titleRow.appendChild(titleInput);
+                        roster.appendChild(titleRow);
+                    }
+                }
+
+                if (isActing) {
+                    if (author) {
+                        const authorRow = document.createElement("div");
+                        authorRow.style.cssText = "display:flex; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:2px; margin-bottom:2px;";
+                        authorRow.innerHTML = `<span><b>Author:</b></span><span style="color:#82cfff; font-style:italic;">${author}</span>`;
+                        roster.appendChild(authorRow);
+                    }
+                    roster.appendChild(rosterRow("Director", director ? `${director.name}${director.isHireling ? " (Hireling)" : ""}` : null, director?.isHireling ? "#777" : "#82cfff"));
+                    const perfNames = performers.length > 0 ? performers.map(p => p.name).join(", ") : null;
+                    roster.appendChild(rosterRow("Performers", perfNames));
+                }
+
+                if (isPerforming) {
+                    const live = document.createElement("div");
+                    live.style.cssText = "color:#4caf50; font-weight:bold; margin-top:4px;";
+                    live.innerHTML = `<i class="fa-solid fa-circle-play"></i> Show is Live! (Award: ${dieSize} die)`;
+                    roster.appendChild(live);
+                }
+
+                box.appendChild(roster);
+                infoBlock.appendChild(box);
+            });
         }
 
         // D5. Teleportation Circle
@@ -2114,6 +2425,7 @@ Hooks.once("init", () => {
     game.settings.register(MODULE_ID, "recruitMode",             { scope: "world", config: false, type: String,  default: "roll" });
     game.settings.register(MODULE_ID, "promptAllEvents",         { scope: "world", config: false, type: Boolean, default: false });
     game.settings.register(MODULE_ID, "manualEventSelection",    { scope: "world", config: false, type: Boolean, default: false });
+    game.settings.register(MODULE_ID, "aidUsesDefenderRules",    { scope: "world", config: false, type: Boolean, default: false });
 
     // ── Hirelings & Staff (hidden) ────────────────────────────────────
     game.settings.register(MODULE_ID, "nameHirelings",           { scope: "world",  config: false, type: Boolean, default: true });
@@ -2358,6 +2670,18 @@ Hooks.on("updateItem", (item, changes) => {
         .forEach(li => li.classList.remove("bastion-augmented"));
 });
 
+// When a new facility item is created (e.g. instant build or promotion from groupFacilities),
+// createItem does NOT fire updateActor, so augmented guards are never cleared.
+// Svelte may recycle an existing <li> node (updating data-item-id) while keeping the old
+// bastion-augmented class, causing the new facility to show stale data from the previous item.
+// Clearing all augmented classes forces a fresh re-augmentation for every facility in the tab.
+Hooks.on("createItem", (item) => {
+    if (item.type !== "facility") return;
+    document.querySelectorAll('section[data-tab="bastion"], div[data-tab="bastion"], [data-tab-contents-for="bastion"]').forEach(tab => {
+        tab.querySelectorAll(".bastion-augmented").forEach(el => el.classList.remove("bastion-augmented"));
+    });
+});
+
 /**
  * CONFIGURATION CLASSES
  */
@@ -2393,6 +2717,7 @@ class BastionSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
             recruitMode:             g("recruitMode"),
             promptAllEvents:         g("promptAllEvents"),
             manualEventSelection:    g("manualEventSelection"),
+            aidUsesDefenderRules:    g("aidUsesDefenderRules"),
             nameHirelings:           g("nameHirelings"),
             autoNameHirelings:       g("autoNameHirelings"),
             nameDefenders:           g("nameDefenders"),
@@ -2437,7 +2762,7 @@ class BastionSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
         el.querySelector("[data-action='reset-defaults']")?.addEventListener("click", async () => {
             const confirmed = await DialogV2.confirm({ window: { title: "Reset Settings" }, content: "<p>Reset all Bastion Manager settings to their defaults?</p>" });
             if (!confirmed) return;
-            const keys = ["ignoreConstructionCosts","ignoreFacilityPrereqs","specialFacilitiesBuildTime","specialFacilitiesGoldCost","disableNeglect","disableSpecialCap","disableDuplicateLimit","advancePermission","groupInheritsFacilities","unifyCombinedTurns","globalTurnCount","calculationMode","daysPerTurn","syncDaysPerTurn","scaleWeekToTurnLength","advanceWorldTime","calendarDrivenTurns","recruitMode","promptAllEvents","manualEventSelection","nameHirelings","autoNameHirelings","nameDefenders","autoNameDefenders","createActorsForHirelings","createActorsForDefenders","hirelingActorTemplates","menagerieArmoryBonus","menagerieDiceMode","menagerieCrDiceTable","reliquaryOneTalismanLimit"];
+            const keys = ["ignoreConstructionCosts","ignoreFacilityPrereqs","specialFacilitiesBuildTime","specialFacilitiesGoldCost","disableNeglect","disableSpecialCap","disableDuplicateLimit","advancePermission","groupInheritsFacilities","unifyCombinedTurns","globalTurnCount","calculationMode","daysPerTurn","syncDaysPerTurn","scaleWeekToTurnLength","advanceWorldTime","calendarDrivenTurns","recruitMode","promptAllEvents","manualEventSelection","aidUsesDefenderRules","nameHirelings","autoNameHirelings","nameDefenders","autoNameDefenders","createActorsForHirelings","createActorsForDefenders","hirelingActorTemplates","menagerieArmoryBonus","menagerieDiceMode","menagerieCrDiceTable","reliquaryOneTalismanLimit"];
             await Promise.all(keys.map(k => game.settings.set(MODULE_ID, k, game.settings.settings.get(`${MODULE_ID}.${k}`)?.default)));
             this.render();
         });
@@ -2470,6 +2795,7 @@ class BastionSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
             s("recruitMode",              d.recruitMode),
             s("promptAllEvents",          d.promptAllEvents          ?? false),
             s("manualEventSelection",     d.manualEventSelection     ?? false),
+            s("aidUsesDefenderRules",     d.aidUsesDefenderRules     ?? false),
             s("nameHirelings",            d.nameHirelings            ?? false),
             s("autoNameHirelings",        d.autoNameHirelings        ?? false),
             s("nameDefenders",            d.nameDefenders            ?? true),
@@ -2877,6 +3203,24 @@ Hooks.on("renderGroupActorSheet", (app) => _injectGroupBastionTab(app));
 
 // Wire up Pay Army buttons embedded in bastion turn summary chat messages
 Hooks.on("renderChatMessageHTML", (message, html) => {
+    html.querySelectorAll('[data-action="theaterAction"]').forEach(btn => {
+        btn.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            const actor = game.actors.get(btn.dataset.actorId);
+            if (!actor) return ui.notifications.warn("Could not find the associated actor.");
+            BastionManager.onTheaterAction.call({ actor, render: () => {} }, ev, btn);
+        });
+    });
+
+    html.querySelectorAll(".theater-performance-check-btn").forEach(btn => {
+        btn.addEventListener("click", async (ev) => {
+            ev.preventDefault();
+            const character = game.user.character;
+            if (!character) return ui.notifications.warn("You have no assigned character to roll for.");
+            await character.rollSkill("prf");
+        });
+    });
+
     html.querySelectorAll(".bastion-pay-army-btn").forEach(btn => {
         btn.addEventListener("click", async (ev) => {
             ev.preventDefault();
@@ -2935,6 +3279,17 @@ Hooks.on("deleteItem", async (item) => {
     if (item.type !== "facility" || !item.isEmbedded) return;
     const toDelete = game.actors
         .filter(a => a.getFlag(MODULE_ID, "facilityItemId") === item.id)
+        .map(a => a.id);
+    if (toDelete.length) await Actor.deleteDocuments(toDelete);
+});
+
+// deleteItem does not fire for embedded items when the parent actor is cascade-deleted,
+// so we clean up linked hireling/defender world actors here instead.
+Hooks.on("deleteActor", async (actor) => {
+    const facilityIds = new Set(actor.items.filter(i => i.type === "facility").map(i => i.id));
+    if (!facilityIds.size) return;
+    const toDelete = game.actors
+        .filter(a => facilityIds.has(a.getFlag(MODULE_ID, "facilityItemId")))
         .map(a => a.id);
     if (toDelete.length) await Actor.deleteDocuments(toDelete);
 });
@@ -3023,3 +3378,266 @@ Hooks.on("renderSettingsConfig", (app, html) => {
  * The existing MutationObserver already catches Tidy's bastion tab via the
  * [data-tab-contents-for="bastion"] selector. No separate tab registration needed.
  */
+
+// ─── ACTOR DIRECTORY CONTEXT MENUS ────────────────────────────────────────────
+
+const SIZE_LABELS = { tiny: "Tiny", sm: "Small", med: "Medium", lg: "Large", huge: "Huge", grg: "Gargantuan" };
+
+function _actorIdFromEntry(li) {
+    return li?.closest?.("[data-entry-id]")?.dataset?.entryId ?? li?.dataset?.entryId ?? null;
+}
+
+function _bastionFacilitiesNamed(namePart) {
+    const results = [];
+    for (const actor of game.actors) {
+        if (!["character", "npc", "group"].includes(actor.type)) continue;
+        for (const item of actor.items) {
+            if (item.type !== "facility" || !item.name.includes(namePart)) continue;
+            results.push({ actor, facility: item, isFlag: false });
+        }
+        for (const f of (actor.getFlag(MODULE_ID, "groupFacilities") || [])) {
+            if (!f.name?.includes(namePart)) continue;
+            const ffl = f.flags?.[MODULE_ID] || {};
+            if ((ffl.upgradeTurns || 0) > 0 && !ffl.size) continue; // still under new construction
+            results.push({ actor, facility: f, isFlag: true });
+        }
+    }
+    return results;
+}
+
+async function _addCreatureToMenagerie(creature) {
+    const menageries = _bastionFacilitiesNamed("Menagerie");
+    if (!menageries.length) return ui.notifications.warn("No established Menagerie found in any bastion.");
+
+    const creatureType  = creature.system?.details?.type?.value || "";
+    const size          = creature.system?.traits?.size || "med";
+    const cr            = creature.system?.details?.cr;
+    const slotCost      = BastionManager._getMenagerieSlotCost(size);
+    const typeLabel     = creatureType ? creatureType.charAt(0).toUpperCase() + creatureType.slice(1) : "Unknown";
+    const sizeLabel     = SIZE_LABELS[size] || size;
+    const crLabel       = cr != null ? ` · CR ${cr}` : "";
+    const slotLabel     = slotCost === 1 ? "1 slot" : `${slotCost} slots`;
+    const isSuited      = ["beast", "monstrosity"].includes(creatureType);
+
+    const enrichedFacs = menageries.map((m, i) => {
+        const creatures = m.isFlag
+            ? (m.facility.flags?.[MODULE_ID]?.menagerieCreatures || [])
+            : (m.facility.getFlag(MODULE_ID, "menagerieCreatures") || []);
+        const usedSlots = creatures.reduce((s, c) => s + (c.slots ?? 0.25), 0);
+        const free = +(4 - usedSlots).toFixed(2);
+        const full = free < slotCost;
+        return { ...m, usedSlots, free, full, index: i };
+    });
+
+    const selectOpts = enrichedFacs.map(m =>
+        `<option value="${m.index}"${m.full ? " disabled" : ""}>${m.actor.name} — ${m.facility.name} (${m.free} slots free)${m.full ? " — FULL" : ""}</option>`
+    ).join("");
+
+    const typeNote = isSuited
+        ? `<div style="margin:4px 0 8px; padding:4px 8px; font-size:0.87em; color:#4a7a3a; background:rgba(74,122,58,0.1); border:1px solid rgba(74,122,58,0.35); border-radius:3px;"><i class="fa-solid fa-circle-check" style="margin-right:5px;"></i>The Menagerie is well-suited to Beasts and Monstrosities.</div>`
+        : `<div style="margin:4px 0 8px; padding:4px 8px; font-size:0.87em; color:#7a5a10; background:rgba(200,160,50,0.12); border:1px solid rgba(200,160,50,0.45); border-radius:3px; line-height:1.5;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:5px; color:#c8a028;"></i>The Menagerie is typically suited to Beasts and Monstrosities. A <b>${typeLabel}</b> is an unusual resident — the rules place no hard restriction on creature type.</div>`;
+
+    const content = `
+        ${typeNote}
+        <div class="form-group">
+            <label>Creature:</label>
+            <div style="font-size:0.9em;">${creature.name} (${typeLabel}, ${sizeLabel}${crLabel}) — costs ${slotLabel}</div>
+        </div>
+        <div class="form-group">
+            <label>Target Menagerie:</label>
+            <select name="facilityIdx" style="width:100%;">${selectOpts}</select>
+        </div>
+        <div class="form-group">
+            <label>Nickname (optional):</label>
+            <input type="text" name="nickname" placeholder="${creature.name}" style="width:100%;">
+        </div>
+        <div class="form-group" style="flex-direction:row; align-items:center; gap:6px;">
+            <input type="checkbox" name="isDefender" id="bmCMIsDefender" checked>
+            <label for="bmCMIsDefender" style="margin:0;">Count as Defender</label>
+        </div>`;
+
+    const result = await DialogV2.prompt({
+        window: { title: `Add ${creature.name} to Menagerie`, icon: "fa-solid fa-paw" },
+        content,
+        ok: {
+            label: "Add to Menagerie",
+            callback: (ev, button) => ({
+                facilityIdx: parseInt(button.form.elements.facilityIdx.value),
+                nickname:    button.form.elements.nickname.value.trim(),
+                isDefender:  button.form.elements.isDefender.checked
+            })
+        },
+        rejectClose: false
+    });
+    if (!result) return;
+
+    const chosen = enrichedFacs[result.facilityIdx];
+    if (!chosen) return;
+    if (chosen.full) return ui.notifications.warn(`${chosen.actor.name}'s Menagerie doesn't have enough space for ${creature.name}.`);
+
+    const { actor, facility, isFlag } = chosen;
+    const gf = actor.getFlag(MODULE_ID, "groupFacilities") || [];
+    const creatures = Array.from(isFlag
+        ? (facility.flags?.[MODULE_ID]?.menagerieCreatures || [])
+        : (facility.getFlag(MODULE_ID, "menagerieCreatures") || []));
+
+    // Re-verify capacity in case something changed since the dialog opened
+    const used = creatures.reduce((s, c) => s + (c.slots ?? 0.25), 0);
+    if (used + slotCost > 4) return ui.notifications.warn(`${actor.name}'s Menagerie is full (${+(4 - used).toFixed(2)} slots free, need ${slotCost}).`);
+
+    creatures.push({ species: creature.name, nickname: result.nickname, slots: slotCost, isDefender: result.isDefender });
+    const defNames = creatures.filter(c => c.isDefender).map(c => c.nickname || c.species);
+
+    if (isFlag) {
+        const fac = gf.find(f => f._id === facility._id);
+        if (!fac) return;
+        foundry.utils.setProperty(fac, `flags.${MODULE_ID}.menagerieCreatures`, creatures);
+        foundry.utils.setProperty(fac, `flags.${MODULE_ID}.defenders`, { count: defNames.length, names: defNames });
+        await actor.setFlag(MODULE_ID, "groupFacilities", gf);
+    } else {
+        await facility.setFlag(MODULE_ID, "menagerieCreatures", creatures);
+        await facility.setFlag(MODULE_ID, "defenders", { count: defNames.length, names: defNames });
+    }
+
+    ui.notifications.info(`${creature.name} added to ${actor.name}'s Menagerie.`);
+    const openMgr = Array.from(foundry.applications.instances.values()).find(a => a instanceof BastionManager && a.actor?.id === actor.id);
+    if (openMgr) openMgr.render();
+}
+
+async function _addCreatureToStable(creature) {
+    const stables = _bastionFacilitiesNamed("Stable");
+    if (!stables.length) return ui.notifications.warn("No established Stable found in any bastion.");
+
+    const size     = creature.system?.traits?.size || "lg";
+    const slotCost = BastionManager._getMountSlotCost(size);
+    const sizeLabel = SIZE_LABELS[size] || size;
+
+    if (slotCost >= 999) {
+        return ui.notifications.warn(`${creature.name} (${sizeLabel}) is too large to be housed in any Stable.`);
+    }
+
+    // Resolve used slots for each stable. stableAnimals stores { species, nickname } with no
+    // cached slot cost, so look each animal up in game.actors; fall back to "lg" (1 slot) if
+    // not found — conservative but safe for the typical all-Large-mount case.
+    const _animalSlots = (animals) => {
+        let used = 0;
+        for (const a of animals) {
+            const ac = game.actors.find(x => x.name === a.species);
+            used += BastionManager._getMountSlotCost(ac?.system?.traits?.size || "lg");
+        }
+        return used;
+    };
+
+    const enrichedFacs = stables.map((m, i) => {
+        const facFlagSize = m.isFlag
+            ? (m.facility.flags?.[MODULE_ID]?.size || "Roomy")
+            : (m.facility.getFlag(MODULE_ID, "size") || "Roomy");
+        const maxSlots = facFlagSize === "Vast" ? 6 : 3;
+
+        const animals = m.isFlag
+            ? (m.facility.flags?.[MODULE_ID]?.stableAnimals || [])
+            : (m.facility.getFlag(MODULE_ID, "stableAnimals") || []);
+
+        const usedSlots = _animalSlots(animals);
+        const free = +(maxSlots - usedSlots).toFixed(2);
+        const full = free < slotCost;
+        return { ...m, animals, usedSlots, maxSlots, free, full, index: i };
+    });
+
+    const slotLabel = slotCost === 1 ? "1 slot" : `${slotCost} slots`;
+    const selectOpts = enrichedFacs.map(m =>
+        `<option value="${m.index}"${m.full ? " disabled" : ""}>${m.actor.name} — ${m.facility.name} (${m.free}/${m.maxSlots} slots free)${m.full ? " — FULL" : ""}</option>`
+    ).join("");
+
+    const content = `
+        <div class="form-group">
+            <label>Beast:</label>
+            <div style="font-size:0.9em;">${creature.name} (${sizeLabel}) — costs ${slotLabel}</div>
+        </div>
+        <div class="form-group">
+            <label>Target Stable:</label>
+            <select name="facilityIdx" style="width:100%;">${selectOpts}</select>
+        </div>
+        <div class="form-group">
+            <label>Nickname (optional):</label>
+            <input type="text" name="nickname" placeholder="${creature.name}" style="width:100%;">
+        </div>`;
+
+    const result = await DialogV2.prompt({
+        window: { title: `Add ${creature.name} to Stable`, icon: "fa-solid fa-horse" },
+        content,
+        ok: {
+            label: "Add to Stable",
+            callback: (ev, button) => ({
+                facilityIdx: parseInt(button.form.elements.facilityIdx.value),
+                nickname:    button.form.elements.nickname.value.trim()
+            })
+        },
+        rejectClose: false
+    });
+    if (!result) return;
+
+    const chosen = enrichedFacs[result.facilityIdx];
+    if (!chosen) return;
+    if (chosen.full) return ui.notifications.warn(`${chosen.actor.name}'s Stable doesn't have enough space for ${creature.name} (need ${slotCost} slot(s), ${chosen.free} free).`);
+
+    const { actor, facility, isFlag } = chosen;
+    const gf = actor.getFlag(MODULE_ID, "groupFacilities") || [];
+    const animals = Array.from(isFlag
+        ? (facility.flags?.[MODULE_ID]?.stableAnimals || [])
+        : (facility.getFlag(MODULE_ID, "stableAnimals") || []));
+
+    // Re-verify capacity in case something changed since the dialog opened
+    const usedNow = _animalSlots(animals);
+    if (usedNow + slotCost > chosen.maxSlots) {
+        return ui.notifications.warn(`${actor.name}'s Stable is full (${+(chosen.maxSlots - usedNow).toFixed(2)} slots free, need ${slotCost}).`);
+    }
+
+    animals.push({ species: creature.name, nickname: result.nickname });
+
+    if (isFlag) {
+        const fac = gf.find(f => f._id === facility._id);
+        if (!fac) return;
+        foundry.utils.setProperty(fac, `flags.${MODULE_ID}.stableAnimals`, animals);
+        await actor.setFlag(MODULE_ID, "groupFacilities", gf);
+    } else {
+        await facility.setFlag(MODULE_ID, "stableAnimals", animals);
+    }
+
+    ui.notifications.info(`${creature.name} added to ${actor.name}'s Stable.`);
+    const openMgr = Array.from(foundry.applications.instances.values()).find(a => a instanceof BastionManager && a.actor?.id === actor.id);
+    if (openMgr) openMgr.render();
+}
+
+Hooks.on("getActorContextOptions", (app, entryOptions) => {
+    if (!game.user?.isGM) return;
+
+    entryOptions.push({
+        label: "Add to Menagerie...",
+        icon: "fa-solid fa-paw",
+        visible: (li) => {
+            const actor = game.actors.get(_actorIdFromEntry(li));
+            if (!actor || actor.type !== "npc") return false;
+            return _bastionFacilitiesNamed("Menagerie").length > 0;
+        },
+        onClick: (event, li) => {
+            const actor = game.actors.get(_actorIdFromEntry(li));
+            if (actor) _addCreatureToMenagerie(actor);
+        }
+    });
+
+    entryOptions.push({
+        label: "Add to Stable...",
+        icon: "fa-solid fa-horse",
+        visible: (li) => {
+            const actor = game.actors.get(_actorIdFromEntry(li));
+            if (!actor || actor.type !== "npc") return false;
+            if (actor.system?.details?.type?.value !== "beast") return false;
+            return _bastionFacilitiesNamed("Stable").length > 0;
+        },
+        onClick: (event, li) => {
+            const actor = game.actors.get(_actorIdFromEntry(li));
+            if (actor) _addCreatureToStable(actor);
+        }
+    });
+});

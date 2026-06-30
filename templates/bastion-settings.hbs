@@ -239,6 +239,14 @@
                 <p class="hint">Let the GM select which bastion event occurs instead of rolling randomly.</p>
             </div>
 
+            <div class="form-group">
+                <label>Request for Aid: Use Armory &amp; Menagerie Rules</label>
+                <div class="form-fields">
+                    <input type="checkbox" name="aidUsesDefenderRules" {{#if aidUsesDefenderRules}}checked{{/if}}>
+                </div>
+                <p class="hint">When enabled, the Request for Aid event scales dice using Armory stocking (d8s if equipped) and Menagerie CR-based dice instead of flat d6s per defender.</p>
+            </div>
+
         </div>
 
         {{!-- ── STAFF TAB ─────────────────────────────────────────── --}}

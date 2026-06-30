@@ -122,6 +122,38 @@
             {{else}}
                 <div style="margin-top: 3px; opacity: 0.6; font-style: italic;">Bastion is undefended.</div>
             {{/if}}
+            {{#if mercenaryDefenders.length}}
+                <div style="margin-top: 4px; border-top: 1px dashed #6a4c93; padding-top: 3px;">
+                    <div style="font-size: 0.8em; color: #6a4c93; font-weight: bold; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.03em;">
+                        <i class="fa-solid fa-user-secret"></i> Mercenaries
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                    {{#each mercenaryDefenders}}
+                        <div style="display: inline-flex; align-items: center; gap: 3px; font-size: 0.95em;">
+                            — {{this.name}}
+                            <button type="button" data-action="dismissMercenary" data-index="{{@index}}"
+                                    style="width: auto; padding: 0 3px; font-size: 0.75em; height: 14px; border: none; background: none; color: #a32a22; cursor: pointer; line-height: 1;" title="Dismiss mercenary">
+                                <i class="fa-solid fa-xmark" style="font-size: 0.7em;"></i>
+                            </button>
+                        </div>
+                    {{/each}}
+                    </div>
+                </div>
+            {{/if}}
+            {{#if friendlyMonsterGuest}}
+                <div style="margin-top: 4px; border-top: 1px dashed #5c6bc0; padding-top: 3px; font-size: 0.85em; color: #5c6bc0;">
+                    <i class="fa-solid fa-dragon"></i> <b>Friendly Monster Guest</b> — Intercepts the next attack (0 defender deaths), then departs.
+                </div>
+            {{/if}}
+            {{#if refugees}}
+                <div style="margin-top: 4px; border-top: 1px dashed #b07d3a; padding-top: 3px; font-size: 0.85em;">
+                    <span style="color: #b07d3a;"><i class="fa-solid fa-people-group"></i> <b>Refugees:</b> {{refugees.count}} people sheltering in the Bastion.</span>
+                    <button type="button" data-action="disbandRefugees"
+                            style="width: auto; padding: 0 4px; font-size: 0.8em; border: 1px solid #b07d3a; background: none; color: #b07d3a; cursor: pointer; border-radius: 3px; margin-left: 4px;" title="Disband refugees (they've found a new home)">
+                        <i class="fa-solid fa-house-circle-check"></i> Disband
+                    </button>
+                </div>
+            {{/if}}
         </div>
     </div>
 
@@ -523,17 +555,58 @@
                                 {{#if this.isStableTrade}}
                                     <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px; width: 100%;">
                                         <div style="display: flex; gap: 4px; align-items: center;">
-                                            <select class="stable-trade-choice" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 20px; font-size: 0.85em; flex: 0 0 60px;">
+                                            <select class="stable-trade-choice" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 20px; font-size: 0.85em; flex: 0 0 65px;">
                                                 <option value="buy" {{#if (eq this.stableTradeChoice "buy")}}selected{{/if}}>Buy</option>
                                                 <option value="sell" {{#if (eq this.stableTradeChoice "sell")}}selected{{/if}}>Sell</option>
+                                                <option value="auto" {{#if (eq this.stableTradeChoice "auto")}}selected{{/if}}>Auto</option>
                                             </select>
-                                            <select class="stable-item-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="height: 20px; font-size: 0.85em; flex: 1; {{#if this.isStableFull}}border-color: #a32a22;{{/if}}">
-                                                <option value="">-- Select Mount --</option>
-                                                {{#each stableItemOptions}}
-                                                    <option value="{{this.value}}" {{#if this.selected}}selected{{/if}} style="{{this.style}}">{{this.label}}</option>
-                                                {{/each}}
-                                            </select>
+                                            {{#if this.isStableAuto}}
+                                                <span style="font-size: 0.75em; color: #00897b; font-weight: bold; white-space: nowrap; flex-shrink: 0;">[Next: {{this.stableAutoNextAction}}]</span>
+                                            {{/if}}
                                         </div>
+                                        {{#if this.isStableAuto}}
+                                            <div style="font-size: 0.75em; color: #aaa; font-style: italic;">
+                                                <i class="fa-solid fa-circle-info"></i> Lock mounts below to keep them from being auto-sold.
+                                            </div>
+                                        {{/if}}
+                                        {{#if this.isStableBuy}}
+                                            <div style="display: flex; flex-direction: column; gap: 2px; max-height: 110px; overflow-y: auto; background: rgba(0,0,0,0.15); border-radius: 4px; padding: 3px;">
+                                                {{#each this.stableBuyOrdersList}}
+                                                    <div style="display: flex; align-items: center; gap: 4px; font-size: 0.78em; {{this.style}}">
+                                                        <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{this.label}}">{{this.label}}</span>
+                                                        <input type="number" class="stable-buy-qty" min="0" value="{{this.qty}}"
+                                                               data-item-id="{{../id}}" data-is-flag="{{../isFlag}}" data-species="{{this.species}}"
+                                                               style="width: 38px; height: 18px; font-size: 0.85em;" title="Quantity to buy">
+                                                    </div>
+                                                {{else}}
+                                                    <span style="font-style: italic; font-size: 0.78em; opacity: 0.7;">No mounts available to buy.</span>
+                                                {{/each}}
+                                            </div>
+                                            {{#if this.stableBuyTotal}}
+                                                <div style="font-size: 0.78em; color: #a32a22; font-weight: bold; padding: 1px 3px;">
+                                                    <i class="fa-solid fa-coins"></i> Total Cost: {{this.stableBuyTotal}} GP
+                                                </div>
+                                            {{/if}}
+                                        {{/if}}
+                                        {{#if this.isStableSell}}
+                                            <div style="display: flex; flex-direction: column; gap: 2px; max-height: 110px; overflow-y: auto; background: rgba(0,0,0,0.15); border-radius: 4px; padding: 3px;">
+                                                {{#each this.stableSellOrdersList}}
+                                                    <div style="display: flex; align-items: center; gap: 4px; font-size: 0.78em;">
+                                                        <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{this.species}} ({{this.count}} owned{{#if this.profitPer}} · {{this.profitPer}} GP ea.{{/if}})</span>
+                                                        <input type="number" class="stable-sell-qty" min="0" max="{{this.count}}" value="{{this.qty}}"
+                                                               data-item-id="{{../id}}" data-is-flag="{{../isFlag}}" data-species="{{this.species}}"
+                                                               style="width: 38px; height: 18px; font-size: 0.85em;" title="Quantity to sell">
+                                                    </div>
+                                                {{else}}
+                                                    <span style="font-style: italic; font-size: 0.78em; opacity: 0.7;">No mounts in stock to sell.</span>
+                                                {{/each}}
+                                            </div>
+                                            {{#if this.stableSellGross}}
+                                                <div style="font-size: 0.78em; color: #2e7d32; font-weight: bold; padding: 1px 3px;">
+                                                    <i class="fa-solid fa-coins"></i> Gross Earnings: {{this.stableSellGross}} GP ({{this.stableSellProfit}} GP profit)
+                                                </div>
+                                            {{/if}}
+                                        {{/if}}
                                     </div>
                                 {{/if}}
 
@@ -564,17 +637,18 @@
                                 {{#if (and this.isStorehouse this.isTradeOrder)}}
                                     <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 4px; width: 100%;">
                                         <div style="display: flex; gap: 4px; align-items: center;">
-                                            <select class="storehouse-trade-choice" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" 
-                                                    style="height: 20px; font-size: 0.85em; flex: 1;" {{#if this.isAutoTrade}}disabled style="opacity: 0.5;"{{/if}}>
+                                            <select class="storehouse-trade-choice" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
+                                                    style="height: 20px; font-size: 0.85em; flex: 1;">
                                                 <option value="procure" {{#if (eq this.tradeChoice "procure")}}selected{{/if}}>Procure Goods</option>
                                                 <option value="sell" {{#if (eq this.tradeChoice "sell")}}selected{{/if}}>Sell Goods</option>
+                                                <option value="auto" {{#if (eq this.tradeChoice "auto")}}selected{{/if}}>Auto</option>
                                             </select>
-                                            <input type="number" class="storehouse-trade-amount" value="{{this.tradeAmount}}" {{#if this.isAutoTrade}}disabled style="opacity: 0.5;"{{/if}}
+                                            <input type="number" class="storehouse-trade-amount" value="{{this.tradeAmount}}"
                                                    data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
                                                    style="width: 50px; height: 20px; font-size: 0.85em;" title="GP amount to trade">
                                             <span style="font-size: 0.8em;">GP</span>
                                             {{#if this.isAutoTrade}}
-                                                <span style="font-size: 0.75em; color: #00897b; font-weight: bold; margin-left: 5px; white-space: nowrap; flex-shrink: 0;">[Next: {{this.autoNextAction}}]</span>
+                                                <span style="font-size: 0.75em; color: #00897b; font-weight: bold; white-space: nowrap; flex-shrink: 0;">[Next: {{this.autoNextAction}}]</span>
                                             {{/if}}
                                         </div>
                                         {{#unless this.isInherited}}
@@ -667,11 +741,13 @@
                         <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px;">
                             <span><i class="fa-solid fa-masks-theater"></i> <b>Production Status:</b> <span style="color: #82cfff;">{{this.theaterPhase}}</span></span>
                             <div style="display: flex; gap: 5px; flex-wrap: nowrap;">
-                                {{#if this.isJoinedTheater}}
-                                    <button type="button" data-action="theaterAction" data-sub-action="leave" data-actor-id="{{../actor.id}}" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 26px; color: #f44336; border-color: rgba(244, 67, 54, 0.4); white-space: nowrap;" title="Leave your current role in this production">Leave Role</button>
-                                {{else}}
-                                    <button type="button" data-action="theaterAction" data-sub-action="join" data-actor-id="{{../actor.id}}" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 26px; white-space: nowrap;">Join Roles</button>
-                                {{/if}}
+                                {{#unless (eq this.theaterPhase "Idle")}}
+                                    {{#if this.isJoinedTheater}}
+                                        <button type="button" data-action="theaterAction" data-sub-action="leave" data-actor-id="{{../actor.id}}" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 26px; color: #f44336; border-color: rgba(244, 67, 54, 0.4); white-space: nowrap;" title="Leave your current role in this production">Leave Role</button>
+                                    {{else}}
+                                        <button type="button" data-action="theaterAction" data-sub-action="join" data-actor-id="{{../actor.id}}" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 26px; white-space: nowrap;">Join Roles</button>
+                                    {{/if}}
+                                {{/unless}}
                                 {{#if (eq this.theaterPhase "Idle")}}
                                     <button type="button" data-action="theaterAction" data-sub-action="start-writing" data-actor-id="{{../actor.id}}" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 26px; white-space: nowrap;" title="Manually begin the writing phase">Start Writing</button>
                                     <button type="button" data-action="theaterAction" data-sub-action="invite-writer" data-actor-id="{{../actor.id}}" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 8px; font-size: 0.85em; height: 26px; white-space: nowrap;" title="Post a call for a Composer/Writer to chat">Invite Writer</button>
@@ -681,6 +757,18 @@
                                     <button type="button" data-action="theaterAction" data-sub-action="reset" data-actor-id="{{../actor.id}}" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" style="width: auto; padding: 2px 6px; font-size: 0.85em; height: 26px; white-space: nowrap;" title="Reset Production"><i class="fa-solid fa-clapperboard"></i></button>
                                 {{/unless}}
                             </div>
+                            {{#if this.theaterCompositions.length}}
+                                <div style="display:flex; align-items:center; gap:4px; margin-top:4px;">
+                                    <span style="font-size:0.8em; opacity:0.7; white-space:nowrap;">Use Script:</span>
+                                    <select class="theater-composition-select" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-actor-id="{{../actor.id}}" style="flex:1; font-size:0.8em; height:24px; background:rgba(0,0,0,0.3); color:#e8e4d9; border:1px solid rgba(255,255,255,0.2); border-radius:3px;">
+                                        <option value="">— Select a composition —</option>
+                                        {{#each this.theaterCompositions}}
+                                            <option value="{{this.compositionItemId}}">{{this.label}}</option>
+                                        {{/each}}
+                                    </select>
+                                    <button type="button" class="theater-use-composition-btn" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}" data-actor-id="{{../actor.id}}" style="width:auto; padding:2px 8px; font-size:0.85em; height:26px; white-space:nowrap;" disabled>Use</button>
+                                </div>
+                            {{/if}}
                         </div>
 
                         {{#if (or (eq this.theaterPhase "Writing") (eq this.theaterPhase "Rehearsing"))}}
@@ -1056,10 +1144,17 @@
                                         <i class="fa-solid fa-horse"></i> <b>Stocked Mounts:</b>
                                         <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; color: #fff;">
                                             {{#each this.stableAnimals}}
-                                                <span class="stable-animal-tag" style="background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 10px; border: 1px solid #555; cursor: pointer; color: #eee;" 
-                                                      data-action="renameStableAnimal" data-index="{{@index}}" data-item-id="{{../id}}" data-is-flag="{{../isFlag}}"
-                                                      title="Click to Rename">
-                                                    <i class="fa-solid fa-pen" style="font-size: 0.8em; opacity: 0.5;"></i> {{#if this.nickname}}<b>{{this.nickname}}</b> ({{this.species}}){{else}}{{this.species}}{{/if}}
+                                                <span style="display: inline-flex; align-items: center; gap: 3px; background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 10px; border: 1px solid {{#if this.autoProtect}}#00897b{{else}}#555{{/if}}; color: #eee;">
+                                                    <span class="stable-animal-tag" style="cursor: pointer;" data-action="renameStableAnimal" data-index="{{@index}}" data-item-id="{{../id}}" data-is-flag="{{../isFlag}}" title="Click to Rename">
+                                                        <i class="fa-solid fa-pen" style="font-size: 0.8em; opacity: 0.5;"></i> {{#if this.nickname}}<b>{{this.nickname}}</b> ({{this.species}}){{else}}{{this.species}}{{/if}}
+                                                    </span>
+                                                    {{#if ../isStableAuto}}
+                                                        <button type="button" data-action="toggleStableProtect" data-index="{{@index}}" data-item-id="{{../id}}" data-is-flag="{{../isFlag}}"
+                                                                style="width: auto; padding: 1px 4px; font-size: 0.8em; border-radius: 6px; line-height: 1; {{#if this.autoProtect}}background:#00897b; color:white;{{else}}background:rgba(255,255,255,0.1); color:#aaa;{{/if}}"
+                                                                title="{{#if this.autoProtect}}Protected from auto-sell (click to unprotect){{else}}Will be auto-sold (click to protect){{/if}}">
+                                                            <i class="fa-solid fa-lock{{#unless this.autoProtect}}-open{{/unless}}"></i>
+                                                        </button>
+                                                    {{/if}}
                                                 </span>
                                             {{else}}
                                                 <span style="font-style: italic;">None</span>
@@ -1401,13 +1496,6 @@
                         </button>
                     {{/if}}
 
-                    {{#if (eq this.itemName "Storehouse")}}
-                        <button type="button" data-action="toggleAutoTrade" data-item-id="{{this.id}}" data-is-flag="{{this.isFlag}}"
-                            style="width: auto; padding: 2px 6px; color: {{#if this.isAutoTrade}}green{{else}}gray{{/if}};"
-                            title="Toggle Auto-Trade (Alternates buying/selling each turn) - Currently: {{#if this.isAutoTrade}}ON{{else}}OFF{{/if}}">
-                            <i class="fa-solid fa-arrows-rotate"></i>
-                        </button>
-                    {{/if}}
 
                     <button type="button" data-action="selectFacilityLayout" data-item-id="{{this.id}}" 
                         style="width: auto; padding: 2px 6px; {{#if this.isLayoutActive}}background: #444; color: white;{{else}}color: #444;{{/if}}" 

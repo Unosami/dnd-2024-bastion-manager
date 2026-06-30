@@ -63,7 +63,23 @@
       "Bash(grep -n \"class PopOut\\\\|renderApp\\\\|popoutApp\\\\|appPopout\\\\|openApp\\\\|adopt\\\\|popoutButton\\\\|options\\\\.popOut\\\\b\\\\|getOptions\\\\|createWindow\\\\|windowId\\\\|appId\" /mnt/Hadunkachud/FoundryVTTUserData/Data/modules/popout/popout.js | head -50)",
       "Bash(grep -n \"poppedOut\\\\|popoutApp\\\\|popApp\\\\|\\\\.popout\\\\b\\\\|popoutWindow\\\\|isPopped\" /mnt/Hadunkachud/FoundryVTTUserData/Data/modules/popout/popout.js | head -40)",
       "Bash(grep -n \"api\\\\|export\\\\|module\\\\.api\\\\|globalThis\\\\|this\\\\.render\\\\|\\\\.popoutApp\\\\|function popout\\\\|popoutDialog\" /mnt/Hadunkachud/FoundryVTTUserData/Data/modules/popout/popout.js | head -50)",
-      "Bash(grep -n \"game\\\\.modules\\\\|Hooks.*ready\\\\|module.*api\\\\|api\\\\s*=\" /mnt/Hadunkachud/FoundryVTTUserData/Data/modules/popout/popout.js | head -30)"
+      "Bash(grep -n \"game\\\\.modules\\\\|Hooks.*ready\\\\|module.*api\\\\|api\\\\s*=\" /mnt/Hadunkachud/FoundryVTTUserData/Data/modules/popout/popout.js | head -30)",
+      "Bash(find /mnt/Hadunkachud -name \"actor-directory*\" -o -name \"ActorDirectory*\" 2>/dev/null | grep -v node_modules | head -10)",
+      "Bash(find /mnt/Hadunkachud -path \"*/foundry*\" -name \"*.mjs\" -o -path \"*/foundry*\" -name \"*.js\" 2>/dev/null | grep -v modules | grep -v systems | head -20)",
+      "Bash(find /mnt/Hadunkachud -maxdepth 6 -type d 2>/dev/null | head -20)",
+      "Bash(find /home -name \"foundry.js\" 2>/dev/null | head -5; find /opt -name \"foundry.js\" 2>/dev/null | head -5; find /usr/local -name \"foundry.js\" 2>/dev/null | head -5)",
+      "Read(//home/**)",
+      "Read(//usr/local/**)",
+      "Bash(find \"/home/unosami/foundryvtt\" -name \"*.mjs\" | xargs grep -l \"EntryContext\\\\|getActorDirectory\" 2>/dev/null | head -10)",
+      "Read(//home/unosami/foundryvtt/**)",
+      "Bash(find /mnt/Hadunkachud/FoundryVTTUserData -name \"*.mjs\" -path \"*/dnd5e/*\" 2>/dev/null | head -5)",
+      "Bash(ls /mnt/Hadunkachud/FoundryVTTUserData/Data/)",
+      "Read(//mnt/Hadunkachud/FoundryVTTUserData/Data/**)",
+      "Bash(grep -n \"bastion\\\\|_getBastionTab\\\\|canHaveBastion\\\\|tabs.*bastion\\\\|tab.*bastion\" /mnt/Hadunkachud/FoundryVTTUserData/Data/systems/dnd5e/dnd5e.mjs | grep -i \"tab\\\\|show\\\\|hide\\\\|enable\\\\|level\\\\|canHave\\\\|bastionConfiguration\" | head -30)",
+      "Bash(grep -n \"_safePrepareData\\\\|safePrepare\" /mnt/Hadunkachud/FoundryVTTUserData/Data/systems/dnd5e/dnd5e.mjs | head -10)",
+      "Bash(ls /mnt/Hadunkachud/FoundryVTTUserData/Data/systems/dnd5e/ | head -20)",
+      "Bash(grep -n \"hasBastion\\\\|bastionConfiguration.*enabled\\\\|details.*level.*threshold\\\\|threshold.*level\" /mnt/Hadunkachud/FoundryVTTUserData/Data/systems/dnd5e/dnd5e.mjs | head -15)",
+      "Bash(apt list *)"
     ]
   }
 }

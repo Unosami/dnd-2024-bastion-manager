@@ -3,6 +3,7 @@ Bastion Module notes:
 
 OUTLINE to COMPLETION:
 - Finish Facility Flesh-outs (DMG)
+- Finish fleshing out Events
 - Flesh out additional source facilities (Optional)
 - Get the UI how I like (Including bastion map)
     - Perhaps remove bastion map and make it into its own module? Or just don't do more work on it unless its in a seperate project.
@@ -13,45 +14,20 @@ OUTLINE to COMPLETION:
 
 GENERAL
 - Give players a "Mark Ready" button on the scene tool where the Dm gets "Run Global Turn"
-- The DM should be able to "advance progress" on facility orders in addition to the existing construction advancement. The buttons should have hover-over info explaining what they do.
-- "Unify Combined Bastion Turns" might be a defunct option.
-
+- Stable buy/sell loop, much like Storehouse
+- Make the bastion manager on NPCs an option for DMs that is off by default.
 
 EVENTS:
 - Combined Bastions should all share a single bastion event, rather than generating one-per bastion per Maintenance turn.
 - Allow for custom events?
 
-CALENDAR STUFF:
-The bastion module can currently advance the calender by advancing the bastion turn. It can also sync turn lengths to calendar week lengths.
-- Next I want the ability for advancing the calender to advance the bastion turn one week after an order is issued. The "Advance Turn" buttons will all have to change to "Issue Order" buttons for this.
-
-
-Next I want to start fleshing out the other facility outputs:
-STABLE
-- Standardize sizes and slots between the stable and the menagerie. If possible
-- When a mount is withdrawn by a character import the associated actor and give the player ownership of it and rename it to the creature's nickname. Then if the mount is deposited again remove the actor. I'd like any changes to the specific creature to be remembered between withdrawels if possible.
-
-ARMORY
-- Stocking the armory does nothing if there are no bastion defenders. The facility should throw a warning to that effect if being built without an attached facility that provides defenders.
-
-TELEPORTATION CIRCLE 
-- A cool way to display the glyphs of the specific bastion's teleportation circle? (So Extra)
-
-THEATER
-- Allow the player to choose which play to perform from the list of already-composed scripts. The writer of the script should receive the Theater Die after the first performance, regardless of when the script was written.
 
 GRID CHANGES
 - Change the grid layout of combined bastions to have each player be a color and their facilities be different shades of that color. (Or some way to distinguish who owns what without text) (Might be done already?)
 
 ---
 Known Bugs:
-- The "Bastion Utilities" section should not contain the main use of facilities.
-- The exclude facilities setting is way too granular.
-- When a facility is first crafted it should default to the Maintain order.
-- When a facility is being built and facility caps are active then the "Build Facility" buttons should account for the under construction facilities.
 - Garden Change Type submenu not appearing on character sheet ui.
-- If the Garden is made from the founding dialog it doesn't prompt for the type of Garden like it should.
-- New facilities being set to Maintain also need to include ones made through the Bastion Founding dialog.
 - Cap storehouse procurement gold to amount of gold on character sheet.
 
 ---

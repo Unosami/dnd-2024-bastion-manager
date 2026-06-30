@@ -24,7 +24,7 @@ The Bastion Manager window can be opened three ways:
 
 - **From the character sheet** — a "Bastion" button appears in the sheet header for any character who has bastion facilities. Click it to open their manager.
 - **From the scene controls** — a bastion icon appears in the left sidebar. Click it to select a character and open their manager.
-- **From the Bastion tab** — the character sheet's Bastion tab (Enabled in "Game Settings -> Dungeons & Dragons Fifth Edition -> Configure Bastions -> Enable Bastion Functionality") is augmented with per-facility controls and an "Open Full Manager" button.
+- **From the Bastion tab** — the character sheet's Bastion tab (Enabled in "Game Settings -> Dungeons & Dragons Fifth Edition -> Configure Bastions -> Enable Bastion Functionality") is augmented with per-facility controls and an "Open Full Manager" button. (Note: This tab does not appear on characters below level 5)
 ![Bastion_Manager_Button.png](./Resources/Bastion_Manager_Button.png)
 
 If the character sheet is detached into its own browser window (using Foundry V14's native detach feature), the Bastion Manager will also open in a detached window.
@@ -69,12 +69,15 @@ Some bastion rules required interpretation. Here are the decisions made that are
 
 - **Partially-stocked armory.** There are no rules for a partially-stocked Armory (for example, after the Armory is stocked another Recruitment occurs). In this case, a number of the defense dice are d8s proportional to the current stock level relative to the total number of defenders, with the remainder being the default d6s.
 
+
 **Menagerie**
 
 - **Menagerie Defenders.** By default Menagerie defenders are no better than Barrack defenders, despite costing gold and having differing CRs. I have added options in the module settings for scaling defender dice with creature CR.
+- **Menagerie Equipment.** I created options to let the Dungeon Master decide if Menagerie defenders can be armed using the armory. If yes, there is an increase in the die value of the menagerie defender.
+- **Custom Creatures.** Both the Menagerie and the Stable facilities allow for the DM to add non-Rules-as-Written creatures via the Actors sidebar (Right-click the creature -> Add to Menagerie/Stable). The Stable is limited to only creatures with the Beast creature type. The Menagerie allows for anything, but insists it's designed only for beasts and monstrosities.
 
 **Theater**
-- **Writing and Production.** The Theater facility states that a composer or writer "can compose music or write a script for a concert or production that hasn't started rehearsals yet. This effort takes 14 days." So I gave the Theater a button to allow a player to begin a "Writing Phase" that lasts for 14 days (or two bastion turns) and if a production happens at any point after that then the writer gets the Theater Die reward.
+- **Writing and Production.** The Theater can allow players to take the Writer role and produce compositions that can later be used in any production. If a pre-written composition is used in a theatrical production then the writer gets the option to roll for the Theater die, regardless of when they composed the performance. By default, a production begins immediately at the end of a writing phase using the written piece.
 
 ---
 

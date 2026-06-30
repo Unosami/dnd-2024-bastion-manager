@@ -301,6 +301,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             consumeGreenhouseFruit: BastionManager.onConsumeGreenhouseFruit,
             refreshGreenhouseFruits: BastionManager.onRefreshGreenhouseFruits,
             renameStableAnimal: BastionManager.onRenameStableAnimal,
+            toggleStableProtect: BastionManager.onToggleStableProtect,
             renameMenagerieCreature: BastionManager.onRenameMenagerieCreature,
             toggleMenagerieDefender: BastionManager.onToggleMenagerieDefender,
             removeMenagerieCreature: BastionManager.onRemoveMenagerieCreature,
@@ -328,6 +329,8 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             renameDefender:           BastionManager.onRenameDefender,
             issueOrders:              BastionManager.onIssueOrders,
             cancelOrders:             BastionManager.onCancelOrders,
+            dismissMercenary:         BastionManager.onDismissMercenary,
+            disbandRefugees:          BastionManager.onDisbandRefugees,
         }
     };
     static PARTS = { main: { template: "modules/dnd-2024-bastion-manager/templates/bastion-main.hbs" } };
@@ -532,6 +535,30 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const parts = newValue.split(": ");
             newOrder = parts[0];
             craftChoice = parts[1];
+        }
+
+        if (newOrder === "Trade" && fac.name?.includes("Armory")) {
+            const combinedGroupId = actor.getFlag(MODULE_ID, "combinedGroupId");
+            const combinedGroup = combinedGroupId ? game.actors.get(combinedGroupId) : null;
+            const effectiveActor = (actor.type !== "group" && combinedGroup) ? combinedGroup : actor;
+            const actorsToCheck = [effectiveActor];
+            if (effectiveActor.type === "group" && game.settings.get(MODULE_ID, "groupInheritsFacilities")) {
+                for (const m of (effectiveActor.system.members || [])) {
+                    const mActor = m.actor || m;
+                    if (mActor && mActor.id !== effectiveActor.id) actorsToCheck.push(mActor);
+                }
+            }
+            const totalDefenders = actorsToCheck.reduce((sum, act) => {
+                const fromItems = act.items.filter(i => i.type === "facility")
+                    .reduce((s, f) => s + ((f.getFlag(MODULE_ID, "defenders") || {}).count || 0), 0);
+                const fromFlags = (act.getFlag(MODULE_ID, "groupFacilities") || [])
+                    .reduce((s, f) => s + ((f.flags?.[MODULE_ID]?.defenders || {}).count || 0), 0);
+                return sum + fromItems + fromFlags;
+            }, 0);
+            if (totalDefenders === 0) {
+                ui.notifications.warn("The Armory cannot be stocked — there are no defenders to arm.");
+                return;
+            }
         }
 
         let updates = {
@@ -898,6 +925,17 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             const theaterDieSize = actorLevel >= 17 ? "d10" : (actorLevel >= 13 ? "d8" : "d6");
 
+            const theaterCompositions = isTheater && theaterPhase === "Idle" ? (() => {
+                const comps = [];
+                for (const it of game.items) {
+                    if (it.getFlag(MODULE_ID, "isProductionComposition")) {
+                        const writerName = it.getFlag(MODULE_ID, "writerName") || "Unknown";
+                        comps.push({ label: `${it.name} (by ${writerName})`, compositionItemId: it.id });
+                    }
+                }
+                return comps;
+            })() : [];
+
             const spellcasterDaysRemaining = getFacFlag("spellcasterDaysRemaining") || 0;
             const spellcasterDisplayTime = calculationMode === "days" ? spellcasterDaysRemaining : Math.ceil(spellcasterDaysRemaining / daysPerTurn);
             const spellcasterTimeUnit = (calculationMode === "days") 
@@ -1046,6 +1084,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let stableItemOptions = [];
             let stableItemUuid = null;
             let stableTransferOptions = [];
+            let stableBuyOrdersList = [];
+            let stableSellOrdersList = [];
+            let stableBuyTotal = 0;
+            let stableSellGross = 0;
+            let stableSellProfit = 0;
             let workshopTools = [];
 
             // --- Stable Metadata Initialization ---
@@ -1053,8 +1096,14 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let stableAnimals = getFacFlag("stableAnimals") || [];
             // Migrate old string-only array to object array if necessary
             stableAnimals = stableAnimals.map(a => typeof a === "string" ? { species: a, nickname: "" } : a);
-            
+
             const stableTradeChoice = getFacFlag("stableTradeChoice") || "buy";
+            const stableBuyOrders = getFacFlag("stableBuyOrders") || {};
+            const stableSellOrders = getFacFlag("stableSellOrders") || {};
+            const stableAutoNextAction = getFacFlag("stableAutoNextAction") || "buy";
+            const isStableAuto = isStable && stableTradeChoice === "auto";
+            const isStableBuy = isStable && stableTradeChoice === "buy";
+            const isStableSell = isStable && stableTradeChoice === "sell";
             const stableMaxSlots = facSize === "Vast" ? 6 : 3;
             const isStableTrade = isStable && currentOrder === "Trade";
             let stableUsedSlots = 0;
@@ -1249,37 +1298,48 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         // Map potential mount names for inventory filtering in the Transfer Store dropdown
                         fac.potentialMountNames = allStableOptions.flatMap(o => o.groupOptions ? o.groupOptions.map(so => so.value) : [o.value]);
 
-                        // Filter Sell dropdown to only what is in the stable
-                        const tradeChoice = getFacFlag("stableTradeChoice") || "buy";
-                        if (tradeChoice === "sell") {
-                            let filteredOptions = []; // Filter sell dropdown to only what is in the stable
-                            for (const option of allStableOptions) {
-                                if (option.groupOptions) {
-                                    const filteredGroupOptions = option.groupOptions.filter(subOption => stableAnimals.some(a => a.species === subOption.value));
-                                    if (filteredGroupOptions.length > 0) {
-                                        filteredOptions.push({ ...option, groupOptions: filteredGroupOptions });
-                                    }
-                                } else if (stableAnimals.some(a => a.species === option.value)) {
-                                    filteredOptions.push(option);
+                        // Used by Auto mode's single mount selector (the type to fill the stable with)
+                        stableItemOptions = allStableOptions;
+                        const remaining = stableMaxSlots - stableUsedSlots;
+                        const highlightLargeItems = (opts) => {
+                            for (const o of opts) {
+                                if (o.groupOptions) highlightLargeItems(o.groupOptions);
+                                else if (o.slots > remaining) {
+                                    o.style = "background-color: #fff3cd; color: #856404;"; // Yellow highlight
+                                    o.label += " (Too Large)";
                                 }
                             }
-                            stableItemOptions = filteredOptions;
-                        } else {
-                            stableItemOptions = allStableOptions;
+                        };
+                        highlightLargeItems(stableItemOptions);
 
-                            // Highlight items that won't fit in Buy mode
-                            const remaining = stableMaxSlots - stableUsedSlots;
-                            const highlightLargeItems = (opts) => {
-                                for (const o of opts) {
-                                    if (o.groupOptions) highlightLargeItems(o.groupOptions);
-                                    else if (o.slots > remaining) {
-                                        o.style = "background-color: #fff3cd; color: #856404;"; // Yellow highlight
-                                        o.label += " (Too Large)";
-                                    }
-                                }
-                            };
-                            highlightLargeItems(stableItemOptions);
-                        }
+                        // Manual Buy grid: every available mount type with its requested qty
+                        const flatMountOptions = allStableOptions.flatMap(o => o.groupOptions ? o.groupOptions : [o]);
+                        const mountPriceMap = {};
+                        for (const o of flatMountOptions) mountPriceMap[o.value] = Number(o.price) || 0;
+                        stableBuyOrdersList = flatMountOptions.map(o => ({
+                            species: o.value,
+                            label: o.label,
+                            qty: Number(stableBuyOrders[o.value] || 0),
+                            style: o.style || "",
+                            price: Number(o.price) || 0
+                        }));
+
+                        // Manual Sell grid: only species currently stocked, with their requested qty
+                        const speciesCounts = {};
+                        for (const a of stableAnimals) speciesCounts[a.species] = (speciesCounts[a.species] || 0) + 1;
+                        const stableProfitMult = actorLevel >= 17 ? 2.0 : (actorLevel >= 13 ? 1.5 : 1.2);
+                        const mountPriceLookup = (species) => mountPriceMap[species] ?? mountPriceMap[Object.keys(mountPriceMap).find(k => k.toLowerCase() === species.toLowerCase())] ?? 0;
+                        stableSellOrdersList = Object.entries(speciesCounts).map(([species, count]) => {
+                            const basePrice = mountPriceLookup(species);
+                            const profitPer = Math.floor(basePrice * stableProfitMult);
+                            const qty = Math.min(Number(stableSellOrders[species] || 0), count);
+                            return { species, count, qty, profitPer, basePrice };
+                        });
+
+                        // Running totals for display
+                        stableBuyTotal = stableBuyOrdersList.reduce((sum, o) => sum + o.qty * o.price, 0);
+                        stableSellGross = stableSellOrdersList.reduce((sum, o) => sum + o.profitPer * o.qty, 0);
+                        stableSellProfit = stableSellGross - stableSellOrdersList.reduce((sum, o) => sum + o.basePrice * o.qty, 0);
                     }
                 }
             }
@@ -1707,6 +1767,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 isActingPhase,
                 theaterDieSize,
                 theaterScriptTitle,
+                theaterCompositions,
                 visitingSpellcaster,
                 spellcasterDaysRemaining,
                 spellcasterDisplayTime,
@@ -1715,8 +1776,17 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 maxSpellLevel,
                 isSpellcasterPresent: visitingSpellcaster && spellcasterDaysRemaining > 0,
                 stableTradeChoice: stableTradeChoice,
+                stableAutoNextAction: stableAutoNextAction.charAt(0).toUpperCase() + stableAutoNextAction.slice(1),
+                isStableAuto: isStableAuto,
+                isStableBuy: isStableBuy,
+                isStableSell: isStableSell,
                 stableItemChoice: effectiveStableItemChoice,
                 stableItemOptions: stableItemOptions,
+                stableBuyOrdersList: stableBuyOrdersList,
+                stableSellOrdersList: stableSellOrdersList,
+                stableBuyTotal: stableBuyTotal,
+                stableSellGross: stableSellGross,
+                stableSellProfit: stableSellProfit,
                 stableAnimals: stableAnimals,
                 stableAnimalsList: stableAnimals.map(a => a.nickname ? `${a.nickname} (${a.species})` : a.species).join(", "),
                 stableTransferType,
@@ -2142,17 +2212,31 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             // Stable Trade
             if (fac.isStableTrade) {
-                const tType = fac.stableTradeChoice === "buy" ? "Buying" : "Selling";
-                const mName = fac.stableItemChoice;
-                if (mName) {
+                if (fac.stableTradeChoice === "auto") {
+                    const nextAction = (fac.stableAutoNextAction || "buy").toLowerCase();
                     horizonEntries.push({
-                        facName: fac.name, label: `${tType}: ${mName}`,
+                        facName: fac.name, label: `Auto: ${nextAction === "buy" ? "Best mount" : "Sell all"}`,
                         category: "trade",
                         turnsRemaining: 1, isRecurring: false,
                         progressPct: null,
-                        color: fac.stableTradeChoice === "buy" ? "#a32a22" : "#2e7d32",
+                        color: "#00897b",
                         gpDelta: 0,
                     });
+                } else {
+                    const isBuy = fac.stableTradeChoice === "buy";
+                    const orders = isBuy ? (fac.stableBuyOrdersList || []) : (fac.stableSellOrdersList || []);
+                    const active = orders.filter(o => o.qty > 0);
+                    if (active.length > 0) {
+                        const desc = active.map(o => `${o.qty}x ${o.species}`).join(", ");
+                        horizonEntries.push({
+                            facName: fac.name, label: `${isBuy ? "Buying" : "Selling"}: ${desc}`,
+                            category: "trade",
+                            turnsRemaining: 1, isRecurring: false,
+                            progressPct: null,
+                            color: isBuy ? "#a32a22" : "#2e7d32",
+                            gpDelta: 0,
+                        });
+                    }
                 }
             }
 
@@ -2274,6 +2358,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             advanceMode: this._advanceMode || "global",
             totalDefenders, defenderNames: allDefenderNames.join(", "),
             defendersByFacility: facilities.filter(f => f.defenderCount > 0).map(f => ({ facilityName: f.name, id: f.id, isFlag: f.isFlag, count: f.defenderCount, names: (() => { const d = f.sourceDoc?.getFlag?.(MODULE_ID, "defenders") || f.sourceDoc?.flags?.[MODULE_ID]?.defenders; return d?.names || []; })() })),
+            mercenaryDefenders: this.actor.getFlag(MODULE_ID, "mercenaryDefenders") || [],
+            refugees: this.actor.getFlag(MODULE_ID, "refugees") || null,
+            friendlyMonsterGuest: this.actor.getFlag(MODULE_ID, "friendlyMonsterGuest") || false,
             allActiveQueues,
             allUtilities,
             horizonEntries, horizonGold,
@@ -2539,6 +2626,26 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             });
         });
 
+        // Theater Composition Select + Use Button
+        this.element.querySelectorAll('.theater-composition-select').forEach(select => {
+            const container = select.closest('div');
+            const useBtn = container?.querySelector('.theater-use-composition-btn');
+            select.addEventListener('change', () => {
+                if (useBtn) {
+                    useBtn.disabled = !select.value;
+                }
+            });
+            if (useBtn) {
+                useBtn.addEventListener('click', async (ev) => {
+                    ev.stopPropagation();
+                    if (!select.value) return;
+                    const ds = select.dataset;
+                    const proxyBtn = { dataset: { subAction: "use-composition", itemId: ds.itemId, isFlag: ds.isFlag, compositionItemId: select.value } };
+                    await BastionManager.onTheaterAction.call(this, ev, proxyBtn);
+                });
+            }
+        });
+
         // Menagerie Listeners
         this.element.querySelectorAll('.menagerie-item-select').forEach(select => {
             select.addEventListener('change', async (ev) => {
@@ -2618,6 +2725,56 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
                 } else {
                     await this.actor.items.get(ds.itemId)?.setFlag(MODULE_ID, "stableItemChoice", ev.target.value);
+                }
+            });
+        });
+
+        this.element.querySelectorAll('.stable-buy-qty').forEach(input => {
+            input.addEventListener('change', async (ev) => {
+                const ds = ev.target.dataset;
+                const qty = Math.max(0, parseInt(ev.target.value) || 0);
+                const species = ds.species;
+                if (ds.isFlag === "true") {
+                    const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+                    const fac = gf.find(f => f._id === ds.itemId);
+                    if (fac) {
+                        const orders = { ...(foundry.utils.getProperty(fac, `flags.${MODULE_ID}.stableBuyOrders`) || {}) };
+                        if (qty === 0) delete orders[species]; else orders[species] = qty;
+                        foundry.utils.setProperty(fac, `flags.${MODULE_ID}.stableBuyOrders`, orders);
+                    }
+                    await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+                } else {
+                    const fac = this.actor.items.get(ds.itemId);
+                    if (fac) {
+                        const orders = { ...(fac.getFlag(MODULE_ID, "stableBuyOrders") || {}) };
+                        if (qty === 0) delete orders[species]; else orders[species] = qty;
+                        await fac.setFlag(MODULE_ID, "stableBuyOrders", orders);
+                    }
+                }
+            });
+        });
+
+        this.element.querySelectorAll('.stable-sell-qty').forEach(input => {
+            input.addEventListener('change', async (ev) => {
+                const ds = ev.target.dataset;
+                const qty = Math.max(0, parseInt(ev.target.value) || 0);
+                const species = ds.species;
+                if (ds.isFlag === "true") {
+                    const gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+                    const fac = gf.find(f => f._id === ds.itemId);
+                    if (fac) {
+                        const orders = { ...(foundry.utils.getProperty(fac, `flags.${MODULE_ID}.stableSellOrders`) || {}) };
+                        if (qty === 0) delete orders[species]; else orders[species] = qty;
+                        foundry.utils.setProperty(fac, `flags.${MODULE_ID}.stableSellOrders`, orders);
+                    }
+                    await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+                } else {
+                    const fac = this.actor.items.get(ds.itemId);
+                    if (fac) {
+                        const orders = { ...(fac.getFlag(MODULE_ID, "stableSellOrders") || {}) };
+                        if (qty === 0) delete orders[species]; else orders[species] = qty;
+                        await fac.setFlag(MODULE_ID, "stableSellOrders", orders);
+                    }
                 }
             });
         });
@@ -3837,6 +3994,22 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         this.render();
     }
 
+    static async onDismissMercenary(event, target) {
+        const actor = this.actor;
+        const index = parseInt(target.dataset.index);
+        const mercenaries = Array.from(actor.getFlag(MODULE_ID, "mercenaryDefenders") || []);
+        if (index >= 0 && index < mercenaries.length) {
+            mercenaries.splice(index, 1);
+            await actor.setFlag(MODULE_ID, "mercenaryDefenders", mercenaries);
+        }
+        this.render();
+    }
+
+    static async onDisbandRefugees(event, target) {
+        await this.actor.unsetFlag(MODULE_ID, "refugees");
+        this.render();
+    }
+
     /**
      * Called after any Long Rest. Checks which Bastion facilities the actor has and prompts
      * them to claim rest-based charm/THP effects for those facilities.
@@ -4473,6 +4646,24 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         } else {
             await fac.setFlag(MODULE_ID, "menagerieCreatures", creatures);
             await fac.setFlag(MODULE_ID, "defenders", { count: defenderNames.length, names: defenderNames });
+        }
+        this.render();
+    }
+
+    static async onToggleStableProtect(event, target) {
+        const ds = target.dataset;
+        const idx = parseInt(ds.index);
+        let gf = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
+        let fac = ds.isFlag === "true" ? gf.find(f => f._id === ds.itemId) : this.actor.items.get(ds.itemId);
+        if (!fac) return;
+        let animals = Array.from((ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.stableAnimals : fac.getFlag(MODULE_ID, "stableAnimals")) || []);
+        if (!animals[idx]) return;
+        animals[idx] = { ...animals[idx], autoProtect: !animals[idx].autoProtect };
+        if (ds.isFlag === "true") {
+            foundry.utils.setProperty(fac, `flags.${MODULE_ID}.stableAnimals`, animals);
+            await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+        } else {
+            await fac.setFlag(MODULE_ID, "stableAnimals", animals);
         }
         this.render();
     }
@@ -5773,6 +5964,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         }
         if (!itemDoc) return ui.notifications.warn("Could not load facility data.");
 
+        if (itemDoc.name.includes("Armory")) {
+            if (!this._getUnifiedFacilities().some(f => f.name.includes("Barrack"))) {
+                ui.notifications.warn("No Barrack exists in this bastion. Without defenders, the Armory cannot be stocked.");
+            }
+        }
+
         // Allow external modules to cancel the build (return false from the hook listener to cancel).
         if (Hooks.call("dnd-bastion.preBuildFacility", this.actor, itemDoc) === false) return;
 
@@ -6741,27 +6938,17 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     }
                 }
             } else if (fac.name.includes("Stable") && order === "Trade") {
-                const choice = getFacFlag("stableItemChoice");
                 const tradeType = getFacFlag("stableTradeChoice") || "buy";
-                if (!choice) {
-                    missing.push(`${actor.name}: Stable requires a mount selection for Trade.`);
-                } else if (tradeType === "buy") {
-                    const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
-                    const index = await outPack.getIndex({fields: ["system.price", "system.size", "system.properties", "system.description.value"]});
-                    const entry = index.find(e => e.name === choice);
-                    if (entry) {
-                        let p = entry.system.price?.value ?? entry.system.price ?? 0;
-                        if (typeof p === "string") p = parseFloat(p.replace(/[^0-9.]/g, ""));
-                        let price = Number(p || 0);
-                        const currentGP = Number(actor.system.currency?.gp || 0);
-                        if (currentGP < price) {
-                            missing.push(`${actor.name}: Cannot afford <b>${choice}</b> (${price} GP required, ${currentGP} GP available).`);
-                        }
-
-                        const costInSlots = BastionManager._getMountSlotCost(await BastionManager._extractSize(entry));
+                if (tradeType === "buy") {
+                    const buyOrders = getFacFlag("stableBuyOrders") || {};
+                    const speciesList = Object.entries(buyOrders).filter(([, qty]) => qty > 0);
+                    if (speciesList.length === 0) {
+                        missing.push(`${actor.name}: Stable requires at least one mount quantity to buy.`);
+                    } else {
+                        const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
+                        const index = await outPack.getIndex({fields: ["system.price", "system.size", "system.properties", "system.description.value"]});
                         const facSize = getFacFlag("size") || "Roomy";
                         const maxSlots = facSize === "Vast" ? 6 : 3;
-                        
                         let usedSlots = 0;
                         const stableAnimals = getFacFlag("stableAnimals") || [];
                         for (const animal of stableAnimals) {
@@ -6770,12 +6957,30 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                             usedSlots += BastionManager._getMountSlotCost(await BastionManager._extractSize(e));
                         }
 
-                        if (usedSlots + costInSlots > maxSlots) {
-                            missing.push(`${actor.name}: Stable is too full for <b>${choice}</b> (${usedSlots}/${maxSlots} slots occupied).`);
-                        } else if (costInSlots > 3) {
-                            missing.push(`${actor.name}: <b>${choice}</b> is too large for the Stable.`);
+                        let totalCost = 0;
+                        let totalSlotsNeeded = 0;
+                        const currentGP = Number(actor.system.currency?.gp || 0);
+                        for (const [species, qty] of speciesList) {
+                            const entry = index.find(e => e.name === species);
+                            if (!entry) continue;
+                            let p = entry.system.price?.value ?? entry.system.price ?? 0;
+                            if (typeof p === "string") p = parseFloat(p.replace(/[^0-9.]/g, ""));
+                            totalCost += Number(p || 0) * qty;
+                            const costInSlots = BastionManager._getMountSlotCost(await BastionManager._extractSize(entry));
+                            if (costInSlots > 3) missing.push(`${actor.name}: <b>${species}</b> is too large for the Stable.`);
+                            totalSlotsNeeded += costInSlots * qty;
+                        }
+                        if (currentGP < totalCost) {
+                            missing.push(`${actor.name}: Cannot afford the requested mounts (${totalCost} GP required, ${currentGP} GP available).`);
+                        }
+                        if (usedSlots + totalSlotsNeeded > maxSlots) {
+                            missing.push(`${actor.name}: Stable does not have enough space for the requested mounts (${usedSlots}/${maxSlots} slots occupied).`);
                         }
                     }
+                } else { // sell
+                    const sellOrders = getFacFlag("stableSellOrders") || {};
+                    const speciesList = Object.entries(sellOrders).filter(([, qty]) => qty > 0);
+                    if (speciesList.length === 0) missing.push(`${actor.name}: Stable requires at least one mount quantity to sell.`);
                 }
             }
         }
@@ -7194,6 +7399,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let theaterPhase = getFacFlag("theaterPhase") || "Idle";
             let theaterProgress = Number(getFacFlag("theaterProgress") || 0);
             let stableTradeChoice = getFacFlag("stableTradeChoice");
+            let stableBuyOrders = { ...(getFacFlag("stableBuyOrders") || {}) };
+            let stableSellOrders = { ...(getFacFlag("stableSellOrders") || {}) };
+            let stableAutoNextAction = getFacFlag("stableAutoNextAction") || "buy";
             let stableTransferType = getFacFlag("stableTransferType");
             let stableTransferChoice = getFacFlag("stableTransferChoice");
             let stableAnimals = getFacFlag("stableAnimals") || [];
@@ -7354,62 +7562,169 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                             }
                         }
                     } else if (facDoc.name.includes("Stable")) {
-                        const tradeType = getFacFlag("stableTradeChoice") || "buy";
+                        let tradeType = getFacFlag("stableTradeChoice") || "buy";
+                        const isAutoMode = tradeType === "auto";
+                        if (isAutoMode) tradeType = stableAutoNextAction;
+
                         const mountName = getFacFlag("stableItemChoice");
-                        
                         const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
                         const index = await outPack.getIndex({fields: ["system.price", "system.size", "system.properties", "system.description.value"]});
-                        const entry = index.find(e => e.name === mountName);
+                        const profitMult = level >= 17 ? 2.0 : (level >= 13 ? 1.5 : 1.2);
+                        const maxSlots = facSize === "Vast" ? 6 : 3;
 
                         if (tradeType === "buy") {
-                            if (!entry) {
-                                currentResultText = `${getH()} is waiting for you to select a mount to purchase.`;
-                            } else {
-                                let p = entry.system.price?.value ?? entry.system.price ?? 0;
-                                if (typeof p === "string") p = parseFloat(p.replace(/[^0-9.]/g, ""));
-                                let price = Number(p || 0);
-                                const currentActorGP = Number(actor.system.currency?.gp || 0) || 0;
+                            if (!isAutoMode) {
+                                // Manual buy: process every queued species/qty pair
+                                const speciesList = Object.entries(stableBuyOrders).filter(([, qty]) => qty > 0);
+                                if (speciesList.length === 0) {
+                                    currentResultText = `${getH()} is waiting for you to set buy quantities.`;
+                                } else {
+                                    let usedSlots = 0;
+                                    for (const animal of stableAnimals) {
+                                        const e = index.find(i => i.name.toLowerCase() === animal.species.toLowerCase());
+                                        usedSlots += BastionManager._getMountSlotCost(await BastionManager._extractSize(e));
+                                    }
 
-                                // Updated Slot calculation
-                                const costInSlots = BastionManager._getMountSlotCost(await BastionManager._extractSize(entry));
-                                const maxSlots = facSize === "Vast" ? 6 : 3;
-                                
-                                let usedSlots = 0; // Calculate current used slots
+                                    const boughtSummary = new Map();
+                                    let totalCost = 0;
+                                    for (const [species, desiredQty] of speciesList) {
+                                        const entry = index.find(e => e.name === species);
+                                        if (!entry) continue;
+                                        const costInSlots = BastionManager._getMountSlotCost(await BastionManager._extractSize(entry));
+                                        if (costInSlots > 3) continue;
+                                        let p = entry.system.price?.value ?? entry.system.price ?? 0;
+                                        if (typeof p === "string") p = parseFloat(p.replace(/[^0-9.]/g, ""));
+                                        const price = Number(p || 0);
+                                        for (let q = 0; q < desiredQty; q++) {
+                                            if (usedSlots + costInSlots > maxSlots) break;
+                                            const currentActorGP = Number(actor.system.currency?.gp || 0) || 0;
+                                            if (!freeMode && currentActorGP + totalGold + localGold - totalCost < price) break;
+                                            stableAnimals.push({ species, nickname: "" });
+                                            usedSlots += costInSlots;
+                                            if (!freeMode) totalCost += price;
+                                            boughtSummary.set(species, (boughtSummary.get(species) || 0) + 1);
+                                        }
+                                    }
+                                    if (boughtSummary.size === 0) {
+                                        currentResultText = `${getH()} was unable to purchase any of the requested mounts (stable full or insufficient funds).`;
+                                    } else {
+                                        if (!freeMode) localGold -= totalCost;
+                                        const desc = [...boughtSummary.entries()].map(([s, n]) => n > 1 ? `${n}x ${s}` : `a <b>${s}</b>`).join(", ");
+                                        currentResultText = `${getH()} successfully purchased ${desc}.`;
+                                    }
+                                }
+                            } else {
+                                // Auto buy: select best-value-per-slot mount and fill the stable
+                                const stableAutoFolder = outPack.folders.get(STABLE_ROOT_ID) || outPack.folders.find(f => f.name.toLowerCase().includes("stable") || f.name.toLowerCase().includes("mount"));
+                                const stableFolderIds = new Set();
+                                const collectFolderIds = (f) => { stableFolderIds.add(f.id); for (const c of outPack.folders.filter(x => x.folder?.id === f.id)) collectFolderIds(c); };
+                                if (stableAutoFolder) collectFolderIds(stableAutoFolder);
+
+                                let usedSlots = 0;
                                 for (const animal of stableAnimals) {
                                     const e = index.find(i => i.name.toLowerCase() === animal.species.toLowerCase());
                                     usedSlots += BastionManager._getMountSlotCost(await BastionManager._extractSize(e));
                                 }
 
-                                if (!freeMode && currentActorGP + totalGold + localGold < price) {
-                                    currentResultText = `${getH()} was unable to purchase the <b>${mountName}</b> (${price} GP required).`;
-                                } else if (usedSlots + costInSlots > maxSlots) {
-                                    currentResultText = `${getH()} reports the stable is too full to house a <b>${mountName}</b>.`;
-                                } else if (costInSlots > 3) {
-                                    currentResultText = `${getH()} notes that <b>${mountName}</b> is too large to fit in this stable.`;
+                                if (usedSlots >= maxSlots) {
+                                    currentResultText = `${getH()} reports the stable is already full.`;
                                 } else {
-                                    if (!freeMode) localGold -= price;
-                                    stableAnimals.push({ species: mountName, nickname: "" });
-                                    currentResultText = `${getH()} successfully purchased a <b>${mountName}</b>.`;
+                                    // Build candidate list sorted by profitPerSlot desc
+                                    const candidates = [];
+                                    for (const entry of index) {
+                                        if (stableAutoFolder && !stableFolderIds.has(entry.folder)) continue;
+                                        const costInSlots = BastionManager._getMountSlotCost(await BastionManager._extractSize(entry));
+                                        if (costInSlots < 1 || costInSlots > 3) continue;
+                                        let p = entry.system.price?.value ?? entry.system.price ?? 0;
+                                        if (typeof p === "string") p = parseFloat(p.replace(/[^0-9.]/g, ""));
+                                        const price = Number(p || 0);
+                                        const profitPerSlot = Math.floor(price * profitMult) / costInSlots;
+                                        candidates.push({ name: entry.name, price, costInSlots, profitPerSlot });
+                                    }
+                                    candidates.sort((a, b) => b.profitPerSlot - a.profitPerSlot || b.price - a.price);
+
+                                    // Greedy fill: each iteration picks the best-value mount that fits and is affordable
+                                    let totalCost = 0;
+                                    const boughtSummary = new Map();
+                                    while (usedSlots < maxSlots) {
+                                        const remainingSlots = maxSlots - usedSlots;
+                                        const budget = freeMode ? Infinity : (Number(actor.system.currency?.gp || 0) + totalGold + localGold - totalCost);
+                                        const pick = candidates.find(c => c.costInSlots <= remainingSlots && budget >= c.price);
+                                        if (!pick) break;
+                                        stableAnimals.push({ species: pick.name, nickname: "" });
+                                        usedSlots += pick.costInSlots;
+                                        if (!freeMode) totalCost += pick.price;
+                                        boughtSummary.set(pick.name, (boughtSummary.get(pick.name) || 0) + 1);
+                                    }
+
+                                    if (boughtSummary.size === 0) {
+                                        currentResultText = `${getH()} couldn't afford any available mounts.`;
+                                    } else {
+                                        if (!freeMode) localGold -= totalCost;
+                                        const desc = [...boughtSummary.entries()].map(([s, n]) => n > 1 ? `${n}x <b>${s}</b>` : `a <b>${s}</b>`).join(", ");
+                                        currentResultText = `${getH()} purchased ${desc} to fill the stable.`;
+                                    }
                                 }
                             }
-                        } else { // Sell
-                            const idx = stableAnimals.findIndex(a => a.species === mountName);
-                            if (idx === -1) {
-                                currentResultText = `${getH()} couldn't find a <b>${mountName}</b> to sell.`;
-                            } else if (!entry) {
-                                currentResultText = `${getH()} can't find pricing data for that animal.`;
+                        } else { // sell
+                            if (!isAutoMode) {
+                                // Manual sell: process every queued species/qty pair
+                                const speciesList = Object.entries(stableSellOrders).filter(([, qty]) => qty > 0);
+                                if (speciesList.length === 0) {
+                                    currentResultText = `${getH()} is waiting for you to set sell quantities.`;
+                                } else {
+                                    let totalEarned = 0;
+                                    const soldSummary = new Map();
+                                    for (const [species, desiredQty] of speciesList) {
+                                        const entry = index.find(e => e.name === species);
+                                        const available = stableAnimals.filter(a => a.species === species).length;
+                                        if (available === 0 || !entry) continue;
+                                        let p = entry.system.price?.value ?? entry.system.price ?? 0;
+                                        if (typeof p === "string") p = parseFloat(p.replace(/[^0-9.]/g, ""));
+                                        const price = Number(p || 0);
+                                        const toSell = Math.min(desiredQty, available);
+                                        let remaining = toSell;
+                                        stableAnimals = stableAnimals.filter(a => {
+                                            if (remaining > 0 && a.species === species) { remaining--; return false; }
+                                            return true;
+                                        });
+                                        totalEarned += Math.floor(price * profitMult) * toSell;
+                                        soldSummary.set(species, toSell);
+                                    }
+                                    if (soldSummary.size === 0) {
+                                        currentResultText = `${getH()} couldn't find any of the requested mounts to sell.`;
+                                    } else {
+                                        localGold += totalEarned;
+                                        const soldDesc = [...soldSummary.entries()].map(([s, n]) => n > 1 ? `${n}x <b>${s}</b>` : `the <b>${s}</b>`).join(", ");
+                                        currentResultText = `${getH()} found buyers for ${soldDesc}, earning <b>${totalEarned} GP</b>.`;
+                                    }
+                                }
                             } else {
-                                let p = entry.system.price?.value ?? entry.system.price ?? 0;
-                                if (typeof p === "string") p = parseFloat(p.replace(/[^0-9.]/g, ""));
-                                let price = Number(p || 0);
-                                const profitMult = level >= 17 ? 2.0 : (level >= 13 ? 1.5 : 1.2);
-                                const salePrice = Math.floor(price * profitMult);
-                                
-                                stableAnimals.splice(idx, 1);
-                                localGold += salePrice;
-                                currentResultText = `${getH()} found a buyer for the <b>${mountName}</b>, earning <b>${salePrice} GP</b>.`;
+                                // Auto sell: sell all non-protected mounts
+                                const toSell = stableAnimals.filter(a => !a.autoProtect);
+                                if (toSell.length === 0) {
+                                    currentResultText = `${getH()} reports there are no unprotected mounts to sell.`;
+                                } else {
+                                    let totalEarned = 0;
+                                    const soldSummary = new Map();
+                                    for (const animal of toSell) {
+                                        const entry = index.find(e => e.name === animal.species);
+                                        if (!entry) continue;
+                                        let p = entry.system.price?.value ?? entry.system.price ?? 0;
+                                        if (typeof p === "string") p = parseFloat(p.replace(/[^0-9.]/g, ""));
+                                        const price = Number(p || 0);
+                                        totalEarned += Math.floor(price * profitMult);
+                                        soldSummary.set(animal.species, (soldSummary.get(animal.species) || 0) + 1);
+                                    }
+                                    stableAnimals = stableAnimals.filter(a => a.autoProtect);
+                                    localGold += totalEarned;
+                                    const soldDesc = [...soldSummary.entries()].map(([s, n]) => n > 1 ? `${n}x ${s}` : s).join(", ");
+                                    currentResultText = `${getH()} sold <b>${soldDesc}</b>, earning <b>${totalEarned} GP</b>.`;
+                                }
                             }
                         }
+
+                        if (isAutoMode) stableAutoNextAction = (tradeType === "buy") ? "sell" : "buy";
                         // Persist to local vars for final update
                         facEntry.stableAnimals = stableAnimals;
                     } else {
@@ -7839,7 +8154,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         archiveBooks,
                         greenhousePoisonChoice,
                         theaterPhase, theaterProgress,
-                        stableItemChoice, stableTradeChoice, stableTransferType, stableTransferChoice,
+                        stableItemChoice, stableTradeChoice, stableBuyOrders, stableSellOrders, stableAutoNextAction, stableTransferType, stableTransferChoice,
                         stableAnimals: facEntry.stableAnimals || stableAnimals,
                         isDamaged, repairProgress, repairTurns,
                         // Automatic Fruit Refresh: A turn is 7 days, 
@@ -7896,6 +8211,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                     
                     [`flags.${MODULE_ID}.stableItemChoice`]: stableItemChoice,
                     [`flags.${MODULE_ID}.stableTradeChoice`]: stableTradeChoice,
+                    [`flags.${MODULE_ID}.stableBuyOrders`]: stableBuyOrders,
+                    [`flags.${MODULE_ID}.stableSellOrders`]: stableSellOrders,
+                    [`flags.${MODULE_ID}.stableAutoNextAction`]: stableAutoNextAction,
                     [`flags.${MODULE_ID}.stableTransferType`]: stableTransferType,
                     [`flags.${MODULE_ID}.stableTransferChoice`]: stableTransferChoice,
                     [`flags.${MODULE_ID}.stableAnimals`]: facEntry.stableAnimals || stableAnimals,
@@ -8400,17 +8718,35 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 if (fac.isFlag) Object.assign(fac.doc.flags[MODULE_ID], updates);
                 else await fac.doc.update(updates);
 
-                // Grant a Script item to each writer's character
+                // Create a Production Composition world item in a dedicated folder
                 const scriptTitle = getFacFlag("theaterScriptTitle") || "";
-                const scriptItemData = {
-                    name: scriptTitle ? `${scriptTitle} (Script)` : `${authorName}'s Script`,
-                    type: "loot",
-                    img: "icons/sundries/books/book-red-exclamation.webp",
-                    system: { description: { value: `A script written by ${authorName} for a theatrical production.` }, quantity: 1 }
-                };
-                for (const writer of writers) {
-                    const writerActor = (writer.actorId ? game.actors.get(writer.actorId) : null) || actor;
-                    await writerActor.createEmbeddedDocuments("Item", [scriptItemData]);
+                const scriptSummary = getFacFlag("theaterScriptSummary") || "";
+                const primaryWriterActorId = writers[0]?.actorId || actor.id;
+                let compositionsFolder = game.folders.find(f => f.type === "Item" && f.name === "Production Compositions");
+                if (!compositionsFolder) {
+                    compositionsFolder = await Folder.create({ name: "Production Compositions", type: "Item", color: "#8f0000" });
+                }
+                const COMPOSITION_UUID = "Compendium.dnd-2024-bastion-manager.bastion-output-items.Item.vl6Z0UdEBjoqTJ4l";
+                const templateItem = await fromUuid(COMPOSITION_UUID);
+                if (templateItem) {
+                    const itemData = templateItem.toObject();
+                    delete itemData._id;
+                    delete itemData.folder;
+                    itemData.name = scriptTitle || `${authorName}'s Composition`;
+                    if (scriptSummary) itemData.system.description.value = `<p>${scriptSummary}</p>`;
+                    itemData.folder = compositionsFolder.id;
+                    itemData.flags = itemData.flags || {};
+                    itemData.flags[MODULE_ID] = { isProductionComposition: true, writerActorId: primaryWriterActorId, writerName: authorName };
+                    await Item.create(itemData);
+                } else {
+                    await Item.create({
+                        name: scriptTitle || `${authorName}'s Composition`,
+                        type: "loot",
+                        img: "icons/sundries/documents/document-official-capital.webp",
+                        folder: compositionsFolder.id,
+                        system: { description: { value: scriptSummary || `A composition by ${authorName} for a theatrical production.` }, quantity: 1 },
+                        flags: { [MODULE_ID]: { isProductionComposition: true, writerActorId: primaryWriterActorId, writerName: authorName } }
+                    });
                 }
 
                 resultText += "Writing is complete; rehearsals have now begun.";
@@ -8422,12 +8758,38 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 await BastionManager._postTheaterInvite(actor, fac);
                 
                 // Create a notification to resolve checks
+                const compWriterActorId = getFacFlag("theaterCompositionWriterActorId") || "";
+                const compWriterName = compWriterActorId ? (game.actors.get(compWriterActorId)?.name || getFacFlag("theaterAuthor") || null) : null;
+                const perfAuthor = getFacFlag("theaterAuthor") || "";
+                const perfContributors = getFacFlag("theaterContributors") || [];
+                const perfDirector = perfContributors.find(c => c.role === "Conductor/Director");
+                const perfPerformers = perfContributors.filter(c => c.role === "Performer");
+
+                const rosterRow = (icon, label, value, italic = false) =>
+                    `<div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px solid rgba(0,0,0,0.1);">
+                        <span style="opacity:0.7;">${icon} <b>${label}:</b></span>
+                        <span style="${italic ? "font-style:italic; opacity:0.6;" : ""}">${value}</span>
+                    </div>`;
+
+                const scriptTitle = getFacFlag("theaterScriptTitle") || "";
+                const rosterHtml = [
+                    scriptTitle ? rosterRow('<i class="fa-solid fa-scroll"></i>', "Script", scriptTitle, true) : "",
+                    perfAuthor ? rosterRow('<i class="fa-solid fa-pen-nib"></i>', "Author", perfAuthor) : "",
+                    rosterRow('<i class="fa-solid fa-baton"></i>', "Director", perfDirector ? `${perfDirector.name}${perfDirector.isHireling ? " (Hireling)" : ""}` : "Theater Hirelings", !perfDirector),
+                    perfPerformers.length ? rosterRow('<i class="fa-solid fa-star"></i>', "Performers", perfPerformers.map(p => p.name).join(", ")) : "",
+                    compWriterName ? rosterRow('<i class="fa-solid fa-music"></i>', "Guest Author", compWriterName) : ""
+                ].filter(Boolean).join("");
+
                 await ChatMessage.create({
                     content: `
                         <div class="bastion-chat-card">
                             <h3><i class="fa-solid fa-masks-theater"></i> Theater: Rehearsals Complete</h3>
                             <p>The rehearsals for the production in <b>${actor.name}'s</b> Bastion are finished. The performance phase has begun!</p>
-                            <p>Each contributor must now make a <b>DC 15 Charisma (Performance)</b> check to see if the show is a success and earn their Theater Die.</p>
+                            <div style="background:rgba(0,0,0,0.15); border:1px solid rgba(255,255,255,0.1); border-radius:4px; padding:6px 8px; margin:6px 0; font-size:0.9em;">
+                                ${rosterHtml}
+                            </div>
+                            <p style="margin-top:6px;">Each contributor must make a <b>DC 15 Charisma (Performance)</b> check to earn their Theater Die.${compWriterName ? ` <b>${compWriterName}</b> also earns a die as original author, regardless of participation.` : ""}</p>
+                            <button type="button" class="theater-performance-check-btn" style="width:100%; margin-top:6px;"><i class="fa-solid fa-dice-d20"></i> Roll DC 15 Performance Check</button>
                         </div>`
                 });
             } else if (phase === "Performing") {
@@ -8648,11 +9010,49 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             }
             return;
         } else if (action === "start-writing") {
-            const contributors = (ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.theaterContributors : fac.getFlag(MODULE_ID, "theaterContributors")) || [];
+            const dialogResult = await DialogV2.wait({
+                window: { title: "New Production", icon: "fa-solid fa-masks-theater" },
+                content: `
+                    <form style="display:flex; flex-direction:column; gap:10px; padding:5px 0;">
+                        <div>
+                            <label style="font-weight:bold; display:block; margin-bottom:4px;">Performance Title</label>
+                            <input type="text" name="title" placeholder="Untitled Production" style="width:100%;" />
+                        </div>
+                        <div>
+                            <label style="font-weight:bold; display:block; margin-bottom:4px;">Summary <span style="font-weight:normal; opacity:0.7;">(optional)</span></label>
+                            <textarea name="summary" rows="3" placeholder="A brief description of the performance..." style="width:100%; resize:vertical;"></textarea>
+                        </div>
+                    </form>`,
+                buttons: [{
+                    action: "ok",
+                    label: "Begin Writing",
+                    icon: "fa-solid fa-pen",
+                    default: true,
+                    callback: (event, button, dialog) => ({
+                        title: dialog.element.querySelector("[name='title']")?.value?.trim() || "",
+                        summary: dialog.element.querySelector("[name='summary']")?.value?.trim() || ""
+                    })
+                }, {
+                    action: "cancel",
+                    label: "Cancel",
+                    icon: "fa-solid fa-xmark"
+                }],
+                rejectClose: false,
+                modal: true
+            });
+            if (!dialogResult || dialogResult === "cancel") return;
+
+            let contributors = (ds.isFlag === "true" ? fac.flags?.[MODULE_ID]?.theaterContributors : fac.getFlag(MODULE_ID, "theaterContributors")) || [];
             if (!contributors.some(c => c.role === "Composer/Writer")) {
-                return ui.notifications.warn("A Composer/Writer must join the production before writing can begin.");
+                contributors = [...contributors, { actorId: this.actor.id, name: this.actor.name, role: "Composer/Writer" }];
             }
-            const updates = { [`flags.${MODULE_ID}.theaterPhase`]: "Writing", [`flags.${MODULE_ID}.theaterProgress`]: 0 };
+            const updates = {
+                [`flags.${MODULE_ID}.theaterPhase`]: "Writing",
+                [`flags.${MODULE_ID}.theaterProgress`]: 0,
+                [`flags.${MODULE_ID}.theaterContributors`]: contributors,
+                [`flags.${MODULE_ID}.theaterScriptTitle`]: dialogResult.title || "",
+                [`flags.${MODULE_ID}.theaterScriptSummary`]: dialogResult.summary || ""
+            };
             if (ds.isFlag === "true") {
                 for (let [k, v] of Object.entries(updates)) foundry.utils.setProperty(fac, k, v);
                 await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
@@ -8660,6 +9060,40 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 await fac.update(updates);
             }
             ui.notifications.info("Writing phase has officially begun.");
+        } else if (action === "use-composition") {
+            const compItemId = ds.compositionItemId;
+            if (!compItemId) return ui.notifications.warn("No composition selected.");
+
+            const compItem = game.items.get(compItemId);
+            if (!compItem) return ui.notifications.warn("Could not find the selected composition.");
+
+            const writerName = compItem.getFlag(MODULE_ID, "writerName") || "Unknown";
+            const writerActorId = compItem.getFlag(MODULE_ID, "writerActorId") || "";
+            const scriptTitle = compItem.name;
+
+            const compUpdates = {
+                [`flags.${MODULE_ID}.theaterPhase`]: "Rehearsing",
+                [`flags.${MODULE_ID}.theaterProgress`]: 0,
+                [`flags.${MODULE_ID}.theaterAuthor`]: writerName,
+                [`flags.${MODULE_ID}.theaterCompositionWriterActorId`]: writerActorId,
+                [`flags.${MODULE_ID}.theaterContributors`]: [],
+                [`flags.${MODULE_ID}.theaterScriptTitle`]: scriptTitle
+            };
+            if (ds.isFlag === "true") {
+                for (let [k, v] of Object.entries(compUpdates)) foundry.utils.setProperty(fac, k, v);
+                await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
+            } else {
+                await fac.update(compUpdates);
+            }
+
+            await ChatMessage.create({
+                content: `<div class="bastion-chat-card">
+                    <h3><i class="fa-solid fa-masks-theater"></i> Theater: Existing Script Selected</h3>
+                    <p><b>${this.actor.name}'s</b> Theater will perform <i>"${scriptTitle}"</i>, a composition by <b>${writerName}</b>.</p>
+                    <p>Rehearsals have begun! When the performance concludes, <b>${writerName}</b> will earn a Theater Die as the original author, regardless of participation.</p>
+                </div>`
+            });
+            ui.notifications.info(`Using existing composition: "${scriptTitle}". Rehearsals have begun.`);
         } else if (action === "invite-writer") {
             await BastionManager._postTheaterInvite(this.actor, { doc: fac, id: ds.itemId, isFlag: ds.isFlag === "true" }, "writer");
             ui.notifications.info("Call for Composer/Writer posted to chat.");
@@ -8680,7 +9114,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 if (!confirm) return;
             }
 
-            const updates = { [`flags.${MODULE_ID}.theaterPhase`]: "Idle", [`flags.${MODULE_ID}.theaterProgress`]: 0, [`flags.${MODULE_ID}.theaterAuthor`]: "", [`flags.${MODULE_ID}.theaterContributors`]: [], [`flags.${MODULE_ID}.theaterScriptTitle`]: "" };
+            const updates = { [`flags.${MODULE_ID}.theaterPhase`]: "Idle", [`flags.${MODULE_ID}.theaterProgress`]: 0, [`flags.${MODULE_ID}.theaterAuthor`]: "", [`flags.${MODULE_ID}.theaterContributors`]: [], [`flags.${MODULE_ID}.theaterScriptTitle`]: "", [`flags.${MODULE_ID}.theaterScriptSummary`]: "", [`flags.${MODULE_ID}.theaterCompositionWriterActorId`]: "" };
             if (ds.isFlag === "true") {
                 for (let [k, v] of Object.entries(updates)) foundry.utils.setProperty(fac, k, v);
                 await this.actor.setFlag(MODULE_ID, "groupFacilities", gf);
@@ -8757,7 +9191,15 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (!fac) return;
 
         let contributors = Array.from((isFlag ? fac.flags?.[MODULE_ID]?.theaterContributors : fac.getFlag(MODULE_ID, "theaterContributors")) || []);
-        
+
+        // Only one Conductor/Director allowed — reject if a different actor already holds the role
+        if (characterData.role === "Conductor/Director") {
+            const existingDirector = contributors.find(c => c.role === "Conductor/Director" && c.actorId !== characterData.actorId);
+            if (existingDirector) {
+                return ui.notifications.warn(`${existingDirector.name} is already the Conductor/Director for this production.`);
+            }
+        }
+
         // Update existing or add new
         const existingIdx = contributors.findIndex(c => c.actorId === characterData.actorId && characterData.actorId !== null);
         if (existingIdx !== -1) contributors[existingIdx] = characterData;
@@ -9397,7 +9839,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         let specialFacilities = [];
         for (const fac of facs) {
             const isBasic = fac.doc.system?.type?.value === "basic";
-            if (!isBasic) specialFacilities.push(fac.name);
+            if (!isBasic) specialFacilities.push({ name: fac.name, id: fac.isFlag ? fac.doc._id : fac.doc.id, isFlag: fac.isFlag });
             
             const hirelings = fac.isFlag ? (fac.doc.flags?.[MODULE_ID]?.hirelings) : (fac.doc.getFlag(MODULE_ID, "hirelings"));
             if (Array.isArray(hirelings)) {
@@ -9409,7 +9851,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             }
         }
         const getRandomHireling = () => allHirelings.length ? allHirelings[Math.floor(Math.random() * allHirelings.length)] : null;
-        const getRandomSpecialFac = () => specialFacilities.length ? specialFacilities[Math.floor(Math.random() * specialFacilities.length)] : "random special facility";
+        const getRandomSpecialFac = () => specialFacilities.length ? specialFacilities[Math.floor(Math.random() * specialFacilities.length)] : null;
 
         // Wrap output in an identifiable container holding the actor ID so resolution buttons know who to apply currency to
         const mkRes = (inner) => `<div class="event-resolution" data-actor-id="${actor?.id || ''}"><div style="margin-top: 5px; display: flex; gap: 5px; flex-wrap: wrap; align-items: center;">${inner}</div></div>`;
@@ -9452,10 +9894,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             }
         } else if (roll <= 58) { 
             const h2 = getRandomHireling();
-            cat = "Criminal Hireling"; 
+            cat = "Criminal Hireling";
             const identity = h2 ? `<b>${h2.name} the ${h2.prof}</b>` : "One of your Bastion's hirelings";
             desc = `${identity} has a criminal past that comes to light when officials or bounty hunters visit your Bastion with a warrant for the hireling's arrest. You can retain the hireling by paying a bribe of 1d6 × 100 GP. Otherwise, the hireling is arrested and taken away. If this loss leaves one of your facilities without any hirelings, that facility can't be used on your next Bastion turn. The hireling is then replaced at no cost to you.`;
-            auto = mkRes(`<span style="margin-right: 5px;">Pay 1d6x100 GP to keep ${h2 ? h2.name : "them"}, OR let them be arrested?</span>` + mkBtn('criminal', 'pay', 'Pay Bribe') + mkBtn('criminal', 'arrest', 'Let Arrested'));
+            auto = mkRes(`<span style="display:none" class="criminal-hireling-data" data-hireling-name="${h2 ? h2.name : ''}" data-hireling-fac="${h2 ? h2.facility : ''}"></span><span style="margin-right: 5px;">Pay 1d6x100 GP to keep ${h2 ? h2.name : "them"}, OR let them be arrested?</span>` + mkBtn('criminal', 'pay', 'Pay Bribe') + mkBtn('criminal', 'arrest', 'Let Arrested'));
         } else if (roll <= 63) { 
             cat = "Extraordinary Opportunity"; desc = "Your Bastion is given the opportunity to host an important festival or celebration, fund the research of a powerful spellcaster, or appease a domineering noble. Work with the DM to determine the details. If you seize the opportunity, you must pay 500 GP to cover costs. In return, your Bastion gains a sudden influx of recognition or attention, prompting the DM to roll again on the Bastion Events table (rerolling this result if it comes up again). If you decline the opportunity, you don't pay the money and nothing else happens.";
             if (isReroll) auto = `Paid <b>500 GP</b> to seize this opportunity.`;
@@ -9470,13 +9912,44 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 const gRoll = BastionManager._silentRoll("1d4").total;
                 if (gRoll === 1) auto = "The guest is of great renown. Stays 7 days, then gives you a <b>Letter of Recommendation</b>.";
                 else if (gRoll === 2) { const offer = BastionManager._silentRoll("1d6*100").total; if(actor) await actor.update({"system.currency.gp": (actor.system.currency?.gp || 0) + offer}); auto = `The guest requests sanctuary for 7 days, offering a gift of <b>${offer} GP</b>.`; }
-                else if (gRoll === 3) auto = "The guest is a mercenary. You gain <b>1 additional Bastion Defender</b> until sent away or killed.";
-                else auto = "The guest is a Friendly monster (e.g., brass dragon). It defends against the next attack so you lose 0 Defenders, then leaves.";
+                else if (gRoll === 3) {
+                    if (actor) {
+                        const mercenaries = Array.from(actor.getFlag(MODULE_ID, "mercenaryDefenders") || []);
+                        const mercName = BastionManager._generateRandomName ? BastionManager._generateRandomName() : "Mercenary";
+                        mercenaries.push({ name: mercName, id: foundry.utils.randomID() });
+                        await actor.setFlag(MODULE_ID, "mercenaryDefenders", mercenaries);
+                        auto = `A mercenary named <b>${mercName}</b> has joined as a Bastion Defender. They fight without facility assignment until dismissed or killed.`;
+                    } else auto = "The guest is a mercenary. You gain <b>1 additional Bastion Defender</b> until sent away or killed.";
+                }
+                else {
+                    if (actor) await actor.setFlag(MODULE_ID, "friendlyMonsterGuest", true);
+                    auto = "A Friendly monster (e.g., brass dragon) has taken up residence. <b>The next attack will result in 0 Defender deaths</b>, after which it departs.";
+                }
             }
-        } else if (roll <= 79) { 
+        } else if (roll <= 79) {
             const f1 = getRandomSpecialFac();
-            cat = "Lost Hirelings"; desc = `One of your Bastion's special facilities, the <b>${f1}</b>, loses its hirelings. The cause of their departure is up to you. The facility can't be used on your next Bastion turn, but the hirelings are replaced at no cost to you at that point.`; 
-            auto = `The <b>${f1}</b> is unusable next turn.`; 
+            const f1Name = f1 ? f1.name : "a random special facility";
+            cat = "Lost Hirelings"; desc = `One of your Bastion's special facilities, the <b>${f1Name}</b>, loses its hirelings. The cause of their departure is up to you. The facility can't be used on your next Bastion turn, but the hirelings are replaced at no cost to you at that point.`;
+            if (promptAll && f1) {
+                auto = mkRes(`<span style="display:none" class="lh-fac-data" data-fac-id="${f1.id}" data-is-fac-flag="${f1.isFlag}"></span><span style="margin-right:5px;">The <b>${f1Name}</b> loses its hirelings and is unusable next turn.</span>` + mkBtn('lostHirelings', 'auto', 'Apply Effect') + mkBtn('lostHirelings', 'manual', 'Resolve Manually'));
+            } else {
+                if (f1 && actor) {
+                    const progIncrement = (game.settings.get(MODULE_ID, "calculationMode") === "days") ? effectiveDaysPerTurn() : 1;
+                    if (f1.isFlag) {
+                        const allGf = Array.from(actor.getFlag(MODULE_ID, "groupFacilities") || []);
+                        const gf = allGf.find(g => g._id === f1.id);
+                        if (gf) {
+                            if (!gf.flags) gf.flags = {}; if (!gf.flags[MODULE_ID]) gf.flags[MODULE_ID] = {};
+                            Object.assign(gf.flags[MODULE_ID], { isDamaged: true, repairProgress: 0, repairTurns: progIncrement });
+                            await actor.setFlag(MODULE_ID, "groupFacilities", allGf);
+                        }
+                    } else {
+                        const item = actor.items.get(f1.id);
+                        if (item) await item.update({ [`flags.${MODULE_ID}.isDamaged`]: true, [`flags.${MODULE_ID}.repairProgress`]: 0, [`flags.${MODULE_ID}.repairTurns`]: progIncrement });
+                    }
+                }
+                auto = `The <b>${f1Name}</b> hirelings have departed. The facility is marked unusable for the next turn (hirelings return at no cost).`;
+            }
         } else if (roll <= 83) { 
             const h3 = getRandomHireling();
             cat = "Magical Discovery"; 
@@ -9484,7 +9957,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             desc = `${actorStr} or accidentally create an Uncommon magic item of your choice at no cost to you. The magic item must be a Potion or Scroll.`; 
             auto = `Gain one <b>Uncommon Potion</b> or <b>Uncommon Scroll</b> of your choice.`; 
         } else if (roll <= 91) { 
-            cat = "Refugees"; desc = "A group of 2d4 refugees fleeing from a monster attack, a natural disaster, or some other calamity seeks refuge in your Bastion. If your Bastion lacks a basic facility large enough to house them, the refugees camp right outside the Bastion. The refugees offer you 1d6 × 100 GP as payment for your hospitality and protection. They stay until you find them a new home or a hostile force attacks your Bastion."; 
+            cat = "Refugees"; desc = "A group of 2d4 refugees fleeing from a monster attack, a natural disaster, or some other calamity seeks refuge in your Bastion. If your Bastion lacks a basic facility large enough to house them, the refugees camp right outside the Bastion. The refugees offer you 1d6 × 100 GP as payment for your hospitality and protection. They stay until you find them a new home or a hostile force attacks your Bastion.";
             auto = mkRes(`<span style="margin-right: 5px;">Allow 2d4 refugees to stay for a 1d6x100 GP reward?</span>` + mkBtn('refugees', 'accept', 'Offer Protection') + mkBtn('refugees', 'decline', 'Turn Away'));
         } else if (roll <= 98) { 
             cat = "Request for Aid"; desc = "Your Bastion is called on to help a local leader. Perhaps there's a search on for a missing person, or brigands are plaguing the area. If you help, you must dispatch one or more Bastion Defenders. Roll 1d6 for each Bastion Defender you send. If the total is 10 or higher, the problem is solved and you earn a reward of 1d6 × 100 GP. If the total is less than 10, the problem is still solved, but the reward is halved and one of your Bastion Defenders is killed. Remove that Bastion Defender from your Bastion's roster."; 
@@ -9742,6 +10215,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             }
         });
 
+        // Add bastion-level mercenary defenders (not tied to any facility)
+        const mercenaryDefenders = Array.from(actor.getFlag(MODULE_ID, "mercenaryDefenders") || []);
+        mercenaryDefenders.forEach(m => {
+            defenderPool.push({ name: m.name, mercenaryId: m.id, isMercenary: true, owner: actor });
+        });
+
         // CR lookup for menagerie creatures when CR-scaling mode is active
         if (crScaleMode) {
             const menagerieEntries = defenderPool.filter(d => d.isMenagerie);
@@ -9826,7 +10305,19 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const deaths = Math.min(totalDefenders, ones);
         const deceasedNames = [];
 
-        if (deaths > 0) {
+        // Friendly Monster Guest intercepts all deaths once, then departs
+        const hasFriendlyGuest = actor.getFlag(MODULE_ID, "friendlyMonsterGuest");
+        let guestIntercepted = false;
+        if (hasFriendlyGuest && deaths > 0) {
+            guestIntercepted = true;
+            await actor.unsetFlag(MODULE_ID, "friendlyMonsterGuest");
+        }
+        const effectiveDeaths = guestIntercepted ? 0 : deaths;
+
+        // Refugees flee during a bastion attack
+        if (actor.getFlag(MODULE_ID, "refugees")) await actor.unsetFlag(MODULE_ID, "refugees");
+
+        if (effectiveDeaths > 0) {
             const shuffled = defenderPool.sort(() => 0.5 - Math.random());
             const killed = shuffled.slice(0, deaths);
             const updatesByOwner = {};
@@ -9836,7 +10327,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 if (d.isMenagerie) {
                     if (!menagerieDeathsByFac[d.facId]) menagerieDeathsByFac[d.facId] = { isFlag: d.isFlag, owner: d.owner, deceased: [] };
                     menagerieDeathsByFac[d.facId].deceased.push(d.species);
-                } else {
+                } else if (!d.isMercenary) {
                     const oId = d.owner.id;
                     if (!updatesByOwner[oId]) updatesByOwner[oId] = {};
                     if (!updatesByOwner[oId][d.facId]) updatesByOwner[oId][d.facId] = { isFlag: d.isFlag, deaths: 0, deceased: [] };
@@ -9934,6 +10425,19 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 mData.deceased.forEach(sp => mGraveyard.push({ name: sp, date: mDate, turn: mTurn }));
                 await mActor.setFlag(MODULE_ID, "graveyard", mGraveyard);
             }
+
+            // Remove deceased mercenary defenders from bastion flag and record in graveyard
+            const deadMercs = killed.filter(d => d.isMercenary);
+            if (deadMercs.length > 0) {
+                const deadMercIds = new Set(deadMercs.map(d => d.mercenaryId));
+                const updatedMercs = mercenaryDefenders.filter(m => !deadMercIds.has(m.id));
+                await actor.setFlag(MODULE_ID, "mercenaryDefenders", updatedMercs);
+                const mercGraveyard = Array.from(actor.getFlag(MODULE_ID, "graveyard") || []);
+                const mercTurn = actor.getFlag(MODULE_ID, "turnCount") || 0;
+                const mercDate = new Date().toLocaleDateString();
+                deadMercs.forEach(d => mercGraveyard.push({ name: d.name, date: mercDate, turn: mercTurn }));
+                await actor.setFlag(MODULE_ID, "graveyard", mercGraveyard);
+            }
         }
 
         if (isStockedBool && armoryFac) {
@@ -9975,10 +10479,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         let armoryMsg = numD8s > 0 ? `<p style="color: #2e7d32; font-size: 0.95em; margin-bottom: 4px;"><i class="fa-solid fa-shield-halved"></i> <b>${numD8s === baseDicePool ? "Superior" : "Partial"} Equipment:</b> Defenders utilized armory stock, upgrading <b>${numD8s}</b> dice to d8s.</p>` : "";
         if (totalMenagerie > 0) armoryMsg += `<p style="color: #c8a45e; font-size: 0.9em; margin-bottom: 4px;"><i class="fa-solid fa-paw"></i> <b>${totalMenagerie} Menagerie creature(s)</b> contributed individual dice${crScaleMode ? ` (${game.settings.get(MODULE_ID, "menagerieDiceMode")}-scaled)` : " (d6 RAW)"}${menagerieArmoryBonus && isStockedBool ? ", upgraded +1 die step by Armory stocking" : ""}.</p>`;
         if (ltReduction > 0) armoryMsg += `<p style="color: #b71c1c; font-size: 0.9em; margin-bottom: 4px;"><i class="fa-solid fa-chess-rook"></i> <b>War Room Lieutenants:</b> ${ltReduction} lieutenant${ltReduction !== 1 ? "s" : ""} in residence reduced the dice pool from 6 to <b>${baseDicePool}</b>.</p>`;
+        if (mercenaryDefenders.length > 0) armoryMsg += `<p style="color: #6a4c93; font-size: 0.9em; margin-bottom: 4px;"><i class="fa-solid fa-user-secret"></i> <b>${mercenaryDefenders.length} Mercenary Defender(s)</b> joined the bastion's defense.</p>`;
+        const guestMsg = guestIntercepted ? `<p style="color: #5c6bc0; font-size: 0.95em; margin-bottom: 4px;"><i class="fa-solid fa-dragon"></i> <b>Friendly Monster Guest:</b> Your resident creature interceded, protecting all defenders from harm. It has now departed.</p>` : "";
         let spellcasterMsg = departing.length > 0 ? `<p style="color: darkred; font-size: 0.95em; margin-top: 8px; border-top: 1px dashed rgba(255,0,0,0.3); padding-top: 5px;"><i class="fa-solid fa-person-running"></i> Visiting spellcaster(s) from <b>${departing.join(", ")}</b> departed immediately due to the chaos.</p>` : "";
 
         let definitiveMsg = "";
-        const remaining = totalDefenders - deaths;
+        const remaining = totalDefenders - effectiveDeaths;
         const nameList = deceasedNames.length > 1 ? deceasedNames.slice(0, -1).join(", ") + " and " + deceasedNames.slice(-1) : (deceasedNames[0] || "an unnamed defender");
         
         let diceHtml = "";
@@ -10019,18 +10525,23 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             } else {
                 definitiveMsg = `No defenders were present to hold the walls. A special facility has been damaged and forced to shut down.`;
             }
-        } else if (deaths === 0) {
-            definitiveMsg = `No defenders died in the assault. <b>${remaining}</b> remain to guard the Bastion.`;
+        } else if (effectiveDeaths === 0) {
+            if (guestIntercepted) {
+                definitiveMsg = `The attack was repelled with no casualties — your friendly monster guest sacrificed itself for the Bastion. <b>${remaining}</b> remain to guard the walls.`;
+            } else {
+                definitiveMsg = `No defenders died in the assault. <b>${remaining}</b> remain to guard the Bastion.`;
+            }
         } else {
-            const dieText = deaths === 1 ? "defender died" : "defenders died";
+            const dieText = effectiveDeaths === 1 ? "defender died" : "defenders died";
             const rememberText = deceasedNames.length ? `<b>${nameList}</b> will be remembered for their service. ` : "";
-            definitiveMsg = `<b>${deaths}</b> ${dieText} in the assault. ${rememberText}<b>${remaining}</b> remain to guard the Bastion.`;
+            definitiveMsg = `<b>${effectiveDeaths}</b> ${dieText} in the assault. ${rememberText}<b>${remaining}</b> remain to guard the Bastion.`;
             if (remaining === 0) definitiveMsg += ` A special facility has been damaged and forced to shut down.`;
         }
 
         const html = `
             <h3 style="border-bottom: 2px solid #a32a22; padding-bottom: 3px; margin-bottom: 8px; margin-top: 10px;"><i class="fa-solid fa-swords"></i> Bastion Attack!</h3>
             ${armoryMsg}
+            ${guestMsg}
             <div style="margin-bottom: 8px;">${definitiveMsg}</div>
             ${atkRoll ? `
                 <details style="margin: 10px 0; border: none; background: none;">
@@ -10146,14 +10657,16 @@ class EventResolverApp extends ApplicationV2 {
             });
         });
 
-        const btns = this.element.querySelectorAll('button[data-action="resolveEvent"]');
-        for (const btn of btns) {
-            btn.addEventListener('click', async (event) => {
-                const ds = event.target.dataset;
+        // Use event delegation so dynamically-inserted buttons (e.g. disband refugees) are also caught.
+        this.element.addEventListener('click', async (event) => {
+            const btn = event.target.closest('button[data-action="resolveEvent"]');
+            if (!btn) return;
+            {
+                const ds = btn.dataset;
                 const eventType = ds.event;
                 const choice = ds.choice;
-                const container = event.target.closest('.event-resolution');
-                const actorId = container.dataset.actorId;
+                const container = btn.closest('.event-resolution');
+                const actorId = container?.dataset.actorId;
                 const a = game.actors.get(actorId);
 
                 let resultText = "";
@@ -10195,16 +10708,50 @@ class EventResolverApp extends ApplicationV2 {
                         }
                     } else resultText = `<b>Resolved Manually.</b>`;
                 } else if (eventType === "criminal") {
+                    const hSpan = container.querySelector('.criminal-hireling-data');
+                    const hirelingName = hSpan?.dataset.hirelingName || '';
+                    const hirelingFac = hSpan?.dataset.hirelingFac || '';
                     if (choice === "pay") {
                         const bribe = BastionManager._silentRoll("1d6*100").total;
-                        resultText = `You paid the <b>${bribe} GP</b> bribe.`;
-                    } else resultText = `You let them be arrested. (If this leaves a facility with 0 hirelings, it is unusable next turn).`; 
+                        if (a) await a.update({ "system.currency.gp": Math.floor((a.system.currency?.gp || 0) - bribe) });
+                        resultText = `You paid the <b>${bribe} GP</b> bribe${bribe > 0 ? " (deducted from treasury)" : ""}. ${hirelingName ? `<b>${hirelingName}</b> stays on.` : "The hireling stays on."}`;
+                    } else {
+                        let removedMsg = "";
+                        if (a && hirelingName && hirelingFac) {
+                            const facs = BastionManager._getActorFacilities(a, true);
+                            const targetFac = facs.find(f => f.name === hirelingFac);
+                            if (targetFac) {
+                                const hirelings = Array.from(targetFac.isFlag ? (targetFac.doc.flags?.[MODULE_ID]?.hirelings || []) : (targetFac.doc.getFlag(MODULE_ID, "hirelings") || []));
+                                const idx = hirelings.indexOf(hirelingName);
+                                if (idx !== -1) hirelings.splice(idx, 1);
+                                const progIncrement = (game.settings.get(MODULE_ID, "calculationMode") === "days") ? effectiveDaysPerTurn() : 1;
+                                const nowEmpty = hirelings.length === 0;
+                                if (targetFac.isFlag) {
+                                    const allGf = Array.from(a.getFlag(MODULE_ID, "groupFacilities") || []);
+                                    const gf = allGf.find(f => f._id === (targetFac.doc._id || targetFac.doc.id));
+                                    if (gf) {
+                                        if (!gf.flags) gf.flags = {}; if (!gf.flags[MODULE_ID]) gf.flags[MODULE_ID] = {};
+                                        gf.flags[MODULE_ID].hirelings = hirelings;
+                                        if (nowEmpty) Object.assign(gf.flags[MODULE_ID], { isDamaged: true, repairProgress: 0, repairTurns: progIncrement });
+                                        await a.setFlag(MODULE_ID, "groupFacilities", allGf);
+                                    }
+                                } else {
+                                    const updates = { [`flags.${MODULE_ID}.hirelings`]: hirelings };
+                                    if (nowEmpty) Object.assign(updates, { [`flags.${MODULE_ID}.isDamaged`]: true, [`flags.${MODULE_ID}.repairProgress`]: 0, [`flags.${MODULE_ID}.repairTurns`]: progIncrement });
+                                    await a.items.get(targetFac.doc.id)?.update(updates);
+                                }
+                                removedMsg = nowEmpty ? ` The <b>${hirelingFac}</b> is now without hirelings and is unusable next turn.` : ` Removed from <b>${hirelingFac}</b>.`;
+                            }
+                        }
+                        resultText = `${hirelingName ? `<b>${hirelingName}</b> was arrested.` : "The hireling was arrested."}${removedMsg} They will be replaced at no cost before your next turn.`;
+                    }
                 } else if (eventType === "opportunity") {
                     if (choice === "pay") {
+                        if (a) await a.update({ "system.currency.gp": Math.floor((a.system.currency?.gp || 0) - 500) });
                         let bonusRoll = BastionManager._silentRoll("1d100").total;
                         while (bonusRoll >= 59 && bonusRoll <= 63) bonusRoll = BastionManager._silentRoll("1d100").total;
                         const extra = await BastionManager._processEventRoll(bonusRoll, a, true);
-                        resultText = `Paid <b>500 GP</b> to seize this opportunity.<br><div style="margin-top:8px; padding: 8px; background: rgba(0,0,0,0.2); border-left: 3px solid #ccc;"><em>Bonus Event (Roll ${bonusRoll}):</em> <b style="color: var(--color-text-light-heading);">${extra.cat}</b><br><div style="margin-top: 4px;">${extra.auto}</div></div>`;
+                        resultText = `Paid <b>500 GP</b> (deducted from treasury) to seize this opportunity.<br><div style="margin-top:8px; padding: 8px; background: rgba(0,0,0,0.2); border-left: 3px solid #ccc;"><em>Bonus Event (Roll ${bonusRoll}):</em> <b style="color: var(--color-text-light-heading);">${extra.cat}</b><br><div style="margin-top: 4px;">${extra.auto}</div></div>`;
                     } else resultText = `You declined the opportunity. Nothing happens.`;
                 } else if (eventType === "visitors") {
                     if (choice === "accept") {
@@ -10217,28 +10764,80 @@ class EventResolverApp extends ApplicationV2 {
                         const gRoll = BastionManager._silentRoll("1d4").total;
                         if (gRoll === 1) resultText = "The guest is of great renown. Stays 7 days, then gives you a <b>Letter of Recommendation</b>.";
                         else if (gRoll === 2) { const offer = BastionManager._silentRoll("1d6*100").total; if(a) await a.update({"system.currency.gp": Math.floor((a.system.currency?.gp || 0) + offer)}); resultText = `The guest requests sanctuary for 7 days, offering a gift of <b>${offer} GP</b>.`; }
-                        else if (gRoll === 3) resultText = "The guest is a mercenary. You gain <b>1 additional Bastion Defender</b> until sent away or killed.";
-                        else resultText = "The guest is a Friendly monster. It defends against the next attack so you lose 0 Defenders, then leaves.";
+                        else if (gRoll === 3) {
+                            if (a) {
+                                const mercenaries = Array.from(a.getFlag(MODULE_ID, "mercenaryDefenders") || []);
+                                const mercName = BastionManager._generateRandomName ? BastionManager._generateRandomName() : "Mercenary";
+                                mercenaries.push({ name: mercName, id: foundry.utils.randomID() });
+                                await a.setFlag(MODULE_ID, "mercenaryDefenders", mercenaries);
+                                resultText = `A mercenary named <b>${mercName}</b> has joined as a Bastion Defender. They fight without facility assignment until dismissed or killed.`;
+                            } else resultText = "The guest is a mercenary. You gain <b>1 additional Bastion Defender</b> until sent away or killed.";
+                        }
+                        else {
+                            if (a) await a.setFlag(MODULE_ID, "friendlyMonsterGuest", true);
+                            resultText = "A Friendly monster (e.g., brass dragon) has taken up residence. <b>The next attack will result in 0 Defender deaths</b>, after which it departs.";
+                        }
                     } else resultText = `<b>Resolved Manually.</b>`;
                 } else if (eventType === "refugees") {
                     if (choice === "accept") {
                         const ref = BastionManager._silentRoll("2d4").total;
                         const offer = BastionManager._silentRoll("1d6*100").total;
-                        if(a) await a.update({"system.currency.gp": Math.floor((a.system.currency?.gp || 0) + offer)});
-                        resultText = `You took in <b>${ref}</b> refugees. They paid <b>${offer} GP</b>. They stay until relocated or the Bastion is attacked.`; 
+                        if (a) {
+                            await a.update({ "system.currency.gp": Math.floor((a.system.currency?.gp || 0) + offer) });
+                            await a.setFlag(MODULE_ID, "refugees", { count: ref });
+                        }
+                        const disbandBtn = `<button type="button" data-action="resolveEvent" data-event="disbandRefugees" data-choice="disband" style="width: auto; padding: 4px 10px; font-size: 0.95em; background: rgba(0,0,0,0.2); color: var(--color-text-light-primary); border: 1px solid var(--color-border-light-1); border-radius: 4px; cursor: pointer; margin-top: 6px;"><i class="fa-solid fa-person-walking-arrow-right"></i> Find New Home (Disband)</button>`;
+                        resultText = `<div class="event-resolution" data-actor-id="${actorId}">You took in <b>${ref}</b> refugees. They paid <b>${offer} GP</b>. They stay until relocated or the Bastion is attacked.<br><div style="margin-top: 6px;">${disbandBtn}</div></div>`;
                     } else resultText = `You turned the refugees away.`;
+                } else if (eventType === "disbandRefugees") {
+                    if (a) await a.unsetFlag(MODULE_ID, "refugees");
+                    resultText = `The refugees have found a new home and departed.`;
+                } else if (eventType === "lostHirelings") {
+                    if (choice === "auto" && a) {
+                        const lhSpan = container.querySelector('.lh-fac-data');
+                        const lhFacId = lhSpan?.dataset.facId;
+                        const lhIsFlag = lhSpan?.dataset.isFacFlag === "true";
+                        if (lhFacId) {
+                            const progIncrement = (game.settings.get(MODULE_ID, "calculationMode") === "days") ? effectiveDaysPerTurn() : 1;
+                            if (lhIsFlag) {
+                                const allGf = Array.from(a.getFlag(MODULE_ID, "groupFacilities") || []);
+                                const gf = allGf.find(f => f._id === lhFacId);
+                                if (gf) {
+                                    if (!gf.flags) gf.flags = {}; if (!gf.flags[MODULE_ID]) gf.flags[MODULE_ID] = {};
+                                    Object.assign(gf.flags[MODULE_ID], { isDamaged: true, repairProgress: 0, repairTurns: progIncrement });
+                                    await a.setFlag(MODULE_ID, "groupFacilities", allGf);
+                                }
+                            } else {
+                                const item = a.items.get(lhFacId);
+                                if (item) await item.update({ [`flags.${MODULE_ID}.isDamaged`]: true, [`flags.${MODULE_ID}.repairProgress`]: 0, [`flags.${MODULE_ID}.repairTurns`]: progIncrement });
+                            }
+                            resultText = `Applied: facility is marked unusable for the next turn. Hirelings will return at no cost.`;
+                        } else resultText = `Effect applied.`;
+                    } else resultText = `<b>Resolved Manually.</b>`;
                 } else if (eventType === "aid") {
                     if (choice === "send") {
                         const input = container.querySelector('input.aid-count');
                         let count = parseInt(input?.value) || 1;
                         const maxDefenders = parseInt(input?.max) || count;
-                        // Clamp the count between 1 and the available defenders
                         count = Math.max(1, Math.min(count, maxDefenders));
-                        
-                        const aidResults = Array.from({ length: count }, () => Math.floor(Math.random() * 6) + 1);
+
+                        // Optional: scale dice using armory/menagerie rules
+                        const aidUsesDefenderRules = game.settings.get(MODULE_ID, "aidUsesDefenderRules");
+                        let aidDie = 6;
+                        let aidDieNote = "";
+                        if (aidUsesDefenderRules && a) {
+                            const aidFacs = BastionManager._getActorFacilities(a, true);
+                            const armFac = aidFacs.find(f => f.name.toLowerCase().includes("armory"));
+                            if (armFac) {
+                                const isStocked = armFac.isFlag ? !!(armFac.doc.flags?.[MODULE_ID]?.isStocked) : !!(armFac.doc.getFlag(MODULE_ID, "isStocked"));
+                                if (isStocked) { aidDie = 8; aidDieNote = ` <span style="font-size:0.85em; color:#4caf50;">(d8 — Armory equipped)</span>`; }
+                            }
+                        }
+
+                        const aidResults = Array.from({ length: count }, () => Math.floor(Math.random() * aidDie) + 1);
                         const dTotal = aidResults.reduce((a, b) => a + b, 0);
                         const diceHtml = aidResults.map(r =>
-                            `<span style="display: inline-block; width: 28px; height: 28px; line-height: 28px; text-align: center; background-image: url('icons/svg/d6-grey.svg'); background-size: contain; background-repeat: no-repeat; color: white; font-weight: bold; font-size: 0.9em; margin: 0 2px; filter: drop-shadow(0 0 1px black);">${r}</span>`
+                            `<span style="display: inline-block; width: 28px; height: 28px; line-height: 28px; text-align: center; background-image: url('icons/svg/d${aidDie}-grey.svg'); background-size: contain; background-repeat: no-repeat; color: white; font-weight: bold; font-size: 0.9em; margin: 0 2px; filter: drop-shadow(0 0 1px black);">${r}</span>`
                         ).join("");
 
                         let defenderUpdates = {};
@@ -10247,7 +10846,7 @@ class EventResolverApp extends ApplicationV2 {
                             if(a) await a.update({"system.currency.gp": Math.floor((a.system.currency?.gp || 0) + reward)});
                             resultText = `
                                 <h3 style="border-bottom: 2px solid #99c1f1; padding-bottom: 3px; margin-bottom: 8px;"><i class="fa-solid fa-handshake-angle"></i> Request for Aid</h3>
-                                <p>Sent ${count} Defender(s). Total: <b>${dTotal}</b>. Problem solved, earned <b>${reward} GP</b>.</p>
+                                <p>Sent ${count} Defender(s).${aidDieNote} Total: <b>${dTotal}</b>. Problem solved, earned <b>${reward} GP</b>.</p>
                                 <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-top: 5px;">${diceHtml}</div>
                             `;
                         } else {
@@ -10294,13 +10893,13 @@ class EventResolverApp extends ApplicationV2 {
 
                                 resultText = `
                                     <h3 style="border-bottom: 2px solid #f28b82; padding-bottom: 3px; margin-bottom: 8px;"><i class="fa-solid fa-handshake-angle"></i> Request for Aid</h3>
-                                    <p>Sent ${count} Defender(s). Total: <b>${dTotal}</b> (Failure). Problem solved, earned <b>${reward} GP</b> (half), and <b>1 Defender died</b> (${deceasedName}).</p>
+                                    <p>Sent ${count} Defender(s).${aidDieNote} Total: <b>${dTotal}</b> (Failure). Problem solved, earned <b>${reward} GP</b> (half), and <b>1 Defender died</b> (${deceasedName}).</p>
                                     <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-top: 5px;">${diceHtml}</div>
                                 `;
                             } else {
                                 resultText = `
                                     <h3 style="border-bottom: 2px solid #f28b82; padding-bottom: 3px; margin-bottom: 8px;"><i class="fa-solid fa-handshake-angle"></i> Request for Aid</h3>
-                                    <p>Sent ${count} Defender(s). Total: <b>${dTotal}</b> (Failure). Problem solved, earned <b>${reward} GP</b> (half), but no defenders were present to die.</p>
+                                    <p>Sent ${count} Defender(s).${aidDieNote} Total: <b>${dTotal}</b> (Failure). Problem solved, earned <b>${reward} GP</b> (half), but no defenders were present to die.</p>
                                     <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-top: 5px;">${diceHtml}</div>
                                 `;
                             }
@@ -10318,8 +10917,8 @@ class EventResolverApp extends ApplicationV2 {
                         else resultText = "Gain a <b>Rare Magic Item</b> of your choice (Arcana, Armaments, Implements, or Relics).";
                     } else resultText = `<b>Resolved Manually.</b>`;
                 }
-                container.innerHTML = resultText;
-            });
-        }
+                if (container) container.innerHTML = resultText;
+            }
+        });
     }
 }
