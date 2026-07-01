@@ -1,6 +1,7 @@
 import { BastionManager } from "./bastion-app.js";
-import { MODULE_ID, ORDER_SVG_MAP, ORDER_ICON_MAP, PASSIVE_INFO, GARDEN_ROOT_ID, STABLE_ROOT_ID, STAFF_FOLDER_ID, FACILITY_HIRELING_TEMPLATES } from "./bastion-data.js";
+import { MODULE_ID, ORDER_SVG_MAP, ORDER_ICON_MAP, GARDEN_ROOT_ID, STABLE_ROOT_ID, STAFF_FOLDER_ID, FACILITY_HIRELING_TEMPLATES } from "./bastion-data.js";
 import { getActiveCalendarName, getCalendarWeekLength, effectiveDaysPerTurn } from "./bastion-calculations.js";
+import { folderParentId, bastionLog, getAllPassiveInfo } from "./bastion-facility-registry.js";
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
 function _isBastionEligible(actor) {
@@ -142,7 +143,7 @@ Hooks.on("getSceneControlButtons", (sceneControls) => {
     // Handle both the standard Array structure and the Object map structure seen in your console log
     if ( Array.isArray(sceneControls) ) {
         if ( !sceneControls.some(c => c.name === "bastion") ) {
-            console.log("Bastion Manager | Pushing Bastion category to sidebar array.");
+            bastionLog("Pushing Bastion category to sidebar array.");
             sceneControls.push(bastionControl);
         }
     } else {
@@ -1078,7 +1079,7 @@ const integrateBastionDashboard = (bastionTab) => {
                         || outPack.folders.find(f => f.name.toLowerCase().trim() === "garden");
                     if (!gardenRoot) return;
                     const typeFolders = outPack.folders.filter(f =>
-                        String(f.folder?.id || f.folder || f.parentId) === String(gardenRoot.id));
+                        String(folderParentId(f)) === String(gardenRoot.id));
                     const index = await outPack.getIndex({ fields: ["folder", "system.quantity", "uuid"] });
 
                     const _makeHarvestRow = (subType, flagKey, label) => {
@@ -1120,7 +1121,7 @@ const integrateBastionDashboard = (bastionTab) => {
                         || outPack.folders.find(f => f.name.toLowerCase().trim() === "garden");
                     if (!gardenRoot) return;
                     const typeFolders = outPack.folders.filter(f =>
-                        String(f.folder?.id || f.folder || f.parentId) === String(gardenRoot.id));
+                        String(folderParentId(f)) === String(gardenRoot.id));
                     const currentPending = fFlags.pendingSubType || "";
                     const opts = typeFolders.map(f => ({
                         value: f.name, label: f.name, selected: f.name === currentPending
@@ -1732,8 +1733,9 @@ const integrateBastionDashboard = (bastionTab) => {
             rows.push(`<div style="opacity:0.8;"><i class="fa-solid fa-list-ol" style="opacity:0.6; width:12px;"></i> <b>Queue:</b> ${craftQueue.length} item(s) — ${queueGold} GP, ~${queueTurns} turn(s)</div>`);
         }
 
-        // D9. Facility passive abilities — Sanctuary and Sacristy static rows
-        for (const [keyword, info] of Object.entries(PASSIVE_INFO)) {
+        // D9. Facility passive abilities — built-in (Sanctuary/Sacristy) plus any
+        // registered by other modules via registerFacilityType({ passive }).
+        for (const [keyword, info] of Object.entries(getAllPassiveInfo())) {
             if (facName.includes(keyword) && !isUpgrading) {
                 rows.push(`<div data-tooltip="${info.tip}" style="cursor: help; display: flex; align-items: center; justify-content: space-between; gap: 4px;"><span><i class="${info.icon}" style="color:${info.color}; width:12px;"></i> <b>${info.name}</b></span><span style="opacity: 0.7; font-size: 0.88em; white-space: nowrap;"><i class="${info.restIcon}" style="width:10px;"></i> ${info.rest} · Bastion</span></div>`);
                 break;
@@ -1788,7 +1790,7 @@ const integrateBastionDashboard = (bastionTab) => {
                 let pubOptions = [];
                 if (outPack) {
                     const pubSubfolder = outPack.folders.find(f => {
-                        const pid = f.parentId || f.folder?.id || f.folder;
+                        const pid = folderParentId(f);
                         return pid === PUB_ROOT_ID && f.name.toLowerCase().includes("special");
                     });
                     if (pubSubfolder) {
@@ -2399,6 +2401,7 @@ Hooks.once("init", () => {
     // config: false keeps them hidden from the flat settings list.
 
     // ── Rules & Restrictions (hidden) ────────────────────────────────
+    game.settings.register(MODULE_ID, "debugLogging",            { scope: "client", config: false, type: Boolean, default: false });
     game.settings.register(MODULE_ID, "ignoreConstructionCosts", { scope: "world", config: false, type: Boolean, default: false });
     game.settings.register(MODULE_ID, "ignoreFacilityPrereqs",   { scope: "world", config: false, type: Boolean, default: false });
     game.settings.register(MODULE_ID, "specialFacilitiesBuildTime", { scope: "world", config: false, type: Boolean, default: true });
@@ -2476,12 +2479,19 @@ Hooks.once("init", () => {
 });
 
 Hooks.once("ready", async () => {
-    console.log("Bastion Manager | Foundry is ready.");
+    bastionLog("Foundry is ready.");
     game.modules.get("dnd-2024-bastion-manager").api = {
         BastionManager,
         registerFacilityType: (config) => BastionManager.registerFacilityType(config),
     };
     await BastionManager.loadProfessions();
+
+    // Invalidate the cached output-compendium folder layout if its folders change.
+    for (const ev of ["createFolder", "updateFolder", "deleteFolder"]) {
+        Hooks.on(ev, (folder) => {
+            if (folder?.pack === `${MODULE_ID}.bastion-output-items`) BastionManager.clearFolderConfigCache();
+        });
+    }
 
     // Migrate items with malformed compendiumSource UUIDs that crash dnd5e 5.3.3's
     // SourcedItemsMap.set() when parseUuid() returns null.
@@ -2539,7 +2549,7 @@ Hooks.once("ready", async () => {
     document.head.appendChild(style);
 
     // v13: Force control refresh to ensure the Bastion category appears for the GM
-    if ( game.user.isGM ) { console.log("Bastion Manager | Forcing sidebar re-render."); ui.controls.render(true); }
+    if ( game.user.isGM ) { bastionLog("Forcing sidebar re-render."); ui.controls.render(true); }
 
     // Robust Link: Override the native advance method on the Bastion data model.
     // This acts as a logic-level fallback if the UI hijack is bypassed.
@@ -2588,7 +2598,7 @@ Hooks.once("ready", async () => {
         const actor = app?.document || app?.actor || game.actors.find(a => a.items.some(i => i.type === "facility") && a.isOwner);
 
         if ( actor ) {
-            console.log(`Bastion Manager | Hijacking native advancement for ${actor.name}.`);
+            bastionLog(`Hijacking native advancement for ${actor.name}.`);
             if (game.settings.get(MODULE_ID, "calendarDrivenTurns")) {
                 BastionManager.onIssueOrders.call({ actor, element: btn.parentElement }, event, btn);
             } else {

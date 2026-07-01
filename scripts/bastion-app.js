@@ -21,6 +21,12 @@ import {
     effectiveDaysPerTurn
 } from "./bastion-calculations.js";
 
+import {
+    folderParentId, bastionLog,
+    registerFacility, getCustomDescriptors, getFacilityDescriptor, facilityMatches,
+    getFlagSelectBindings, applyCustomOrders
+} from "./bastion-facility-registry.js";
+
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
 class SpellSelectionApp extends ApplicationV2 {
@@ -204,10 +210,13 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
     static _professionsMap = null;
 
     /** Registry of custom facility types added by external modules via registerFacilityType(). */
-    static _customFacilityTypes = [];
+    static get _customFacilityTypes() { return getCustomDescriptors(); }
 
     /**
-     * Register a custom facility type so it appears in the Build Facility dialog.
+     * Register a custom facility type so it appears in the Build Facility dialog
+     * and (optionally) gains special-order, flag-select, and passive behavior —
+     * the same hooks the built-in facilities use. See bastion-facility-registry.js
+     * for the full descriptor shape.
      *
      * @param {object} config
      * @param {string} config.id        Unique dot-namespaced ID, e.g. "my-module.war-room"
@@ -215,6 +224,11 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
      * @param {"special"|"basic"} config.type  Which section to list it under
      * @param {string} config.itemUuid  UUID of the compendium Item to add to the actor
      * @param {number} [config.level]   Minimum character level (shown as hint next to name)
+     * @param {object} [config.orders]  Declarative special-order config, e.g.
+     *                                  { base: ["craft"], craft: ["Craft: Widget",
+     *                                    { label: "Craft: Magic Widget", minLevel: 9 }] }
+     * @param {object} [config.flagSelect] { selector, flagKey, render } for a per-facility <select>
+     * @param {object} [config.passive] PASSIVE_INFO-shaped info-block descriptor
      *
      * @example
      * // Called from another module's ready hook:
@@ -227,18 +241,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
      * });
      */
     static registerFacilityType(config) {
-        const required = ["id", "name", "type", "itemUuid"];
-        for (const field of required) {
-            if (!config[field]) return console.error(`Bastion Manager | registerFacilityType: missing required field "${field}".`, config);
-        }
-        if (!["special", "basic"].includes(config.type)) {
-            return console.error(`Bastion Manager | registerFacilityType: "type" must be "special" or "basic".`);
-        }
-        if (BastionManager._customFacilityTypes.find(f => f.id === config.id)) {
-            return console.warn(`Bastion Manager | registerFacilityType: type "${config.id}" is already registered.`);
-        }
-        BastionManager._customFacilityTypes.push(config);
-        console.log(`Bastion Manager | Registered custom facility type: "${config.name}" (${config.type})`);
+        return registerFacility(config);
     }
 
     /**
@@ -371,7 +374,12 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const systemOrder = isFlag ? (item.system?.order || item.order) : (item.system?.order || fFlags.order);
         if (systemOrder && typeof systemOrder === "string" && systemOrder !== "") {
             const baseOrder = systemOrder.split(":")[0].trim();
-            const formattedOrder = baseOrder.charAt(0).toUpperCase() + baseOrder.slice(1).toLowerCase();
+            // Title-case every word so multi-word system orders (e.g. "change type")
+            // produce the canonical label "Change Type" instead of "Change type",
+            // which would otherwise duplicate the explicit "Change Type" entry below.
+            const formattedOrder = baseOrder.split(/\s+/)
+                .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+                .join(" ");
             let label = formattedOrder;
             if (formattedOrder === "Empower" && item.name.includes("Theater"))   label = "Empower: Theatrical Event";
             if (formattedOrder === "Empower" && item.name.includes("Demiplane")) label = "Empower: Arcane Resilience";
@@ -426,7 +434,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const idx = availableOrders.indexOf("Research");
             availableOrders.splice(idx, 1, "Research: Helpful Lore");
         }
-        if (item.name.includes("Garden")) availableOrders.push("Change Type");
+        if (item.name.includes("Garden") && !availableOrders.includes("Change Type")) availableOrders.push("Change Type");
         if (availableOrders.includes("Harvest") && item.name.includes("Greenhouse")) {
             const idx = availableOrders.indexOf("Harvest");
             availableOrders.splice(idx, 1, "Harvest: Healing Herbs", "Harvest: Poison");
@@ -475,6 +483,13 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         }
         if (availableOrders.includes("Harvest") && item.name.includes("Garden") && !item.name.includes("Greenhouse")) {
             if (subType) availableOrders.splice(availableOrders.indexOf("Harvest"), 1, `Harvest: ${subType}`);
+        }
+
+        // Custom facilities registered by other modules contribute their special
+        // orders declaratively (built-in facilities are handled by the logic above).
+        const customDesc = getFacilityDescriptor(item.name);
+        if (customDesc?.orders) {
+            applyCustomOrders(customDesc, availableOrders, { actorLevel, subType });
         }
 
         // Compute the UI-facing current order label (maps stored flag value → dropdown option)
@@ -596,6 +611,114 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         Hooks.callAll("dnd-bastion.orderChanged", targetActor, itemId, newOrder, isFlag);
     }
 
+    /**
+     * Write a single module flag onto a facility, transparently handling the three
+     * storage shapes: an inherited member's Item, a groupFacilities flag entry, or
+     * a directly-owned Item. Centralizes the pattern that was copy-pasted across
+     * every per-facility <select> change handler.
+     * @param {Actor} actor  The dashboard's actor.
+     * @param {DOMStringMap} ds  The changed element's dataset (itemId, isInherited, isFlag, memberId).
+     * @param {string} flagKey  Module flag key to write.
+     * @param {*} value  New value.
+     */
+    static async _writeFacilityFlag(actor, ds, flagKey, value) {
+        if (ds.isInherited === "true") {
+            const member = game.actors.get(ds.memberId);
+            const item = member?.items.get(ds.itemId);
+            if (item) await item.setFlag(MODULE_ID, flagKey, value);
+        } else if (ds.isFlag === "true") {
+            const groupFacilities = actor.getFlag(MODULE_ID, "groupFacilities") || [];
+            const fac = groupFacilities.find(f => f._id === ds.itemId);
+            if (fac) {
+                const path = `flags.${MODULE_ID}.${flagKey}`;
+                if (foundry.utils.getProperty(fac, path) !== value) {
+                    foundry.utils.setProperty(fac, path, value);
+                    await actor.setFlag(MODULE_ID, "groupFacilities", groupFacilities);
+                }
+            }
+        } else {
+            const item = actor.items.get(ds.itemId);
+            if (item) await item.setFlag(MODULE_ID, flagKey, value);
+        }
+    }
+
+    /**
+     * Bind every registered flag-select (<select> whose value is stored on a
+     * facility flag) in one data-driven pass. Replaces ~8 near-identical inline
+     * change-handler blocks; new facilities contribute a binding via the registry
+     * instead of another copy-pasted block.
+     */
+    _bindFlagSelects() {
+        for (const { selector, flagKey, render } of getFlagSelectBindings()) {
+            for (const el of this.element.querySelectorAll(selector)) {
+                el.addEventListener("change", async (event) => {
+                    await BastionManager._writeFacilityFlag(this.actor, event.target.dataset, flagKey, event.target.value);
+                    if (render) this.render();
+                });
+            }
+        }
+    }
+
+    /**
+     * Cache of resolved output-compendium folder layout, keyed by pack collection.
+     * The module's own compendium folders don't change during play, so resolving
+     * the garden/greenhouse/laboratory roots and their subfolders once (instead of
+     * re-scanning pack.folders on every render) is a safe win. Invalidated by
+     * clearFolderConfigCache() on folder create/update/delete (see main.js ready).
+     */
+    static _outputFolderConfigCache = new Map();
+
+    /** Clear the resolved-folder cache (call when the output compendium changes). */
+    static clearFolderConfigCache() { BastionManager._outputFolderConfigCache.clear(); }
+
+    /**
+     * Resolve (and memoize) the output compendium's folder layout: the garden /
+     * greenhouse / laboratory roots, their relevant subfolder ids, and the dynamic
+     * garden-type list. Returns a stable object shape even when the pack is missing.
+     * @param {CompendiumCollection} outPack
+     */
+    static _getOutputFolderConfig(outPack) {
+        const empty = {
+            dynamicGardenTypes: [], gardenRoot: null, greenhouseRoot: null, laboratoryRoot: null,
+            greenhouseFolderIds: [], poisonsFolderId: null, poisonsLabFolderId: null,
+            healingFolderId: null, fruitFolderId: null
+        };
+        if (!outPack?.folders) return empty;
+
+        const cached = BastionManager._outputFolderConfigCache.get(outPack.collection);
+        if (cached) return cached;
+
+        let dynamicGardenTypes = [];
+        let greenhouseFolderIds = [];
+        let poisonsFolderId = null, poisonsLabFolderId = null, healingFolderId = null, fruitFolderId = null;
+
+        const gardenRoot = outPack.folders.get(GARDEN_ROOT_ID) || outPack.folders.find(f => f.name.toLowerCase().trim() === "garden");
+        if (gardenRoot) {
+            dynamicGardenTypes = outPack.folders.filter(f => String(folderParentId(f)) === String(gardenRoot.id))
+                .map(f => ({ id: f.id, name: f.name }));
+        }
+        const greenhouseRoot = outPack.folders.get(GREENHOUSE_ROOT_ID) || outPack.folders.find(f => f.name.toLowerCase().trim() === "greenhouse");
+        if (greenhouseRoot) {
+            greenhouseFolderIds = BastionManager._getAllSubfolderIds(outPack, greenhouseRoot.id);
+            const subfolders = outPack.folders.filter(f => folderParentId(f) === greenhouseRoot.id);
+            poisonsFolderId = subfolders.find(f => f.name.toLowerCase().includes("poison"))?.id;
+            healingFolderId = subfolders.find(f => f.name.toLowerCase().includes("herb"))?.id;
+            fruitFolderId = subfolders.find(f => f.name.toLowerCase().includes("fruit"))?.id;
+        }
+        const laboratoryRoot = outPack.folders.get(LABORATORY_ROOT_ID) || outPack.folders.find(f => f.name.toLowerCase().trim() === "laboratory");
+        if (laboratoryRoot) {
+            const subfolders = outPack.folders.filter(f => folderParentId(f) === laboratoryRoot.id);
+            poisonsLabFolderId = subfolders.find(f => f.name.toLowerCase().includes("poison"))?.id;
+        }
+
+        const config = {
+            dynamicGardenTypes, gardenRoot, greenhouseRoot, laboratoryRoot,
+            greenhouseFolderIds, poisonsFolderId, poisonsLabFolderId, healingFolderId, fruitFolderId
+        };
+        BastionManager._outputFolderConfigCache.set(outPack.collection, config);
+        return config;
+    }
+
     static _extractSize             = extractSize;
     static _getScrollRequirements   = getScrollRequirements;
     static _getMagicItemRequirements = getMagicItemRequirements;
@@ -698,40 +821,13 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const daysPerTurn = effectiveDaysPerTurn();
         const progressLabel = calculationMode === "days" ? "d" : "t";
 
-        // Dynamic Garden Configuration from Compendium
-        let dynamicGardenTypes = [];
+        // Dynamic Garden Configuration from Compendium (folder layout resolved once + cached)
         const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
         const outIndex = outPack ? await outPack.getIndex({fields: ["name", "uuid", "folder", "system.rarity", "system.price", "system.quantity", "system.requirements.level", "system.size", "system.properties", "system.description.value"]}) : [];
-        let gardenRoot = null;
-        let greenhouseRoot = null;
-        let laboratoryRoot = null;
-        let greenhouseFolderIds = [];
-        let poisonsFolderId = null;
-        let poisonsLabFolderId = null;
-        let healingFolderId = null;
-        let fruitFolderId = null;
-
-        if (outPack?.folders) {
-            gardenRoot = outPack.folders.get(GARDEN_ROOT_ID) || outPack.folders.find(f => f.name.toLowerCase().trim() === "garden");
-            if (gardenRoot) {
-                dynamicGardenTypes = outPack.folders.filter(f => String(f.folder?.id || f.folder || f.parentId) === String(gardenRoot.id))
-                    .map(f => ({ id: f.id, name: f.name }));
-            }
-            greenhouseRoot = outPack.folders.get(GREENHOUSE_ROOT_ID) || outPack.folders.find(f => f.name.toLowerCase().trim() === "greenhouse");
-            if (greenhouseRoot) {
-                greenhouseFolderIds = BastionManager._getAllSubfolderIds(outPack, greenhouseRoot.id);
-                // Identify specific subfolders for Greenhouse filtering
-                const subfolders = outPack.folders.filter(f => (f.parentId || f.folder?.id || f.folder) === greenhouseRoot.id);
-                poisonsFolderId = subfolders.find(f => f.name.toLowerCase().includes("poison"))?.id;
-                healingFolderId = subfolders.find(f => f.name.toLowerCase().includes("herb"))?.id;
-                fruitFolderId = subfolders.find(f => f.name.toLowerCase().includes("fruit"))?.id;
-            }
-            laboratoryRoot = outPack.folders.get(LABORATORY_ROOT_ID) || outPack.folders.find(f => f.name.toLowerCase().trim() === "laboratory");
-            if (laboratoryRoot) {
-                const subfolders = outPack.folders.filter(f => (f.parentId || f.folder?.id || f.folder) === laboratoryRoot.id);
-                poisonsLabFolderId = subfolders.find(f => f.name.toLowerCase().includes("poison"))?.id;
-            }
-        }
+        const {
+            dynamicGardenTypes, gardenRoot, greenhouseRoot, laboratoryRoot,
+            greenhouseFolderIds, poisonsFolderId, poisonsLabFolderId, healingFolderId, fruitFolderId
+        } = BastionManager._getOutputFolderConfig(outPack);
 
         const fruitEntry = outIndex.find(i => (fruitFolderId ? (i.folder?.id || i.folder) === fruitFolderId : true) && (i.name === "Fruit of Restoration" || i.name === "Magical Fruit"));
         const fruitUuid = fruitEntry?.uuid;
@@ -876,7 +972,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             let pubSpecialOptions = [];
             if (isPub && outPack) {
                 const pubSubfolder = outPack.folders.find(f => {
-                    const pid = f.parentId || f.folder?.id || f.folder;
+                    const pid = folderParentId(f);
                     return pid === PUB_ROOT_ID && f.name.toLowerCase().includes("special");
                 });
                 if (pubSubfolder) {
@@ -2895,194 +2991,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             });
         });
 
-        const smithyItemSelects = this.element.querySelectorAll('.smithy-item-select');
-        for (const select of smithyItemSelects) {
-            select.addEventListener('change', async (event) => {
-                const ds = event.target.dataset;
-                const newChoice = event.target.value;
-
-                if (ds.isInherited === "true") {
-                    const member = game.actors.get(ds.memberId); 
-                    const item = member?.items.get(ds.itemId);
-                    if (item) await item.setFlag(MODULE_ID, "smithyItemChoice", newChoice);
-                } else if (ds.isFlag === "true") {
-                    const groupFacilities = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
-                    const fac = groupFacilities.find(f => f._id === ds.itemId);
-                    if (fac) {
-                        if (!fac.flags) fac.flags = {}; 
-                        if (!fac.flags[MODULE_ID]) fac.flags[MODULE_ID] = {};
-                        fac.flags[MODULE_ID].smithyItemChoice = newChoice;
-                        await this.actor.setFlag(MODULE_ID, "groupFacilities", groupFacilities);
-                    }
-                } else {
-                    const item = this.actor.items.get(ds.itemId);
-                    if (item) await item.setFlag(MODULE_ID, "smithyItemChoice", newChoice);
-                }
-                this.render();
-            });
-        }
-
-        const armamentItemSelects = this.element.querySelectorAll('.armament-item-select');
-        for (const select of armamentItemSelects) {
-            select.addEventListener('change', async (event) => {
-                const ds = event.target.dataset;
-                const newChoice = event.target.value;
-
-                if (ds.isInherited === "true") {
-                    const member = game.actors.get(ds.memberId); 
-                    const item = member?.items.get(ds.itemId);
-                    if (item) await item.setFlag(MODULE_ID, "armamentItemChoice", newChoice);
-                } else if (ds.isFlag === "true") {
-                    const groupFacilities = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
-                    const fac = groupFacilities.find(f => f._id === ds.itemId);
-                    if (fac) {
-                        if (!fac.flags) fac.flags = {}; 
-                        if (!fac.flags[MODULE_ID]) fac.flags[MODULE_ID] = {};
-                        fac.flags[MODULE_ID].armamentItemChoice = newChoice;
-                        await this.actor.setFlag(MODULE_ID, "groupFacilities", groupFacilities);
-                    }
-                } else {
-                    const item = this.actor.items.get(ds.itemId);
-                    if (item) await item.setFlag(MODULE_ID, "armamentItemChoice", newChoice);
-                }
-                this.render();
-            });
-        }
-
-        const workshopItemSelects = this.element.querySelectorAll('.workshop-item-select');
-        for (const select of workshopItemSelects) {
-            select.addEventListener('change', async (event) => {
-                const ds = event.target.dataset;
-                const newChoice = event.target.value;
-
-                if (ds.isInherited === "true") {
-                    const member = game.actors.get(ds.memberId); 
-                    const item = member?.items.get(ds.itemId);
-                    if (item) await item.setFlag(MODULE_ID, "workshopItemChoice", newChoice);
-                } else if (ds.isFlag === "true") {
-                    const groupFacilities = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
-                    const fac = groupFacilities.find(f => f._id === ds.itemId);
-                    if (fac) {
-                        if (!fac.flags) fac.flags = {}; 
-                        if (!fac.flags[MODULE_ID]) fac.flags[MODULE_ID] = {};
-                        fac.flags[MODULE_ID].workshopItemChoice = newChoice;
-                        await this.actor.setFlag(MODULE_ID, "groupFacilities", groupFacilities);
-                    }
-                } else {
-                    const item = this.actor.items.get(ds.itemId);
-                    if (item) await item.setFlag(MODULE_ID, "workshopItemChoice", newChoice);
-                }
-                this.render();
-            });
-        }
-
-        const relicItemSelects = this.element.querySelectorAll('.sacristy-relic-select');
-        for (const select of relicItemSelects) {
-            select.addEventListener('change', async (event) => {
-                const ds = event.target.dataset;
-                const newChoice = event.target.value;
-                
-                if (ds.isInherited === "true") {
-                    const member = game.actors.get(ds.memberId); 
-                    const item = member?.items.get(ds.itemId);
-                    if (item) await item.setFlag(MODULE_ID, "relicItemChoice", newChoice);
-                } else if (ds.isFlag === "true") {
-                    const groupFacilities = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
-                    const fac = groupFacilities.find(f => f._id === ds.itemId);
-                    if (fac) {
-                        foundry.utils.setProperty(fac, `flags.${MODULE_ID}.relicItemChoice`, newChoice);
-                        // Only update if the flag array is actually modified
-                        const currentChoice = foundry.utils.getProperty(fac, `flags.${MODULE_ID}.relicItemChoice`);
-                        if (currentChoice !== newChoice) await this.actor.setFlag(MODULE_ID, "groupFacilities", groupFacilities);
-                    }
-                } else {
-                    const item = this.actor.items.get(ds.itemId);
-                    if (item) await item.setFlag(MODULE_ID, "relicItemChoice", newChoice);
-                }
-                this.render();
-            });
-        }
-
-        const scrollSelects = this.element.querySelectorAll('.scriptorium-scroll-select');
-        for (const select of scrollSelects) {
-            select.addEventListener('change', async (event) => {
-                const ds = event.target.dataset;
-                const newChoice = event.target.value;
-                
-                if (ds.isInherited === "true") {
-                    const member = game.actors.get(ds.memberId); 
-                    const item = member?.items.get(ds.itemId);
-                    if (item) await item.setFlag(MODULE_ID, "scrollChoice", newChoice);
-                } else if (ds.isFlag === "true") {
-                    const groupFacilities = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
-                    const fac = groupFacilities.find(f => f._id === ds.itemId);
-                    if (fac) {
-                        foundry.utils.setProperty(fac, `flags.${MODULE_ID}.scrollChoice`, newChoice);
-                        // Only update if the flag array is actually modified
-                        const currentChoice = foundry.utils.getProperty(fac, `flags.${MODULE_ID}.scrollChoice`);
-                        if (currentChoice !== newChoice) await this.actor.setFlag(MODULE_ID, "groupFacilities", groupFacilities);
-                    }
-                } else {
-                    const item = this.actor.items.get(ds.itemId);
-                    if (item) await item.setFlag(MODULE_ID, "scrollChoice", newChoice);
-                }
-                this.render();
-            });
-        }
-
-        const focusSelects = this.element.querySelectorAll('.arcane-study-focus-select');
-        for (const select of focusSelects) {
-            select.addEventListener('change', async (event) => {
-                const ds = event.target.dataset;
-                const newChoice = event.target.value;
-
-                if (ds.isInherited === "true") {
-                    const member = game.actors.get(ds.memberId); 
-                    const item = member?.items.get(ds.itemId);
-                    if (item) await item.setFlag(MODULE_ID, "focusChoice", newChoice);
-                } else if (ds.isFlag === "true") {
-                    const groupFacilities = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
-                    const fac = groupFacilities.find(f => f._id === ds.itemId);
-                    if (fac) {
-                        if (!fac.flags) fac.flags = {}; 
-                        if (!fac.flags[MODULE_ID]) fac.flags[MODULE_ID] = {};
-                        fac.flags[MODULE_ID].focusChoice = newChoice;
-                        await this.actor.setFlag(MODULE_ID, "groupFacilities", groupFacilities);
-                    }
-                } else {
-                    const item = this.actor.items.get(ds.itemId);
-                    if (item) await item.setFlag(MODULE_ID, "focusChoice", newChoice);
-                }
-            });
-        }
-
-        const magicItemSelects = this.element.querySelectorAll('.arcane-study-item-select');
-        for (const select of magicItemSelects) {
-            select.addEventListener('change', async (event) => {
-                const ds = event.target.dataset;
-                const newChoice = event.target.value;
-
-
-                if (ds.isInherited === "true") {
-                    const member = game.actors.get(ds.memberId); 
-                    const item = member?.items.get(ds.itemId);
-                    if (item) await item.setFlag(MODULE_ID, "magicItemChoice", newChoice);
-                } else if (ds.isFlag === "true") {
-                    const groupFacilities = this.actor.getFlag(MODULE_ID, "groupFacilities") || [];
-                    const fac = groupFacilities.find(f => f._id === ds.itemId);
-                    if (fac) {
-                        if (!fac.flags) fac.flags = {}; 
-                        if (!fac.flags[MODULE_ID]) fac.flags[MODULE_ID] = {};
-                        fac.flags[MODULE_ID].magicItemChoice = newChoice;
-                        await this.actor.setFlag(MODULE_ID, "groupFacilities", groupFacilities);
-                    }
-                } else {
-                    const item = this.actor.items.get(ds.itemId);
-                    if (item) await item.setFlag(MODULE_ID, "magicItemChoice", newChoice);
-                }
-                this.render();
-            });
-        }
+        this._bindFlagSelects();
         
         const inputs = this.element.querySelectorAll('.library-topic-input');
         for (const input of inputs) {
@@ -3108,30 +3017,6 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             });
         }
 
-        const harvestSelects = this.element.querySelectorAll('.garden-harvest-select');
-        for (const select of harvestSelects) {
-            select.addEventListener('change', async (event) => {
-                const ds = event.target.dataset;
-                const newChoice = event.target.value;
-
-                if (ds.isInherited === "true") {
-                    const member = game.actors.get(ds.memberId); const item = member?.items.get(ds.itemId);
-                    if (item) await item.setFlag("dnd-2024-bastion-manager", "harvestChoice", newChoice);
-                } else if (ds.isFlag === "true") {
-                    const groupFacilities = this.actor.getFlag("dnd-2024-bastion-manager", "groupFacilities") || [];
-                    const fac = groupFacilities.find(f => f._id === ds.itemId);
-                    if (fac) {
-                        if (!fac.flags) fac.flags = {}; if (!fac.flags["dnd-2024-bastion-manager"]) fac.flags["dnd-2024-bastion-manager"] = {};
-                        fac.flags["dnd-2024-bastion-manager"].harvestChoice = newChoice;
-                        await this.actor.setFlag("dnd-2024-bastion-manager", "groupFacilities", groupFacilities);
-                    }
-                } else {
-                    const item = this.actor.items.get(ds.itemId);
-                    if (item) await item.setFlag("dnd-2024-bastion-manager", "harvestChoice", newChoice);
-                }
-                this.render();
-            });
-        }
 
         const typeSelects = this.element.querySelectorAll('.garden-change-type-select');
         for (const select of typeSelects) {
@@ -3356,7 +3241,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
         // Find the "Observatory Charm" subfolder by name under the Observatory root
         const charmFolder = outPack.folders.find(f => {
-            const pid = f.parentId || f.folder?.id || f.folder;
+            const pid = folderParentId(f);
             return pid === OBSERVATORY_ROOT_FOLDER_ID && f.name.toLowerCase().includes("observatory charm");
         });
         if (!charmFolder) return ui.notifications.error("Observatory: 'Observatory Charm' subfolder not found in compendium.");
@@ -3404,7 +3289,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (!outPack) return ui.notifications.error("Reliquary error: Output compendium missing.");
 
         const charmSubfolder = outPack.folders.find(f => {
-            const pid = f.parentId || f.folder?.id || f.folder;
+            const pid = folderParentId(f);
             return pid === RELIQUARY_ROOT_ID && f.name.toLowerCase().includes("charm");
         });
         if (!charmSubfolder) return ui.notifications.error("Reliquary: 'Charm' subfolder not found in compendium.");
@@ -3448,7 +3333,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (!outPack) return ui.notifications.error("Arcane Study error: Output compendium missing.");
 
         const charmSubfolder = outPack.folders.find(f => {
-            const pid = f.parentId || f.folder?.id || f.folder;
+            const pid = folderParentId(f);
             return pid === ARCANE_STUDY_ROOT_ID && f.name.toLowerCase().includes("arcane study charm");
         });
         if (!charmSubfolder) return ui.notifications.error("Arcane Study: 'Arcane Study Charm' subfolder not found in compendium.");
@@ -3508,7 +3393,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (!outPack) return ui.notifications.error("Sanctum: output compendium not found.");
 
         const charmSubfolder = outPack.folders.find(f => {
-            const pid = f.parentId || f.folder?.id || f.folder;
+            const pid = folderParentId(f);
             return pid === SANCTUM_ROOT_ID && f.name.toLowerCase().includes("charm");
         });
         if (!charmSubfolder) return ui.notifications.error("Sanctum: 'Sanctum Charm' subfolder not found in compendium.");
@@ -3568,7 +3453,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (!outPack) return ui.notifications.error("Sanctum: output compendium not found.");
 
         const spellSubfolder = outPack.folders.find(f => {
-            const pid = f.parentId || f.folder?.id || f.folder;
+            const pid = folderParentId(f);
             return pid === SANCTUM_ROOT_ID && f.name.toLowerCase().includes("recall");
         });
         if (!spellSubfolder) return ui.notifications.error("Sanctum: 'Word of Recall' subfolder not found in compendium.");
@@ -3626,7 +3511,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         if (!outPack) return ui.notifications.error("Sanctuary: output compendium not found.");
 
         const charmSubfolder = outPack.folders.find(f => {
-            const pid = f.parentId || f.folder?.id || f.folder;
+            const pid = folderParentId(f);
             return pid === SANCTUARY_ROOT_ID && f.name.toLowerCase().includes("charm");
         });
         if (!charmSubfolder) return ui.notifications.error("Sanctuary: 'Sanctuary Charm' subfolder not found in compendium.");
@@ -4229,7 +4114,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
         if (!outPack) return ui.notifications.error("Output compendium not found.");
         const pubSubfolder = outPack.folders.find(f => {
-            const pid = f.parentId || f.folder?.id || f.folder;
+            const pid = folderParentId(f);
             return pid === PUB_ROOT_ID && f.name.toLowerCase().includes("special");
         });
         if (!pubSubfolder) return ui.notifications.error("Pub Specials subfolder not found in compendium.");
@@ -5309,7 +5194,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 || outPackInit.folders.find(f => f.name.toLowerCase().trim() === "garden");
             if (gardenRoot) {
                 gardenTypeOptions = outPackInit.folders
-                    .filter(f => String(f.folder?.id || f.folder || f.parentId) === String(gardenRoot.id))
+                    .filter(f => String(folderParentId(f)) === String(gardenRoot.id))
                     .map(f => `<option value="${f.name}">${f.name}</option>`)
                     .join("");
             }
@@ -5692,7 +5577,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (outPack?.folders) {
                 const root = outPack.folders.get(GARDEN_ROOT_ID) || outPack.folders.find(f => f.name.toLowerCase().trim() === "garden");
                 if (root) {
-                    gardenOptions = outPack.folders.filter(f => String(f.folder?.id || f.folder || f.parentId) === String(root.id))
+                    gardenOptions = outPack.folders.filter(f => String(folderParentId(f)) === String(root.id))
                         .map(o => `<option value="${o.name}">${o.name}</option>`).join("");
                 }
             }
@@ -6044,7 +5929,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 if (root) {
                     if (isGarden) {
                         // Garden types are subfolders of the root
-                        specializationOptions = outPack.folders.filter(f => String(f.folder?.id || f.folder || f.parentId) === String(root.id))
+                        specializationOptions = outPack.folders.filter(f => String(folderParentId(f)) === String(root.id))
                             .map(o => `<option value="${o.name}">${o.name}</option>`).join("");
                     } else {
                         // Guild types are items directly in the root folder
@@ -7077,7 +6962,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                 if (roll.total % 2 !== 0) { // odd = success
                     const outPack = game.packs.get(`${MODULE_ID}.bastion-output-items`);
                     const empowerFolder = outPack?.folders.find(f => {
-                        const pid = f.parentId || f.folder?.id || f.folder;
+                        const pid = folderParentId(f);
                         return pid === OBSERVATORY_ROOT_FOLDER_ID && f.name.toLowerCase().includes("eldritch");
                     });
                     if (empowerFolder) {
@@ -8017,8 +7902,9 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
                         : (upgradeTurns || 0);
 
                     if (progress >= totalNeeded) {
-                        subType = pending || "Decorative"; progress = 0; 
-                        currentResultText = `${getH()} has finished converting the facility to a <b>[${subType}]</b> specialization.`; 
+                        subType = pending || "Decorative"; progress = 0;
+                        order = "Maintain"; // One-time conversion complete — revert to Maintain so it doesn't stay stuck on "Change Type"
+                        currentResultText = `${getH()} has finished converting the facility to a <b>[${subType}]</b> specialization.`;
                     } else {
                         const label = calculationMode === "days" ? "days" : "turns";
                         currentResultText = `${getH()} is currently working to change the specialization to [${pending}] (Progress: ${progress}/${totalNeeded} ${label}).`; 
@@ -8837,7 +8723,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
 
             // Dynamically resolve the Eldritch Discovery subfolder by name
             const empowerFolder = outPack.folders.find(f => {
-                const pid = f.parentId || f.folder?.id || f.folder;
+                const pid = folderParentId(f);
                 return pid === OBSERVATORY_ROOT_FOLDER_ID && f.name.toLowerCase().includes("eldritch");
             });
             if (!empowerFolder) return { text: "Observatory error: Eldritch Discovery folder not found in compendium." };
@@ -8907,7 +8793,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             if (!outPack) return { text: "Reliquary error: output compendium missing." };
 
             const charmSubfolder = outPack.folders.find(f => {
-                const pid = f.parentId || f.folder?.id || f.folder;
+                const pid = folderParentId(f);
                 return pid === RELIQUARY_ROOT_ID && f.name.toLowerCase().includes("charm");
             });
             if (!charmSubfolder) return { text: "Reliquary error: Charm subfolder not found in compendium." };
@@ -9724,7 +9610,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
         
         let possible = [];
         if (isGarden && subType) {
-            const specFolder = outPack.folders.find(f => f.name.toLowerCase().trim() === subType.toLowerCase().trim() && String(f.folder?.id || f.folder || f.parentId) === String(rootFolder.id));
+            const specFolder = outPack.folders.find(f => f.name.toLowerCase().trim() === subType.toLowerCase().trim() && String(folderParentId(f)) === String(rootFolder.id));
             if (specFolder) possible = allDocs.filter(i => String(i.folder?.id || i.folder) === String(specFolder.id));
             
             const flagKey = isSecondPlot ? "harvestChoice2" : "harvestChoice";
@@ -9740,7 +9626,7 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             // Harvest: craft the Reliquary Talisman from the Talisman subfolder.
             // The talisman is permanent (not cleaned up at turn advance) unless overwritten.
             const talismanSubfolder = outPack.folders.find(f => {
-                const pid = f.parentId || f.folder?.id || f.folder;
+                const pid = folderParentId(f);
                 return pid === RELIQUARY_ROOT_ID && f.name.toLowerCase().includes("talisman");
             });
             if (!talismanSubfolder) return { item: null, text: "Reliquary error: Talisman subfolder not found in compendium." };
