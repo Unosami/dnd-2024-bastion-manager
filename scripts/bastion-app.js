@@ -222,7 +222,10 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
      * @param {string} config.id        Unique dot-namespaced ID, e.g. "my-module.war-room"
      * @param {string} config.name      Display name shown in the dropdown
      * @param {"special"|"basic"} config.type  Which section to list it under
-     * @param {string} config.itemUuid  UUID of the compendium Item to add to the actor
+     * @param {string} [config.itemUuid]  UUID of the compendium Item to add to the actor
+     * @param {object} [config.itemData]  Inline facility Item data, used instead of itemUuid
+     *                                    when the module ships no compendium. Requires one of
+     *                                    itemUuid or itemData.
      * @param {number} [config.level]   Minimum character level (shown as hint next to name)
      * @param {object} [config.orders]  Declarative special-order config, e.g.
      *                                  { base: ["craft"], craft: ["Craft: Widget",
@@ -5841,8 +5844,18 @@ export class BastionManager extends HandlebarsApplicationMixin(ApplicationV2) {
             const customId = facilityId.slice(7);
             const customConfig = BastionManager._customFacilityTypes.find(f => f.id === customId);
             if (!customConfig) return ui.notifications.error(`Bastion Manager | Custom facility type "${customId}" is not registered.`);
-            itemDoc = await fromUuid(customConfig.itemUuid);
-            if (!itemDoc) return ui.notifications.error(`Bastion Manager | Could not load item for "${customConfig.name}". Check the itemUuid passed to registerFacilityType.`);
+            if (customConfig.itemUuid) {
+                itemDoc = await fromUuid(customConfig.itemUuid);
+                if (!itemDoc) return ui.notifications.error(`Bastion Manager | Could not load item for "${customConfig.name}". Check the itemUuid passed to registerFacilityType.`);
+            } else if (customConfig.itemData) {
+                // Build a transient facility Item from inline data (module shipped no pack).
+                try {
+                    itemDoc = new Item.implementation(foundry.utils.deepClone(customConfig.itemData), { keepId: false });
+                } catch (err) {
+                    console.error(`Bastion Manager | Failed to construct itemData for "${customConfig.name}".`, err);
+                    return ui.notifications.error(`Bastion Manager | Invalid itemData for "${customConfig.name}".`);
+                }
+            }
         } else {
             const pack = game.packs.get("dnd-2024-bastion-manager.bastion-facilities");
             itemDoc = await pack.getDocument(facilityId);

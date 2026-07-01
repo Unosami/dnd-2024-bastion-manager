@@ -2,6 +2,10 @@ import { BastionManager } from "./bastion-app.js";
 import { MODULE_ID, ORDER_SVG_MAP, ORDER_ICON_MAP, GARDEN_ROOT_ID, STABLE_ROOT_ID, STAFF_FOLDER_ID, FACILITY_HIRELING_TEMPLATES } from "./bastion-data.js";
 import { getActiveCalendarName, getCalendarWeekLength, effectiveDaysPerTurn } from "./bastion-calculations.js";
 import { folderParentId, bastionLog, getAllPassiveInfo } from "./bastion-facility-registry.js";
+// Proof-of-concept: external-style facility pack (Eberron) that hooks in via the
+// public API only. In a real distribution this would be its own Foundry module;
+// here we just load it so its `ready` hook fires. Safe to remove independently.
+import "./eberron-facilities.js";
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
 function _isBastionEligible(actor) {

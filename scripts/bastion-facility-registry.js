@@ -122,9 +122,14 @@ const customDescriptors = [];
  * Returns the stored descriptor, or null on validation failure.
  */
 export function registerFacility(config) {
-    const required = ["id", "name", "type", "itemUuid"];
+    const required = ["id", "name", "type"];
     for (const field of required) {
         if (!config[field]) { console.error(`Bastion Manager | registerFacilityType: missing required field "${field}".`, config); return null; }
+    }
+    // A facility must supply the item to build: either a compendium UUID or inline
+    // item data. itemData lets a module register a facility without shipping a pack.
+    if (!config.itemUuid && !config.itemData) {
+        console.error(`Bastion Manager | registerFacilityType: provide either "itemUuid" or "itemData".`, config); return null;
     }
     if (!["special", "basic"].includes(config.type)) {
         console.error(`Bastion Manager | registerFacilityType: "type" must be "special" or "basic".`); return null;
